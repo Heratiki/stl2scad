@@ -1,5 +1,9 @@
 import PySimpleGUI as sg
 import trimesh
+import pyglet
+from trimesh import viewer
+from trimesh.viewer import SceneViewer
+
 
 # Define the layout of the GUI
 gui_layout = [
@@ -20,7 +24,9 @@ while True:
         stl_file_path = values["STL_FILE_PATH"]
         if stl_file_path:
             stl_mesh = trimesh.load(stl_file_path)
-            stl_mesh.show()  # Show the 3D viewer
+            if isinstance(stl_mesh, list):
+                stl_mesh = stl_mesh[0]  # Get the first mesh from the list
+            trimesh.viewer.SceneViewer(stl_mesh).show()  # Show the 3D viewer
 
 # Close the window
 gui_window.close()

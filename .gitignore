@@ -5,13 +5,14 @@ __pycache__/
 *.pyd
 
 # Virtual environment
-env/
+.venv
 
 # Jupyter notebook checkpoints
 .ipynb_checkpoints/
 
 # VS Code settings
 .vscode/
+stl2scad.code-workspace 
 
 # Other common files
 .DS_Store

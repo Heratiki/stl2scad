@@ -1,9 +1,6 @@
 import PySimpleGUI as sg
 import trimesh
 import pyglet
-from trimesh import viewer
-from trimesh.viewer import SceneViewer
-
 
 # Define the layout of the GUI
 gui_layout = [

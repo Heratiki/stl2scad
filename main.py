@@ -10,7 +10,7 @@ gui_layout = [
     [sg.Button("Process STL File")]
 ]
 
-# Create the window
+# Create the window``
 gui_window = sg.Window('STL File Processor', gui_layout)
 
 while True:

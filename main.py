@@ -23,7 +23,7 @@ while True:
                 stl_mesh = stl_mesh[0]  # Get the first mesh from the list
 
             # Set the viewer to 'gl' and display the STL file using trimesh
-            stl_mesh.viewer = 'gl'
+            stl_mesh.viewer = 'matplotlib'
             stl_mesh.show()
 
 # Close the window

@@ -1,6 +1,6 @@
 import PySimpleGUI as sg
 import trimesh
-import pystlviewer
+import pystlviewer.py
 
 def main():
     filename = 'path_to_your_stl_file.stl'

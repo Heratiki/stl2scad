@@ -1,9 +1,11 @@
 import numpy as np
 from stl import mesh
 from PyQt5 import QtWidgets
+from PyQt5.QtGui import QColor
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 import sys
+
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -54,6 +56,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fit_action.triggered.connect(self.fit_to_window)
         self.toolbar.addAction(self.fit_action)
 
+        # Add a color selector action to the toolbar
+        self.color_action = QtWidgets.QAction("Select Color", self)
+        self.color_action.triggered.connect(self.select_color)
+        self.toolbar.addAction(self.color_action)
+
 
     def load_stl_file(self):
         file_path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open STL File", "", "STL Files (*.stl)")
@@ -61,9 +68,9 @@ class MainWindow(QtWidgets.QMainWindow):
             your_mesh = mesh.Mesh.from_file(file_path)
             vertices = np.concatenate(your_mesh.vectors)
             faces = np.array([(i, i+1, i+2) for i in range(0, len(vertices), 3)])
-            self.mesh_data = gl.MeshData(vertexes=vertices, faces=faces)  # Change this line
-            mesh_item = gl.GLMeshItem(meshdata=self.mesh_data, color=(0.7, 0.7, 0.7, 1.0), smooth=False)
-            self.gl_view.addItem(mesh_item)
+            self.mesh_data = gl.MeshData(vertexes=vertices, faces=faces)
+            self.mesh_item = gl.GLMeshItem(meshdata=self.mesh_data, color=(0.7, 0.7, 0.7, 1.0), smooth=False, drawEdges=True)
+            self.gl_view.addItem(self.mesh_item)
 
             # Center the 3D object
             self.center_object()
@@ -98,6 +105,14 @@ class MainWindow(QtWidgets.QMainWindow):
             ranges = max_vals - min_vals
             self.gl_view.opts['distance'] = max(ranges)
             self.gl_view.update()
+
+    def select_color(self):
+        # Open the color dialog and get the selected color
+        color = QtWidgets.QColorDialog.getColor(initial=QColor(0.7, 0.7, 0.7, 1.0))
+
+        # If a color was selected, update the color of the GLMeshItem
+        if color.isValid():
+            self.mesh_item.setColor(color.getRgbF())
 
 app = QtWidgets.QApplication(sys.argv)
 

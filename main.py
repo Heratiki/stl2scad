@@ -32,10 +32,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.main_widget.setLayout(self.layout)
 
         self.setCentralWidget(self.main_widget)
-
-        # Resize the window
-        self.resize(800, 600)
-
+        
         # Create a QLabel to display the coordinates and color
         self.info_label = QtWidgets.QLabel()
         self.info_label.setAlignment(Qt.AlignBottom)
@@ -49,6 +46,9 @@ class MainWindow(QtWidgets.QMainWindow):
         widget = QtWidgets.QWidget()
         widget.setLayout(layout)
         self.setCentralWidget(widget)
+
+        # Resize the window
+        self.resize(800, 600)
 
         # Add a center action to the toolbar
         self.center_action = QtWidgets.QAction("Center", self)

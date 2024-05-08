@@ -3,6 +3,7 @@ cycler==0.12.1
 fonttools==4.51.0
 kiwisolver==1.4.5
 matplotlib==3.8.4
+networkx==3.3
 numpy==1.26.4
 numpy-stl==3.1.1
 packaging==24.0
@@ -16,6 +17,7 @@ PySimpleGUI==5.0.4
 python-dateutil==2.9.0.post0
 python-utils==3.8.2
 rsa==4.9
+scipy==1.13.0
 six==1.16.0
 trimesh==4.3.2
 typing_extensions==4.11.0

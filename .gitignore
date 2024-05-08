@@ -22,3 +22,5 @@ stl2scad.code-workspace
 *.lock
 *.txt
 *.sqlite
+*.stl
+*.scad

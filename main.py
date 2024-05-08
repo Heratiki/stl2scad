@@ -2,6 +2,8 @@ import numpy as np
 from stl import mesh
 from PyQt5 import QtWidgets
 from PyQt5.QtGui import QColor
+from PyQt5.QtWidgets import QVBoxLayout
+from PyQt5.QtCore import Qt
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 import sys
@@ -32,6 +34,20 @@ class MainWindow(QtWidgets.QMainWindow):
         # Create a toolbar
         self.toolbar = self.addToolBar("Tools")
         self.toolbar.setMovable(False)
+
+        # Create a QLabel to display the coordinates and color
+        self.info_label = QtWidgets.QLabel()
+        self.info_label.setAlignment(Qt.AlignBottom)
+
+        # Create a layout and add the GLViewWidget and QLabel to it
+        layout = QVBoxLayout()
+        layout.addWidget(self.gl_view)
+        layout.addWidget(self.info_label)
+
+        # Create a QWidget to hold the layout and set it as the central widget
+        widget = QtWidgets.QWidget()
+        widget.setLayout(layout)
+        self.setCentralWidget(widget)
 
         # Add a center action to the toolbar
         self.center_action = QtWidgets.QAction("Center", self)
@@ -111,9 +127,23 @@ class MainWindow(QtWidgets.QMainWindow):
         initial_color = QColor(180, 180, 180)  # Initial color is light gray
         color = QtWidgets.QColorDialog.getColor(initial=initial_color)
 
-        # If a color was selected, update the color of the GLMeshItem
+        # If a color was selected, update the color of the GLMeshItem and the info label
         if color.isValid():
             self.mesh_item.setColor(color.getRgbF())
+            self.update_info_label()
+
+    def update_info_label(self):
+        # Get the current color of the GLMeshItem
+        color = self.mesh_item.color()
+
+        # Get the current camera position
+        pos = self.gl_view.cameraPosition()
+        x, y, z = pos.x(), pos.y(), pos.z()
+
+        # Update the info label
+        self.info_label.setText(f"Camera Position - X: {x}, Y: {y}, Z: {z}, Color: {color}")
+
+    # Call update_info_label whenever the coordinates or color change
 
 app = QtWidgets.QApplication(sys.argv)
 

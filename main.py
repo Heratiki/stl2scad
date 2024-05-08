@@ -1,7 +1,13 @@
 import PySimpleGUI as sg
 import trimesh
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+import pystlviewer
+
+def main():
+    filename = 'path_to_your_stl_file.stl'
+    pystlviewer.display_stl(filename)
+
+if __name__ == "__main__":
+    main()
 
 # Define the layout of the GUI
 gui_layout = [
@@ -10,7 +16,7 @@ gui_layout = [
     [sg.Button("Process STL File")]
 ]
 
-# Create the window``
+# Create the window
 gui_window = sg.Window('STL File Processor', gui_layout)
 
 while True:
@@ -24,15 +30,8 @@ while True:
             if isinstance(stl_mesh, list):
                 stl_mesh = stl_mesh[0]  # Get the first mesh from the list
 
-            # Create a new figure for the 3D plot
-            fig = plt.figure()
-            ax = fig.add_subplot(111, projection='3d')
-
-            # Plot the vertices of the mesh
-            ax.scatter(stl_mesh.vertices[:,0], stl_mesh.vertices[:,1], stl_mesh.vertices[:,2])
-
-            # Show the 3D plot
-            plt.show()
+            # Display the STL file
+            stl_mesh.show()
 
 # Close the window
 gui_window.close()

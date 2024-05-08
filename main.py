@@ -24,7 +24,7 @@ while True:
                 stl_mesh = stl_mesh[0]  # Get the first mesh from the list
 
             # Display the STL file using pystlviewer
-            pystlviewer.display_stl(stl_file_path)
+            pystlviewer.display_stl(mesh=stl_mesh)
 
 # Close the window
 gui_window.close()

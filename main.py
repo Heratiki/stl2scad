@@ -16,11 +16,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.gl_view = gl.GLViewWidget()
 
-        self.open_file_button = QtWidgets.QPushButton("Open STL File")
-        self.open_file_button.clicked.connect(self.load_stl_file)
+        # Create a toolbar
+        self.toolbar = self.addToolBar("Tools")
+        self.toolbar.setMovable(False)
+
+        # Create a QAction for opening an STL file and add it to the toolbar
+        self.open_file_action = QtWidgets.QAction("Open STL File", self)
+        self.open_file_action.triggered.connect(self.load_stl_file)
+        self.toolbar.addAction(self.open_file_action)
 
         self.layout = QtWidgets.QVBoxLayout()
-        self.layout.addWidget(self.open_file_button)
         self.layout.addWidget(self.gl_view)
 
         self.main_widget = QtWidgets.QWidget()
@@ -30,10 +35,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Resize the window
         self.resize(800, 600)
-
-        # Create a toolbar
-        self.toolbar = self.addToolBar("Tools")
-        self.toolbar.setMovable(False)
 
         # Create a QLabel to display the coordinates and color
         self.info_label = QtWidgets.QLabel()

@@ -1,11 +1,15 @@
 import PySimpleGUI as sg
-import trimesh
+from stl import mesh
+from mpl_toolkits import mplot3d
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 # Define the layout of the GUI
 gui_layout = [
     [sg.Text("Choose an STL file:")],
     [sg.Input(key="STL_FILE_PATH"), sg.FileBrowse()],
-    [sg.Button("Process STL File")]
+    [sg.Button("Process STL File")],
+    [sg.Canvas(key='CANVAS')],
 ]
 
 # Create the window
@@ -18,13 +22,17 @@ while True:
     elif event == "Process STL File":
         stl_file_path = values["STL_FILE_PATH"]
         if stl_file_path:
-            stl_mesh = trimesh.load(stl_file_path)
-            if isinstance(stl_mesh, list):
-                stl_mesh = stl_mesh[0]  # Get the first mesh from the list
+            # Load the STL files and add the vectors to the plot
+            your_mesh = mesh.Mesh.from_file(stl_file_path)
+            figure = plt.figure()
+            axes = figure.add_subplot(projection='3d')
+            poly_collection = mplot3d.art3d.Poly3DCollection(your_mesh.vectors)
+            poly_collection.set_color((0.7,0.7,0.7))  # play with color
+            axes.add_collection3d(poly_collection)
 
-            # Set the viewer to 'gl' and display the STL file using trimesh
-            stl_mesh.viewer = 'matplotlib'
-            stl_mesh.show()
+            # Add the plot to the PySimpleGUI window
+            canvas = FigureCanvasTkAgg(figure, master=gui_window['CANVAS'].TKCanvas)
+            canvas.draw()
 
 # Close the window
 gui_window.close()

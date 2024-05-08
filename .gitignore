@@ -20,7 +20,6 @@ stl2scad.code-workspace
 *.csv
 *.json
 *.lock
-*.txt
 *.sqlite
 *.stl
 *.scad

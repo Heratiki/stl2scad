@@ -1,13 +1,6 @@
 import PySimpleGUI as sg
 import trimesh
-import pystlviewer.py
-
-def main():
-    filename = 'path_to_your_stl_file.stl'
-    pystlviewer.display_stl(filename)
-
-if __name__ == "__main__":
-    main()
+import pystlviewer
 
 # Define the layout of the GUI
 gui_layout = [
@@ -30,8 +23,8 @@ while True:
             if isinstance(stl_mesh, list):
                 stl_mesh = stl_mesh[0]  # Get the first mesh from the list
 
-            # Display the STL file
-            stl_mesh.show()
+            # Display the STL file using pystlviewer
+            pystlviewer.display_stl(stl_file_path)
 
 # Close the window
 gui_window.close()

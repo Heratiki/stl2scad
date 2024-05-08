@@ -1,6 +1,7 @@
 # import numpy as np
 from stl import mesh
 import matplotlib.pyplot as plt
+import mpl_toolkits
 from mpl_toolkits.mplot3d import Axes3D
 
 def display_stl(filename):

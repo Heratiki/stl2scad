@@ -108,7 +108,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def select_color(self):
         # Open the color dialog and get the selected color
-        color = QtWidgets.QColorDialog.getColor(initial=QColor(0.7, 0.7, 0.7, 1.0))
+        initial_color = QColor(180, 180, 180)  # Initial color is light gray
+        color = QtWidgets.QColorDialog.getColor(initial=initial_color)
 
         # If a color was selected, update the color of the GLMeshItem
         if color.isValid():

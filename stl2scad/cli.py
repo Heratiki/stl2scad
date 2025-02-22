@@ -11,6 +11,7 @@ def usage():
     print("Converts an STL file to an OpenSCAD file with optimization and validation.")
     print("Options:")
     print("  --tolerance=<float>  Vertex deduplication tolerance (default: 1e-6)")
+    print("  --debug              Enable debug mode (renders SCAD to PNG)")
     
 def main():
     """Main entry point for the command-line interface."""
@@ -21,14 +22,17 @@ def main():
     input_file = sys.argv[1]
     output_file = sys.argv[2]
     tolerance = 1e-6
+    debug = False
 
     # Parse optional arguments
     for arg in sys.argv[3:]:
         if arg.startswith('--tolerance='):
             tolerance = float(arg.split('=')[1])
+        elif arg == '--debug':
+            debug = True
     
     try:
-        stats = stl2scad(input_file, output_file, tolerance)
+        stats = stl2scad(input_file, output_file, tolerance, debug)
         print(f"Conversion successful:")
         print(f"  Original vertices: {stats.original_vertices}")
         print(f"  Optimized vertices: {stats.deduplicated_vertices}")

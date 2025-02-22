@@ -6,9 +6,9 @@ import os
 import numpy as np
 from stl import mesh
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QVBoxLayout, QProgressDialog
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QColor, QPixmap
+from PyQt5.QtWidgets import QVBoxLayout, QProgressDialog, QLabel
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSize
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 
@@ -20,16 +20,17 @@ class ConversionWorker(QThread):
     finished = pyqtSignal(ConversionStats)
     error = pyqtSignal(str)
 
-    def __init__(self, input_file, output_file, tolerance=1e-6):
+    def __init__(self, input_file, output_file, tolerance=1e-6, debug=False):
         super().__init__()
         self.input_file = input_file
         self.output_file = output_file
         self.tolerance = tolerance
+        self.debug = debug
 
     def run(self):
         try:
             self.progress.emit("Loading STL file...")
-            stats = stl2scad(self.input_file, self.output_file, self.tolerance)
+            stats = stl2scad(self.input_file, self.output_file, self.tolerance, self.debug)
             self.finished.emit(stats)
         except Exception as e:
             self.error.emit(str(e))
@@ -40,11 +41,17 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, *args, **kwargs):
         super(MainWindow, self).__init__(*args, **kwargs)
         self.current_stl_file = None
+        self.debug_mode = False
         self.setup_ui()
 
     def setup_ui(self):
         """Initialize the user interface."""
-        self.gl_view = gl.GLViewWidget()
+        self.gl_view = gl.GLViewWidget()  # For STL preview
+
+        # QLabel for displaying the rendered SCAD image
+        self.image_label = QLabel()
+        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.setMinimumSize(400, 300)  # Set a minimum size
 
         # Create a toolbar
         self.toolbar = self.addToolBar("Tools")
@@ -84,14 +91,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self.color_action.triggered.connect(self.select_color)
         self.toolbar.addAction(self.color_action)
 
+        # Add debug mode checkbox
+        self.debug_action = QtWidgets.QAction("Debug Mode", self, checkable=True)
+        self.debug_action.triggered.connect(self.toggle_debug_mode)
+        self.toolbar.addAction(self.debug_action)
+
+
         # Create layout
         layout = QVBoxLayout()
         layout.addWidget(self.gl_view)
+        layout.addWidget(self.image_label)  # Add the image label
 
         # Info label
         self.info_label = QtWidgets.QLabel()
         self.info_label.setAlignment(Qt.AlignBottom)
         layout.addWidget(self.info_label)
+
 
         # Status label for conversion
         self.status_label = QtWidgets.QLabel()
@@ -106,15 +121,22 @@ class MainWindow(QtWidgets.QMainWindow):
         # Resize window
         self.resize(800, 600)
 
+    def toggle_debug_mode(self):
+        """Toggle debug mode on/off."""
+        self.debug_mode = self.debug_action.isChecked()
+        if not self.debug_mode:
+            self.image_label.clear() # Clear image when debug mode is off
+
     def load_stl_file(self):
         """Load and display an STL file."""
         file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, "Open STL File", "", "STL Files (*.stl)")
-        
+
         if file_path:
             self.current_stl_file = file_path
             self.convert_action.setEnabled(True)
             self.status_label.setText(f"Loaded: {os.path.basename(file_path)}")
+            self.image_label.clear()  # Clear any previous SCAD image
 
             # Clear existing mesh if any
             self.gl_view.clear()
@@ -125,12 +147,13 @@ class MainWindow(QtWidgets.QMainWindow):
             faces = np.array([(i, i+1, i+2) for i in range(0, len(vertices), 3)])
             self.mesh_data = gl.MeshData(vertexes=vertices, faces=faces)
             self.mesh_item = gl.GLMeshItem(
-                meshdata=self.mesh_data, 
-                color=(0.7, 0.7, 0.7, 1.0), 
-                smooth=False, 
+                meshdata=self.mesh_data,
+                color=(0.7, 0.7, 0.7, 1.0),
+                smooth=False,
                 drawEdges=True
             )
             self.gl_view.addItem(self.mesh_item)
+
 
             # Center and fit
             self.center_object()
@@ -142,16 +165,16 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         output_file = os.path.splitext(self.current_stl_file)[0] + '.scad'
-        
+
         # Create and configure the conversion worker
-        self.worker = ConversionWorker(self.current_stl_file, output_file)
+        self.worker = ConversionWorker(self.current_stl_file, output_file, debug=self.debug_mode)
         self.worker.progress.connect(self.update_status)
         self.worker.finished.connect(self.conversion_finished)
         self.worker.error.connect(self.conversion_error)
 
         # Disable convert button during conversion
         self.convert_action.setEnabled(False)
-        
+
         # Start conversion
         self.worker.start()
 
@@ -161,12 +184,24 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def conversion_finished(self, stats):
         """Handle successful conversion completion."""
+    def conversion_finished(self, stats):
+        """Handle successful conversion completion."""
         self.convert_action.setEnabled(True)
         reduction = 100 * (1 - stats.deduplicated_vertices/stats.original_vertices)
         self.status_label.setText(
             f"Conversion successful! Vertices: {stats.deduplicated_vertices} "
             f"(reduced by {reduction:.1f}%), Faces: {stats.faces}"
         )
+
+        if self.debug_mode:
+            # Display the rendered image
+            png_file = os.path.splitext(self.current_stl_file)[0] + '.scad.png'
+            if os.path.exists(png_file):
+                pixmap = QPixmap(png_file)
+                self.image_label.setPixmap(pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            else:
+                self.status_label.setText("Error: SCAD rendering failed.")
+                QtWidgets.QMessageBox.critical(self, "Rendering Error", "SCAD rendering failed. See console for details.")
 
     def conversion_error(self, error_message):
         """Handle conversion error."""

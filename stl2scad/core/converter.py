@@ -5,6 +5,8 @@ Core conversion functionality for transforming STL files to OpenSCAD format.
 import numpy as np
 import stl
 import logging
+import subprocess
+import os
 from typing import Tuple, List, Dict
 from dataclasses import dataclass
 
@@ -124,23 +126,25 @@ def extract_metadata(mesh: stl.mesh.Mesh) -> Dict[str, str]:
     metadata['bbox'] = str(tuple(zip(mesh.min_, mesh.max_)))
     return metadata
 
-def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6) -> ConversionStats:
+def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: bool = False) -> ConversionStats:
     """
     Convert STL to SCAD with improved handling and optimization.
-    
+
     Args:
         input_file: Path to input STL file
         output_file: Path to output SCAD file
         tolerance: Vertex deduplication tolerance
-        
+        debug: Enable debug mode (renders SCAD to PNG)
+
     Returns:
         ConversionStats object with conversion statistics
-        
+
     Raises:
         STLValidationError: If STL validation fails
     """
     logging.debug('Input file: %s', input_file)
     logging.debug('Output file: %s', output_file)
+    logging.debug('Debug mode: %s', debug)
 
     try:
         stl_mesh = stl.mesh.Mesh.from_file(input_file)
@@ -188,9 +192,26 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6) -> Conv
         f.write("  convexity=10\n")  # Improved rendering
         f.write(");\n")
 
-    return ConversionStats(
+    stats = ConversionStats(
         original_vertices=original_vertex_count,
         deduplicated_vertices=len(final_points),
         faces=len(final_faces),
         metadata=metadata
     )
+
+    if debug:
+        try:
+            png_file = os.path.splitext(output_file)[0] + '.png'
+            openscad_command = [
+                "C:\\Program Files\\OpenSCAD\\openscad.exe",
+                "-o", png_file,
+                output_file
+            ]
+            subprocess.run(openscad_command, check=True, capture_output=True)
+            print(f"Debug: Rendered SCAD to {png_file}")
+        except subprocess.CalledProcessError as e:
+            print(f"Error rendering SCAD file: {e.stderr.decode()}", file=sys.stderr)
+        except FileNotFoundError:
+            print("Error: OpenSCAD executable not found. Ensure it's installed and the path is correct.", file=sys.stderr)
+
+    return stats

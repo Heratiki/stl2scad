@@ -1,3 +1,8 @@
+"""
+Main window implementation for the STL to OpenSCAD converter GUI.
+"""
+
+import os
 import numpy as np
 from stl import mesh
 from PyQt5 import QtWidgets, QtCore
@@ -6,11 +11,11 @@ from PyQt5.QtWidgets import QVBoxLayout, QProgressDialog
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
-import sys
-import os
-from stl2scad import stl2scad, ConversionStats
+
+from stl2scad.core.converter import stl2scad, ConversionStats
 
 class ConversionWorker(QThread):
+    """Worker thread for STL to OpenSCAD conversion."""
     progress = pyqtSignal(str)
     finished = pyqtSignal(ConversionStats)
     error = pyqtSignal(str)
@@ -29,15 +34,16 @@ class ConversionWorker(QThread):
         except Exception as e:
             self.error.emit(str(e))
 
-
-
 class MainWindow(QtWidgets.QMainWindow):
+    """Main window for the STL to OpenSCAD converter application."""
+    
     def __init__(self, *args, **kwargs):
         super(MainWindow, self).__init__(*args, **kwargs)
         self.current_stl_file = None
         self.setup_ui()
 
     def setup_ui(self):
+        """Initialize the user interface."""
         self.gl_view = gl.GLViewWidget()
 
         # Create a toolbar
@@ -100,9 +106,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # Resize window
         self.resize(800, 600)
 
-
     def load_stl_file(self):
-        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open STL File", "", "STL Files (*.stl)")
+        """Load and display an STL file."""
+        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Open STL File", "", "STL Files (*.stl)")
+        
         if file_path:
             self.current_stl_file = file_path
             self.convert_action.setEnabled(True)
@@ -116,7 +124,12 @@ class MainWindow(QtWidgets.QMainWindow):
             vertices = np.concatenate(your_mesh.vectors)
             faces = np.array([(i, i+1, i+2) for i in range(0, len(vertices), 3)])
             self.mesh_data = gl.MeshData(vertexes=vertices, faces=faces)
-            self.mesh_item = gl.GLMeshItem(meshdata=self.mesh_data, color=(0.7, 0.7, 0.7, 1.0), smooth=False, drawEdges=True)
+            self.mesh_item = gl.GLMeshItem(
+                meshdata=self.mesh_data, 
+                color=(0.7, 0.7, 0.7, 1.0), 
+                smooth=False, 
+                drawEdges=True
+            )
             self.gl_view.addItem(self.mesh_item)
 
             # Center and fit
@@ -124,6 +137,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.fit_to_window()
 
     def convert_to_scad(self):
+        """Convert the loaded STL file to OpenSCAD format."""
         if not self.current_stl_file:
             return
 
@@ -142,9 +156,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.worker.start()
 
     def update_status(self, message):
+        """Update the status label with a message."""
         self.status_label.setText(message)
 
     def conversion_finished(self, stats):
+        """Handle successful conversion completion."""
         self.convert_action.setEnabled(True)
         reduction = 100 * (1 - stats.deduplicated_vertices/stats.original_vertices)
         self.status_label.setText(
@@ -153,19 +169,20 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
     def conversion_error(self, error_message):
+        """Handle conversion error."""
         self.convert_action.setEnabled(True)
         self.status_label.setText(f"Error: {error_message}")
         QtWidgets.QMessageBox.critical(self, "Conversion Error", error_message)
 
     def center_object(self):
-        # Center the 3D object
+        """Center the 3D object in the view."""
         if self.mesh_data is not None:
             center = self.mesh_data.vertexes().mean(axis=0)
             self.gl_view.opts['center'] = pg.Vector(center[0], center[1], center[2])
             self.gl_view.update()
 
     def rotate_object(self, axis):
-        # Rotate the 3D object
+        """Rotate the view to look along the specified axis."""
         if self.mesh_data is not None:
             if axis == 'x':
                 self.gl_view.opts['elevation'] = 90
@@ -179,7 +196,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.gl_view.update()
     
     def fit_to_window(self):
-        # Fit the 3D object to the window
+        """Scale the view to fit the object."""
         if self.mesh_data is not None:
             min_vals = self.mesh_data.vertexes().min(axis=0)
             max_vals = self.mesh_data.vertexes().max(axis=0)
@@ -188,31 +205,17 @@ class MainWindow(QtWidgets.QMainWindow):
             self.gl_view.update()
 
     def select_color(self):
-        # Open the color dialog and get the selected color
+        """Open a color picker and update the object color."""
         initial_color = QColor(180, 180, 180)  # Initial color is light gray
         color = QtWidgets.QColorDialog.getColor(initial=initial_color)
 
-        # If a color was selected, update the color of the GLMeshItem and the info label
         if color.isValid():
             self.mesh_item.setColor(color.getRgbF())
             self.update_info_label()
 
     def update_info_label(self):
-        # Get the current color of the GLMeshItem
+        """Update the information label with current view settings."""
         color = self.mesh_item.color()
-
-        # Get the current camera position
         pos = self.gl_view.cameraPosition()
         x, y, z = pos.x(), pos.y(), pos.z()
-
-        # Update the info label
         self.info_label.setText(f"Camera Position - X: {x}, Y: {y}, Z: {z}, Color: {color}")
-
-    # Call update_info_label whenever the coordinates or color change
-
-app = QtWidgets.QApplication(sys.argv)
-
-window = MainWindow()
-window.show()
-
-sys.exit(app.exec_())

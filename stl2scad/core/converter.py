@@ -1,5 +1,7 @@
-import sys
-import os
+"""
+Core conversion functionality for transforming STL files to OpenSCAD format.
+"""
+
 import numpy as np
 import stl
 import logging
@@ -10,16 +12,26 @@ logging.basicConfig(filename='stl2scad.log', level=logging.DEBUG)
 
 @dataclass
 class ConversionStats:
+    """Statistics about the conversion process."""
     original_vertices: int
     deduplicated_vertices: int
     faces: int
     metadata: Dict[str, str]
 
 class STLValidationError(Exception):
+    """Raised when STL file validation fails."""
     pass
 
 def validate_stl(mesh: stl.mesh.Mesh) -> None:
-    """Validate STL mesh integrity."""
+    """
+    Validate STL mesh integrity.
+    
+    Args:
+        mesh: The STL mesh to validate
+        
+    Raises:
+        STLValidationError: If validation fails
+    """
     if len(mesh.points) == 0:
         raise STLValidationError("Empty STL file")
     
@@ -41,7 +53,16 @@ def validate_stl(mesh: stl.mesh.Mesh) -> None:
         raise STLValidationError(f"Non-manifold edges found: {len(non_manifold)} edges")
 
 def find_unique_vertices(points: np.ndarray, tolerance: float = 1e-6) -> Tuple[np.ndarray, Dict[int, int]]:
-    """Deduplicate vertices within given tolerance."""
+    """
+    Deduplicate vertices within given tolerance.
+    
+    Args:
+        points: Array of vertex coordinates
+        tolerance: Distance tolerance for considering vertices identical
+        
+    Returns:
+        Tuple of unique vertices array and mapping from original to unique indices
+    """
     unique_vertices = []
     vertex_map = {}
     
@@ -59,7 +80,16 @@ def find_unique_vertices(points: np.ndarray, tolerance: float = 1e-6) -> Tuple[n
     return np.array(unique_vertices), vertex_map
 
 def optimize_scad(points: np.ndarray, faces: List[List[int]]) -> Tuple[np.ndarray, List[List[int]]]:
-    """Optimize SCAD output for better performance."""
+    """
+    Optimize SCAD output for better performance.
+    
+    Args:
+        points: Array of vertex coordinates
+        faces: List of face vertex indices
+        
+    Returns:
+        Tuple of optimized points array and faces list
+    """
     # Remove unused vertices
     used_vertices = set()
     for face in faces:
@@ -78,7 +108,15 @@ def optimize_scad(points: np.ndarray, faces: List[List[int]]) -> Tuple[np.ndarra
     return np.array(new_points), new_faces
 
 def extract_metadata(mesh: stl.mesh.Mesh) -> Dict[str, str]:
-    """Extract metadata from STL file."""
+    """
+    Extract metadata from STL file.
+    
+    Args:
+        mesh: The STL mesh to extract metadata from
+        
+    Returns:
+        Dictionary of metadata
+    """
     metadata = {}
     if hasattr(mesh, 'name') and mesh.name:
         metadata['name'] = mesh.name.decode('utf-8').strip()
@@ -87,7 +125,20 @@ def extract_metadata(mesh: stl.mesh.Mesh) -> Dict[str, str]:
     return metadata
 
 def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6) -> ConversionStats:
-    """Convert STL to SCAD with improved handling and optimization."""
+    """
+    Convert STL to SCAD with improved handling and optimization.
+    
+    Args:
+        input_file: Path to input STL file
+        output_file: Path to output SCAD file
+        tolerance: Vertex deduplication tolerance
+        
+    Returns:
+        ConversionStats object with conversion statistics
+        
+    Raises:
+        STLValidationError: If STL validation fails
+    """
     logging.debug('Input file: %s', input_file)
     logging.debug('Output file: %s', output_file)
 
@@ -143,37 +194,3 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6) -> Conv
         faces=len(final_faces),
         metadata=metadata
     )
-
-def usage():
-    print("Usage: python3 stl2scad.py <input.stl> <output.scad>")
-    print("Converts an STL file to an OpenSCAD file with optimization and validation.")
-    print("Options:")
-    print("  --tolerance=<float>  Vertex deduplication tolerance (default: 1e-6)")
-    
-def main():
-    if len(sys.argv) < 3:
-        usage()
-        sys.exit(1)
-    
-    input_file = sys.argv[1]
-    output_file = sys.argv[2]
-    tolerance = 1e-6
-
-    # Parse optional arguments
-    for arg in sys.argv[3:]:
-        if arg.startswith('--tolerance='):
-            tolerance = float(arg.split('=')[1])
-    
-    try:
-        stats = stl2scad(input_file, output_file, tolerance)
-        print(f"Conversion successful:")
-        print(f"  Original vertices: {stats.original_vertices}")
-        print(f"  Optimized vertices: {stats.deduplicated_vertices}")
-        print(f"  Faces: {stats.faces}")
-        print(f"  Vertex reduction: {100 * (1 - stats.deduplicated_vertices/stats.original_vertices):.1f}%")
-    except Exception as e:
-        print(f"Error: {str(e)}", file=sys.stderr)
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main()

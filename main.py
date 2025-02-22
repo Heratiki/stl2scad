@@ -1,61 +1,63 @@
 import numpy as np
 from stl import mesh
-from PyQt5 import QtWidgets
+from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QVBoxLayout, QProgressDialog
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 import sys
+import os
+from stl2scad import stl2scad, ConversionStats
+
+class ConversionWorker(QThread):
+    progress = pyqtSignal(str)
+    finished = pyqtSignal(ConversionStats)
+    error = pyqtSignal(str)
+
+    def __init__(self, input_file, output_file, tolerance=1e-6):
+        super().__init__()
+        self.input_file = input_file
+        self.output_file = output_file
+        self.tolerance = tolerance
+
+    def run(self):
+        try:
+            self.progress.emit("Loading STL file...")
+            stats = stl2scad(self.input_file, self.output_file, self.tolerance)
+            self.finished.emit(stats)
+        except Exception as e:
+            self.error.emit(str(e))
 
 
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, *args, **kwargs):
         super(MainWindow, self).__init__(*args, **kwargs)
+        self.current_stl_file = None
+        self.setup_ui()
 
+    def setup_ui(self):
         self.gl_view = gl.GLViewWidget()
 
         # Create a toolbar
         self.toolbar = self.addToolBar("Tools")
         self.toolbar.setMovable(False)
 
-        # Create a QAction for opening an STL file and add it to the toolbar
+        # Create actions
         self.open_file_action = QtWidgets.QAction("Open STL File", self)
         self.open_file_action.triggered.connect(self.load_stl_file)
         self.toolbar.addAction(self.open_file_action)
 
-        self.layout = QtWidgets.QVBoxLayout()
-        self.layout.addWidget(self.gl_view)
+        self.convert_action = QtWidgets.QAction("Convert to SCAD", self)
+        self.convert_action.triggered.connect(self.convert_to_scad)
+        self.convert_action.setEnabled(False)
+        self.toolbar.addAction(self.convert_action)
 
-        self.main_widget = QtWidgets.QWidget()
-        self.main_widget.setLayout(self.layout)
-
-        self.setCentralWidget(self.main_widget)
-        
-        # Create a QLabel to display the coordinates and color
-        self.info_label = QtWidgets.QLabel()
-        self.info_label.setAlignment(Qt.AlignBottom)
-
-        # Create a layout and add the GLViewWidget and QLabel to it
-        layout = QVBoxLayout()
-        layout.addWidget(self.gl_view)
-        layout.addWidget(self.info_label)
-
-        # Create a QWidget to hold the layout and set it as the central widget
-        widget = QtWidgets.QWidget()
-        widget.setLayout(layout)
-        self.setCentralWidget(widget)
-
-        # Resize the window
-        self.resize(800, 600)
-
-        # Add a center action to the toolbar
         self.center_action = QtWidgets.QAction("Center", self)
         self.center_action.triggered.connect(self.center_object)
         self.toolbar.addAction(self.center_action)
 
-        # Add rotate actions to the toolbar
         self.rotate_x_action = QtWidgets.QAction("Rotate to X", self)
         self.rotate_x_action.triggered.connect(lambda: self.rotate_object('x'))
         self.toolbar.addAction(self.rotate_x_action)
@@ -68,20 +70,48 @@ class MainWindow(QtWidgets.QMainWindow):
         self.rotate_z_action.triggered.connect(lambda: self.rotate_object('z'))
         self.toolbar.addAction(self.rotate_z_action)
 
-        # Add a fit to window action to the toolbar
         self.fit_action = QtWidgets.QAction("Fit to Window", self)
         self.fit_action.triggered.connect(self.fit_to_window)
         self.toolbar.addAction(self.fit_action)
 
-        # Add a color selector action to the toolbar
         self.color_action = QtWidgets.QAction("Select Color", self)
         self.color_action.triggered.connect(self.select_color)
         self.toolbar.addAction(self.color_action)
+
+        # Create layout
+        layout = QVBoxLayout()
+        layout.addWidget(self.gl_view)
+
+        # Info label
+        self.info_label = QtWidgets.QLabel()
+        self.info_label.setAlignment(Qt.AlignBottom)
+        layout.addWidget(self.info_label)
+
+        # Status label for conversion
+        self.status_label = QtWidgets.QLabel()
+        self.status_label.setAlignment(Qt.AlignBottom)
+        layout.addWidget(self.status_label)
+
+        # Set central widget
+        widget = QtWidgets.QWidget()
+        widget.setLayout(layout)
+        self.setCentralWidget(widget)
+
+        # Resize window
+        self.resize(800, 600)
 
 
     def load_stl_file(self):
         file_path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open STL File", "", "STL Files (*.stl)")
         if file_path:
+            self.current_stl_file = file_path
+            self.convert_action.setEnabled(True)
+            self.status_label.setText(f"Loaded: {os.path.basename(file_path)}")
+
+            # Clear existing mesh if any
+            self.gl_view.clear()
+
+            # Load and display new mesh
             your_mesh = mesh.Mesh.from_file(file_path)
             vertices = np.concatenate(your_mesh.vectors)
             faces = np.array([(i, i+1, i+2) for i in range(0, len(vertices), 3)])
@@ -89,9 +119,43 @@ class MainWindow(QtWidgets.QMainWindow):
             self.mesh_item = gl.GLMeshItem(meshdata=self.mesh_data, color=(0.7, 0.7, 0.7, 1.0), smooth=False, drawEdges=True)
             self.gl_view.addItem(self.mesh_item)
 
-            # Center the 3D object
+            # Center and fit
             self.center_object()
             self.fit_to_window()
+
+    def convert_to_scad(self):
+        if not self.current_stl_file:
+            return
+
+        output_file = os.path.splitext(self.current_stl_file)[0] + '.scad'
+        
+        # Create and configure the conversion worker
+        self.worker = ConversionWorker(self.current_stl_file, output_file)
+        self.worker.progress.connect(self.update_status)
+        self.worker.finished.connect(self.conversion_finished)
+        self.worker.error.connect(self.conversion_error)
+
+        # Disable convert button during conversion
+        self.convert_action.setEnabled(False)
+        
+        # Start conversion
+        self.worker.start()
+
+    def update_status(self, message):
+        self.status_label.setText(message)
+
+    def conversion_finished(self, stats):
+        self.convert_action.setEnabled(True)
+        reduction = 100 * (1 - stats.deduplicated_vertices/stats.original_vertices)
+        self.status_label.setText(
+            f"Conversion successful! Vertices: {stats.deduplicated_vertices} "
+            f"(reduced by {reduction:.1f}%), Faces: {stats.faces}"
+        )
+
+    def conversion_error(self, error_message):
+        self.convert_action.setEnabled(True)
+        self.status_label.setText(f"Error: {error_message}")
+        QtWidgets.QMessageBox.critical(self, "Conversion Error", error_message)
 
     def center_object(self):
         # Center the 3D object

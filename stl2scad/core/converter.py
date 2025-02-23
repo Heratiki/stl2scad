@@ -312,7 +312,7 @@ def render_stl_preview(stl_mesh: stl.mesh.Mesh, output_path: str) -> None:
     try:
         print("Attempting to render STL preview...")
         import vtk
-        from vtk.util import numpy_support
+        from vtk.util import numpy_support # type: ignore
         print("VTK imported successfully")
         
         # Create points array

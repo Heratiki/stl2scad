@@ -15,6 +15,15 @@ venv
 .vscode/
 stl2scad.code-workspace 
 
+# debug logs and created files
+debug*.log
+debug*.scad
+debug*.png
+output*.log
+output*.scad
+output*.png
+
+
 # Other common files
 .DS_Store
 *.log

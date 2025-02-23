@@ -93,10 +93,11 @@ def test_stl_validation(sample_stl_file):
         validate_stl(mesh)
         log("STL validation passed")
         
-        # Test validation with empty mesh
-        empty_mesh = stl.mesh.Mesh(numpy.zeros((0, 3, 3)))
-        with pytest.raises(Exception) as e:
+        # Test validation with empty mesh (single degenerate triangle)
+        empty_mesh = stl.mesh.Mesh(numpy.zeros(1, dtype=stl.mesh.Mesh.dtype))
+        with pytest.raises(STLValidationError) as e:
             validate_stl(empty_mesh)
+        assert "Empty STL file" in str(e.value)
         log("Empty mesh validation correctly failed")
         
     except Exception as e:

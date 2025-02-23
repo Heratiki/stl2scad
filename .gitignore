@@ -16,7 +16,9 @@ venv
 stl2scad.code-workspace
 
 # clinerules
-.clinerules*
+.clinerules-architect
+.clinerules-ask
+.clinerules-code
 
 # debug logs and created files
 debug*.log

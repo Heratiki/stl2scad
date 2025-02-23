@@ -6,6 +6,8 @@ Test script for STL2SCAD debug features.
 import os
 import sys
 import traceback
+import datetime
+import psutil
 from pathlib import Path
 
 # Add the project root to Python path
@@ -14,13 +16,36 @@ sys.path.insert(0, str(project_root))
 
 from stl2scad.core.converter import stl2scad, get_openscad_path
 
-def test_debug_features(verbose=True):
+def test_debug_features(verbose=True, log_file="test_run.log"):
     """Test the debug features of the STL to SCAD converter."""
-    def log(msg):
+    def log(msg, level="INFO"):
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_msg = f"[{timestamp}] {level}: {msg}"
         if verbose:
-            print(msg)
+            print(log_msg, flush=True)
+        with open(log_file, 'a') as f:
+            f.write(f"{log_msg}\n")
 
-    log("\n=== Testing STL2SCAD Debug Features ===\n")
+    # Clear previous log
+    with open(log_file, 'w') as f:
+        f.write("=== Starting Test ===\n")
+    
+    log("\n=== Testing STL2SCAD Debug Features ===")
+    
+    def check_openscad_processes():
+        """Check for running OpenSCAD processes"""
+        openscad_procs = [p for p in psutil.process_iter(['name'])
+                         if p.info['name'] and 'openscad' in p.info['name'].lower()]
+        if openscad_procs:
+            log(f"Found {len(openscad_procs)} OpenSCAD processes running", "WARNING")
+            for proc in openscad_procs:
+                log(f"OpenSCAD process: PID={proc.pid}", "WARNING")
+            return True
+        return False
+    
+    # Check for OpenSCAD processes at start
+    if check_openscad_processes():
+        log("Warning: OpenSCAD processes found at start, they may interfere with testing", "WARNING")
     
     # Test file paths
     input_file = os.path.join("testobjects", "Cube_3d_printing_sample.stl")

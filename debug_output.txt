@@ -1,0 +1,357 @@
+
+=== Testing STL2SCAD Debug Features ===
+
+Input STL: testobjects\Cube_3d_printing_sample.stl
+Output SCAD: test_output.scad
+
+Verifying OpenSCAD installation...
+Checking OpenSCAD version at: C:\Program Files\OpenSCAD (Nightly)\openscad.com
+
+Executing OpenSCAD: Version check
+DEBUG: Command args: ['--info']
+DEBUG: Log file: version_check.log
+DEBUG: Final command: ['powershell', '-NoProfile', '-Command', '\n            $ErrorActionPreference = \'Stop\'\n            try {\n                & \'C:\\Program Files\\OpenSCAD (Nightly)\\openscad.com\' --info *>&1 | Tee-Object -FilePath \'version_check.log\'\n                if (-not $?) { throw "OpenSCAD command failed" }\n            } catch {\n                Write-Error "OpenSCAD error: $_"\n                exit 1\n            }\n            ']
+2025-02-23 09:51:19,416 - DEBUG - Starting STL to SCAD conversion
+2025-02-23 09:51:19,416 - DEBUG - Input file: testobjects\Cube_3d_printing_sample.stl
+2025-02-23 09:51:19,416 - DEBUG - Output file: test_output.scad
+2025-02-23 09:51:19,416 - DEBUG - Debug mode: True
+2025-02-23 09:51:19,420 - DEBUG - Command args: ['--info']
+2025-02-23 09:51:19,420 - DEBUG - Log file: version_check.log
+2025-02-23 09:51:19,420 - DEBUG - Final command: ['powershell', '-NoProfile', '-Command', '\n            $ErrorActionPreference = \'Stop\'\n            try {\n                & \'C:\\Program Files\\OpenSCAD (Nightly)\\openscad.com\' --info *>&1 | Tee-Object -FilePath \'version_check.log\'\n                if (-not $?) { throw "OpenSCAD command failed" }\n            } catch {\n                Write-Error "OpenSCAD error: $_"\n                exit 1\n            }\n            ']
+Running command: powershell -NoProfile -Command 
+            $ErrorActionPreference = 'Stop'
+            try {
+                & 'C:\Program Files\OpenSCAD (Nightly)\openscad.com' --info *>&1 | Tee-Object -FilePath 'version_check.log'
+                if (-not $?) { throw "OpenSCAD command failed" }
+            } catch {
+                Write-Error "OpenSCAD error: $_"
+                exit 1
+            }
+            
+stdout: OpenSCAD Version: 2025.02.19 (git 91070a09f)
+System information: Microsoft Windows 11 (10.0.26100) x86_64 16 CPUs 31.93 GB RAM
+User Agent: OpenSCAD/2025.02.19 (git 91070a09f) (Microsoft Windows 11 (10.0.26100) x86_64)
+Compiler: GCC "13.2.0" 64bit
+MinGW build: MingW64
+Debug build: No
+Boost version: 1_81
+Eigen version: 3.4.0
+CGAL version, kernels: 5.5, Cartesian<Gmpq>, Extended_cartesian<Gmpq>, Epeck
+OpenCSG version: OpenCSG 1.5.0
+Clipper2 version: 1.5.2
+Manifold version: 3.0.1
+Qt version: 5.15.11
+QScintilla version: 2.11.2
+InputDrivers: 
+GLib version: 2.70.2
+lodepng version: 20230410
+libzip version: 1.5.2
+fontconfig version: 2.14.2
+freetype version: 2.13.2
+harfbuzz version: 7.3.0
+cairo version: 1.16.0
+lib3mf version: 1.8.1
+Features: roof, input-driver-dbus, lazy-union, vertex-object-renderers-indexing, textmetrics, import-function, predictible-output
+Application Path: C:/Program Files/OpenSCAD (Nightly)
+Documents Path: C:\Users\herat\Documents
+User Documents Path: C:\Users\herat\Documents
+Resource Path: C:/Program Files/OpenSCAD (Nightly)
+User Library Path: C:/Users/herat/Documents/OpenSCAD/libraries
+User Config Path: C:\Users\herat\AppData\Local/OpenSCAD
+Backup Path: C:/Users/herat/Documents/OpenSCAD/backups
+OPENSCADPATH: <not set>
+OpenSCAD library path:
+  C:/Users/herat/Documents/OpenSCAD/libraries
+  C:/Program Files/OpenSCAD (Nightly)\libraries
+
+OPENSCAD_FONT_PATH: <not set>
+OpenSCAD font path:
+  C:/WINDOWS/fonts
+  C:/Users/herat/AppData/Local/Microsoft/Windows/Fonts
+  C:/Users/herat/.local/share/fonts
+  C:/usr/local/share/fonts
+  C:/usr/share/fonts
+  C:/usr/X11/lib/X11/fonts
+  C:/System/Library/Fonts
+  C:/Library/Fonts
+  C:/Users/herat/Library/Fonts
+
+
+GL context creator: WGL (old)
+PNG generator: lodepng
+
+GLEW version: 2.1.0
+OpenGL Version: 4.6.0 Compatibility Profile Context 24.12.1.231124
+GL Renderer: AMD Radeon RX 5700 XT
+GL Vendor: ATI Technologies Inc.
+RGBA(8888), depth(24), stencil(8)
+GL_ARB_framebuffer_object: yes
+GL_EXT_framebuffer_object: yes
+GL_EXT_packed_depth_stencil: yes
+
+
+Fontconfig error: Cannot load default config file: No such file: (null)
+
+Command completed successfully
+Found OpenSCAD info: OpenSCAD Version: 2025.02.19 (git 91070a09f)
+System information: Microsoft Windows 11 (10.0.26100) x86_64 16 CPUs 31.93 GB RAM
+User Agent: OpenSCAD/2025.02.19 (git 91070a09f) (Microsoft Windows 11 (10.0.26100) x86_64)
+Compiler: GCC "13.2.0" 64bit
+MinGW build: MingW64
+Debug build: No
+Boost version: 1_81
+Eigen version: 3.4.0
+CGAL version, kernels: 5.5, Cartesian<Gmpq>, Extended_cartesian<Gmpq>, Epeck
+OpenCSG version: OpenCSG 1.5.0
+Clipper2 version: 1.5.2
+Manifold version: 3.0.1
+Qt version: 5.15.11
+QScintilla version: 2.11.2
+InputDrivers: 
+GLib version: 2.70.2
+lodepng version: 20230410
+libzip version: 1.5.2
+fontconfig version: 2.14.2
+freetype version: 2.13.2
+harfbuzz version: 7.3.0
+cairo version: 1.16.0
+lib3mf version: 1.8.1
+Features: roof, input-driver-dbus, lazy-union, vertex-object-renderers-indexing, textmetrics, import-function, predictible-output
+Application Path: C:/Program Files/OpenSCAD (Nightly)
+Documents Path: C:\Users\herat\Documents
+User Documents Path: C:\Users\herat\Documents
+Resource Path: C:/Program Files/OpenSCAD (Nightly)
+User Library Path: C:/Users/herat/Documents/OpenSCAD/libraries
+User Config Path: C:\Users\herat\AppData\Local/OpenSCAD
+Backup Path: C:/Users/herat/Documents/OpenSCAD/backups
+OPENSCADPATH: <not set>
+OpenSCAD library path:
+  C:/Users/herat/Documents/OpenSCAD/libraries
+  C:/Program Files/OpenSCAD (Nightly)\libraries
+
+OPENSCAD_FONT_PATH: <not set>
+OpenSCAD font path:
+  C:/WINDOWS/fonts
+  C:/Users/herat/AppData/Local/Microsoft/Windows/Fonts
+  C:/Users/herat/.local/share/fonts
+  C:/usr/local/share/fonts
+  C:/usr/share/fonts
+  C:/usr/X11/lib/X11/fonts
+  C:/System/Library/Fonts
+  C:/Library/Fonts
+  C:/Users/herat/Library/Fonts
+
+
+GL context creator: WGL (old)
+PNG generator: lodepng
+
+GLEW version: 2.1.0
+OpenGL Version: 4.6.0 Compatibility Profile Context 24.12.1.231124
+GL Renderer: AMD Radeon RX 5700 XT
+GL Vendor: ATI Technologies Inc.
+RGBA(8888), depth(24), stencil(8)
+GL_ARB_framebuffer_object: yes
+GL_EXT_framebuffer_object: yes
+GL_EXT_packed_depth_stencil: yes
+
+
+Fontconfig error: Cannot load default config file: No such file: (null)
+Cleaned version info: OpenSCAD Version: 2025.02.19 (git 91070a09f) System information: Microsoft Windows 11 (10.0.26100) x86_64 16 CPUs 31.93 GB RAM User Agent: OpenSCAD/2025.02.19 (git 91070a09f) (Microsoft Windows 11 (10.0.26100) x86_64) Compiler: GCC "13.2.0" 64bit MinGW build: MingW64 Debug build: No Boost version: 1_81 Eigen version: 3.4.0 CGAL version, kernels: 5.5, Cartesian<Gmpq>, Extended_cartesian<Gmpq>, Epeck OpenCSG version: OpenCSG 1.5.0 Clipper2 version: 1.5.2 Manifold version: 3.0.1 Qt version: 5.15.11 QScintilla version: 2.11.2 InputDrivers: GLib version: 2.70.2 lodepng version: 20230410 libzip version: 1.5.2 fontconfig version: 2.14.2 freetype version: 2.13.2 harfbuzz version: 7.3.0 cairo version: 1.16.0 lib3mf version: 1.8.1 Features: roof, input-driver-dbus, lazy-union, vertex-object-renderers-indexing, textmetrics, import-function, predictible-output Application Path: C:/Program Files/OpenSCAD (Nightly) Documents Path: C:\Users\herat\Documents User Documents Path: C:\Users\herat\Documents Resource Path: C:/Program Files/OpenSCAD (Nightly) User Library Path: C:/Users/herat/Documents/OpenSCAD/libraries User Config Path: C:\Users\herat\AppData\Local/OpenSCAD Backup Path: C:/Users/herat/Documents/OpenSCAD/backups OPENSCADPATH: <not set> OpenSCAD library path: C:/Users/herat/Documents/OpenSCAD/libraries C:/Program Files/OpenSCAD (Nightly)\libraries OPENSCAD_FONT_PATH: <not set> OpenSCAD font path: C:/WINDOWS/fonts C:/Users/herat/AppData/Local/Microsoft/Windows/Fonts C:/Users/herat/.local/share/fonts C:/usr/local/share/fonts C:/usr/share/fonts C:/usr/X11/lib/X11/fonts C:/System/Library/Fonts C:/Library/Fonts C:/Users/herat/Library/Fonts GL context creator: WGL (old) PNG generator: lodepng GLEW version: 2.1.0 OpenGL Version: 4.6.0 Compatibility Profile Context 24.12.1.231124 GL Renderer: AMD Radeon RX 5700 XT GL Vendor: ATI Technologies Inc. RGBA(8888), depth(24), stencil(8) GL_ARB_framebuffer_object: yes GL_EXT_framebuffer_object: yes GL_EXT_packed_depth_stencil: yes Fontconfig error: Cannot load default config file: No such file: (null)
+Version match: 2025.02.19
+Checking path: C:\Program Files\OpenSCAD (Nightly)\openscad.com
+Is nightly path: True
+Detected version: 2025.02.19
+Version check passed: 2025.02.19 >= 2025.02.19
+OpenSCAD found at: C:\Program Files\OpenSCAD (Nightly)\openscad.com
+
+Running conversion with debug mode...
+
+Running debug analysis...
+Checking OpenSCAD version at: C:\Program Files\OpenSCAD (Nightly)\openscad.com
+
+Executing OpenSCAD: Version check
+Running command: powershell -NoProfile -Command 
+            $ErrorActionPreference = 'Stop'
+            try {
+                & 'C:\Program Files\OpenSCAD (Nightly)\openscad.com' --info *>&1 | Tee-Object -FilePath 'version_check.log'
+                if (-not $?) { throw "OpenSCAD command failed" }
+            } catch {
+                Write-Error "OpenSCAD error: $_"
+                exit 1
+            }
+            
+stdout: OpenSCAD Version: 2025.02.19 (git 91070a09f)
+System information: Microsoft Windows 11 (10.0.26100) x86_64 16 CPUs 31.93 GB RAM
+User Agent: OpenSCAD/2025.02.19 (git 91070a09f) (Microsoft Windows 11 (10.0.26100) x86_64)
+Compiler: GCC "13.2.0" 64bit
+MinGW build: MingW64
+Debug build: No
+Boost version: 1_81
+Eigen version: 3.4.0
+CGAL version, kernels: 5.5, Cartesian<Gmpq>, Extended_cartesian<Gmpq>, Epeck
+OpenCSG version: OpenCSG 1.5.0
+Clipper2 version: 1.5.2
+Manifold version: 3.0.1
+Qt version: 5.15.11
+QScintilla version: 2.11.2
+InputDrivers: 
+GLib version: 2.70.2
+lodepng version: 20230410
+libzip version: 1.5.2
+fontconfig version: 2.14.2
+freetype version: 2.13.2
+harfbuzz version: 7.3.0
+cairo version: 1.16.0
+lib3mf version: 1.8.1
+Features: roof, input-driver-dbus, lazy-union, vertex-object-renderers-indexing, textmetrics, import-function, predictible-output
+Application Path: C:/Program Files/OpenSCAD (Nightly)
+Documents Path: C:\Users\herat\Documents
+User Documents Path: C:\Users\herat\Documents
+Resource Path: C:/Program Files/OpenSCAD (Nightly)
+User Library Path: C:/Users/herat/Documents/OpenSCAD/libraries
+User Config Path: C:\Users\herat\AppData\Local/OpenSCAD
+Backup Path: C:/Users/herat/Documents/OpenSCAD/backups
+OPENSCADPATH: <not set>
+OpenSCAD library path:
+  C:/Users/herat/Documents/OpenSCAD/libraries
+  C:/Program Files/OpenSCAD (Nightly)\libraries
+
+OPENSCAD_FONT_PATH: <not set>
+OpenSCAD font path:
+  C:/WINDOWS/fonts
+  C:/Users/herat/AppData/Local/Microsoft/Windows/Fonts
+  C:/Users/herat/.local/share/fonts
+  C:/usr/local/share/fonts
+  C:/usr/share/fonts
+  C:/usr/X11/lib/X11/fonts
+  C:/System/Library/Fonts
+  C:/Library/Fonts
+  C:/Users/herat/Library/Fonts
+
+
+GL context creator: WGL (old)
+PNG generator: lodepng
+
+GLEW version: 2.1.0
+OpenGL Version: 4.6.0 Compatibility Profile Context 24.12.1.231124
+GL Renderer: AMD Radeon RX 5700 XT
+GL Vendor: ATI Technologies Inc.
+RGBA(8888), depth(24), stencil(8)
+GL_ARB_framebuffer_object: yes
+GL_EXT_framebuffer_object: yes
+GL_EXT_packed_depth_stencil: yes
+
+
+Fontconfig error: Cannot load default config file: No such file: (null)
+
+Command completed successfully
+Found OpenSCAD info: OpenSCAD Version: 2025.02.19 (git 91070a09f)
+System information: Microsoft Windows 11 (10.0.26100) x86_64 16 CPUs 31.93 GB RAM
+User Agent: OpenSCAD/2025.02.19 (git 91070a09f) (Microsoft Windows 11 (10.0.26100) x86_64)
+Compiler: GCC "13.2.0" 64bit
+MinGW build: MingW64
+Debug build: No
+Boost version: 1_81
+Eigen version: 3.4.0
+CGAL version, kernels: 5.5, Cartesian<Gmpq>, Extended_cartesian<Gmpq>, Epeck
+OpenCSG version: OpenCSG 1.5.0
+Clipper2 version: 1.5.2
+Manifold version: 3.0.1
+Qt version: 5.15.11
+QScintilla version: 2.11.2
+InputDrivers: 
+GLib version: 2.70.2
+lodepng version: 20230410
+libzip version: 1.5.2
+fontconfig version: 2.14.2
+freetype version: 2.13.2
+harfbuzz version: 7.3.0
+cairo version: 1.16.0
+lib3mf version: 1.8.1
+Features: roof, input-driver-dbus, lazy-union, vertex-object-renderers-indexing, textmetrics, import-function, predictible-output
+Application Path: C:/Program Files/OpenSCAD (Nightly)
+Documents Path: C:\Users\herat\Documents
+User Documents Path: C:\Users\herat\Documents
+Resource Path: C:/Program Files/OpenSCAD (Nightly)
+User Library Path: C:/Users/herat/Documents/OpenSCAD/libraries
+User Config Path: C:\Users\herat\AppData\Local/OpenSCAD
+Backup Path: C:/Users/herat/Documents/OpenSCAD/backups
+OPENSCADPATH: <not set>
+OpenSCAD library path:
+  C:/Users/herat/Documents/OpenSCAD/libraries
+  C:/Program Files/OpenSCAD (Nightly)\libraries
+
+OPENSCAD_FONT_PATH: <not set>
+OpenSCAD font path:
+  C:/WINDOWS/fonts
+  C:/Users/herat/AppData/Local/Microsoft/Windows/Fonts
+  C:/Users/herat/.local/share/fonts
+  C:/usr/local/share/fonts
+  C:/usr/share/fonts
+  C:/usr/X11/lib/X11/fonts
+  C:/System/Library/Fonts
+  C:/Library/Fonts
+  C:/Users/herat/Library/Fonts
+
+
+GL context creator: WGL (old)
+PNG generator: lodepng
+
+GLEW version: 2.1.0
+OpenGL Version: 4.6.0 Compatibility Profile Context 24.12.1.231124
+GL Renderer: AMD Radeon RX 5700 XT
+GL Vendor: ATI Technologies Inc.
+RGBA(8888), depth(24), stencil(8)
+GL_ARB_framebuffer_object: yes
+GL_EXT_framebuffer_object: yes
+GL_EXT_packed_depth_stencil: yes
+
+
+Fontconfig error: Cannot load default config file: No such file: (null)
+Cleaned version info: OpenSCAD Version: 2025.02.19 (git 91070a09f) System information: Microsoft Windows 11 (10.0.26100) x86_64 16 CPUs 31.93 GB RAM User Agent: OpenSCAD/2025.02.19 (git 91070a09f) (Microsoft Windows 11 (10.0.26100) x86_64) Compiler: GCC "13.2.0" 64bit MinGW build: MingW64 Debug build: No Boost version: 1_81 Eigen version: 3.4.0 CGAL version, kernels: 5.5, Cartesian<Gmpq>, Extended_cartesian<Gmpq>, Epeck OpenCSG version: OpenCSG 1.5.0 Clipper2 version: 1.5.2 Manifold version: 3.0.1 Qt version: 5.15.11 QScintilla version: 2.11.2 InputDrivers: GLib version: 2.70.2 lodepng version: 20230410 libzip version: 1.5.2 fontconfig version: 2.14.2 freetype version: 2.13.2 harfbuzz version: 7.3.0 cairo version: 1.16.0 lib3mf version: 1.8.1 Features: roof, input-driver-dbus, lazy-union, vertex-object-renderers-indexing, textmetrics, import-function, predictible-output Application Path: C:/Program Files/OpenSCAD (Nightly) Documents Path: C:\Users\herat\Documents User Documents Path: C:\Users\herat\Documents Resource Path: C:/Program Files/OpenSCAD (Nightly) User Library Path: C:/Users/herat/Documents/OpenSCAD/libraries User Config Path: C:\Users\herat\AppData\Local/OpenSCAD Backup Path: C:/Users/herat/Documents/OpenSCAD/backups OPENSCADPATH: <not set> OpenSCAD library path: C:/Users/herat/Documents/OpenSCAD/libraries C:/Program Files/OpenSCAD (Nightly)\libraries OPENSCAD_FONT_PATH: <not set> OpenSCAD font path: C:/WINDOWS/fonts C:/Users/herat/AppData/Local/Microsoft/Windows/Fonts C:/Users/herat/.local/share/fonts C:/usr/local/share/fonts C:/usr/share/fonts C:/usr/X11/lib/X11/fonts C:/System/Library/Fonts C:/Library/Fonts C:/Users/herat/Library/Fonts GL context creator: WGL (old) PNG generator: lodepng GLEW version: 2.1.0 OpenGL Version: 4.6.0 Compatibility Profile Context 24.12.1.231124 GL Renderer: AMD Radeon RX 5700 XT GL Vendor: ATI Technologies Inc. RGBA(8888), depth(24), stencil(8) GL_ARB_framebuffer_object: yes GL_EXT_framebuffer_object: yes GL_EXT_packed_depth_stencil: yes Fontconfig error: Cannot load default config file: No such file: (null)
+Version match: 2025.02.19
+Checking path: C:\Program Files\OpenSCAD (Nightly)\openscad.com
+Is nightly path: True
+Detected version: 2025.02.19
+Version check passed: 2025.02.19 >= 2025.02.19
+
+Cleaning up old debug files...
+Removed old scad file
+
+Generating debug analysis...
+Using OpenSCAD at: C:\Program Files\OpenSCAD (Nightly)\openscad.com
+> c:\users\herat\source\stl2scad\stl2scad\core\converter.py(540)stl2scad()
+-> debug_base = os.path.splitext(debug_scad)[0]
+Error during debug analysis: 
+Traceback (most recent call last):
+  File "C:\Users\herat\source\stl2scad\stl2scad\core\converter.py", line 540, in stl2scad
+    debug_base = os.path.splitext(debug_scad)[0]
+                 ^^
+  File "C:\Users\herat\AppData\Local\Programs\Python\Python312\Lib\bdb.py", line 90, in trace_dispatch
+    return self.dispatch_line(frame)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\herat\AppData\Local\Programs\Python\Python312\Lib\bdb.py", line 115, in dispatch_line
+    if self.quitting: raise BdbQuit
+                      ^^^^^^^^^^^^^
+bdb.BdbQuit
+(Pdb) 
+Conversion Statistics:
+Original vertices: 36
+Deduplicated vertices: 8
+Faces: 12
+
+Metadata:
+name: binary stl file                                                                 
+volume: 8000.0
+bbox: [-55.0, 40.0, 0.0] to [-35.0, 60.0, 20.0]
+
+Checking debug files:
+scad: [OK] (1,190 bytes)
+json: [MISSING] (0 bytes)
+Warning: json file was not generated at test_output_analysis.json
+echo: [MISSING] (0 bytes)
+Warning: echo file was not generated at test_output_debug.echo
+png: [MISSING] (0 bytes)
+Warning: png file was not generated at test_output_preview.png
+
+Test completed with warnings - some debug files missing or empty

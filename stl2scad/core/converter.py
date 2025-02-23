@@ -12,21 +12,27 @@ import re
 from typing import Tuple, List, Dict
 from dataclasses import dataclass
 
-def run_openscad(description: str, args: list, log_file: str, openscad_path: str = None) -> bool:
+def run_openscad(description: str, args: list, log_file: str, openscad_path: str = None, timeout: int = 30) -> bool:
     """Execute OpenSCAD command with proper error handling and logging."""
     print(f"\nExecuting OpenSCAD: {description}")
     logging.debug(f"Command args: {args}")
     logging.debug(f"Log file: {log_file}")
+    logging.debug(f"Timeout: {timeout} seconds")
     
     try:
         # Build PowerShell command for Windows
         if sys.platform == "win32":
             args_str = ' '.join(args)
+            # Run OpenSCAD with timeout and output redirection
             ps_script = f"""
             $ErrorActionPreference = 'Stop'
             try {{
-                & '{openscad_path or "openscad"}' {args_str} *>&1 | Tee-Object -FilePath '{log_file}'
-                if (-not $?) {{ throw "OpenSCAD command failed" }}
+                $output = & '{openscad_path or "openscad"}' {args_str} 2>&1
+                $output | Out-File -FilePath '{log_file}' -Encoding UTF8
+                if ($LASTEXITCODE -ne 0) {{
+                    throw "OpenSCAD command failed with exit code $LASTEXITCODE"
+                }}
+                $output
             }} catch {{
                 Write-Error "OpenSCAD error: $_"
                 exit 1
@@ -34,20 +40,33 @@ def run_openscad(description: str, args: list, log_file: str, openscad_path: str
             """
             command = ['powershell', '-NoProfile', '-Command', ps_script]
         else:
+            # Direct command for non-Windows
             command = [(openscad_path or "openscad")] + args
         
         logging.debug(f"Final command: {command}")
         print(f"Running command: {' '.join(command)}")
         
-        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        # Run with timeout
+        result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=timeout)
         if result.stdout:
             print("stdout:", result.stdout)
         if result.stderr:
             print("stderr:", result.stderr)
         
+        # Check if OpenSCAD is still running
+        if sys.platform == "win32":
+            check_process = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq openscad.exe'], capture_output=True, text=True)
+            if 'openscad.exe' in check_process.stdout:
+                print("Warning: OpenSCAD process still running, attempting to terminate...")
+                subprocess.run(['taskkill', '/F', '/IM', 'openscad.exe'], capture_output=True)
+                return False
+        
         print("Command completed successfully")
         return True
         
+    except subprocess.TimeoutExpired:
+        print(f"Command timed out after {timeout} seconds")
+        return False
     except subprocess.CalledProcessError as e:
         print(f"Command failed with exit code {e.returncode}")
         if e.stdout:
@@ -80,20 +99,24 @@ def get_openscad_path():
                 return False, "Failed to run version check"
             
             # Read version info from log
-            with open(log_file, 'r') as f:
+            with open(log_file, 'r', encoding='utf-8') as f:
                 info = f.read().strip()
             print(f"Found OpenSCAD info: {info}")
             
-            # Clean up the info string by removing extra spaces and normalizing
+            # Clean up the info string
             info = ' '.join(info.split())
             print(f"Cleaned version info: {info}")
             
             # Extract version number
             version_match = re.search(r'Version:\s*(\d{4}\.\d{2}\.\d{2})', info)
+            print(f"Version match: {version_match.group(1) if version_match else 'No match'}")
             
-            # Check if it's installed in the nightly directory
-            if sys.platform == "win32" and "OpenSCAD (Nightly)" not in path:
-                return False, "Not installed in OpenSCAD (Nightly) directory"
+            # Check installation path
+            print(f"Checking path: {path}")
+            if sys.platform == "win32":
+                print(f"Is nightly path: {'OpenSCAD (Nightly)' in path}")
+                if "OpenSCAD (Nightly)" not in path:
+                    return False, "Not installed in OpenSCAD (Nightly) directory"
             if not version_match:
                 return False, "Could not determine version"
             
@@ -427,15 +450,14 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
     # Write SCAD file with metadata as comments
     with open(output_file, "w") as f:
         # Write metadata as comments with proper formatting
-        f.write("/*\n")
-        f.write(" * STL to SCAD Conversion\n")
+        f.write("//\n")
+        f.write("// STL to SCAD Conversion\n")
         for key, value in metadata.items():
             # Clean up the value string
             clean_value = str(value).strip()  # Remove leading/trailing whitespace
             clean_value = ' '.join(clean_value.split())  # Normalize internal whitespace
-            f.write(f" * {key}: {clean_value}\n")
-        f.write(" *\n")  # Add a blank line for readability
-        f.write(" */\n\n")
+            f.write(f"// {key}: {clean_value}\n")
+        f.write("//\n\n")
 
         # Write the polyhedron
         f.write("polyhedron(\n")
@@ -494,22 +516,24 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
             # Generate debug SCAD file with proper path handling
             with open(debug_scad, 'w') as f:
                 # Write file header with metadata
-                f.write("// STL to SCAD Debug View\n")
-                f.write("// Generated by stl2scad debug feature\n\n")
+                f.write("/*\n")
+                f.write(" * STL to SCAD Debug View\n")
+                f.write(" * Generated by stl2scad debug feature\n")
+                f.write(" */\n\n")
 
                 # Import original STL with proper path handling
                 stl_path = os.path.abspath(input_file).replace("\\", "/")  # Convert to absolute path with forward slashes
-                f.write(f'// Original STL Model\n')
+                f.write("// Original STL Model\n")
                 f.write(f'import("{stl_path}");\n\n')
 
                 # Add debug information as echo statements
                 f.write("// Debug Information\n")
                 f.write("module debug_info() {\n")
-                f.write('  echo("=== Conversion Statistics ===");\n')
-                f.write(f'  echo("Original vertices:", {original_vertex_count});\n')
-                f.write(f'  echo("Optimized vertices:", {len(final_points)});\n')
-                f.write(f'  echo("Faces:", {len(final_faces)});\n')
-                f.write(f'  echo("Reduction:", {100 * (1 - len(final_points)/original_vertex_count):.1f}, "%");\n')
+                f.write('    echo("=== Conversion Statistics ===");\n')
+                f.write(f'    echo("Original vertices:", {original_vertex_count});\n')
+                f.write(f'    echo("Optimized vertices:", {len(final_points)});\n')
+                f.write(f'    echo("Faces:", {len(final_faces)});\n')
+                f.write(f'    echo("Reduction:", {100 * (1 - len(final_points)/original_vertex_count):.1f}, "%");\n')
                 f.write("}\n")
                 f.write("debug_info();\n\n")
 
@@ -519,6 +543,9 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
                 with open(output_file) as orig:
                     f.write(orig.read().strip())  # Remove any trailing whitespace
                 f.write("\n}\n")  # Ensure proper closing brace
+
+                # Add version info
+                f.write('\necho(version=version());\n')
 
             # Run OpenSCAD with advanced debug options
             print("\nGenerating debug analysis...")
@@ -530,22 +557,14 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
                     return f'"{arg}"'
                 return str(arg)
 
-            # Add breakpoint for debugging
-            import pdb; pdb.set_trace()  # Breakpoint before OpenSCAD commands
-            
             debug_base = os.path.splitext(debug_scad)[0]
             success = True
             
-            # Generate preview image
+            # Generate preview image with minimal options
             preview_args = [
-                "--backend=Manifold",
-                "--view=axes",  # Separate view options
-                "--view=edges",
-                "--view=scales",
+                "--preview=throwntogether",  # Use simpler preview mode
                 "--autocenter",
                 "--viewall",
-                "--colorscheme=Tomorrow_Night",
-                "--imgsize=1024,768",
                 "-o", format_arg(debug_png),
                 format_arg(debug_scad)
             ]
@@ -553,11 +572,12 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
                 success = False
                 print("Warning: Preview generation failed")
 
-            # Generate analysis JSON
+            # Generate analysis JSON with basic options
             analysis_args = [
-                "--backend=Manifold",
-                "--summary=all",
-                "--summary-file", format_arg(debug_json),
+                "--render",  # Use render mode for analysis
+                "--quiet",   # Reduce unnecessary output
+                "--export-format", "json",
+                "-o", format_arg(debug_json),
                 format_arg(debug_scad)
             ]
             if not run_openscad("Analysis data", analysis_args, f"{debug_base}_analysis.log", openscad_path):

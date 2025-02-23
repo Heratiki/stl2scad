@@ -88,18 +88,14 @@ def test_openscad_debug_args(test_output_dir):
     test_file = test_output_dir / "debug_test.scad"
     
     # Write a test SCAD file
-    test_file.write_text('''
-    cube(10);
-    echo("Debug test");
-    ''')
+    test_file.write_text('cube(10);\necho("Debug test");\n')
     
     # Test various debug arguments
     debug_args = [
-        "--backend=Manifold",
-        "--view=axes,edges,scales",
+        "--preview",
         "--autocenter",
         "--viewall",
-        "--colorscheme=Tomorrow_Night",
+        "--camera=0,0,0,20,20,20",
         "-o", str(test_file.with_suffix('.png')),
         str(test_file)
     ]

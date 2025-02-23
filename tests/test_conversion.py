@@ -7,6 +7,7 @@ from pathlib import Path
 from stl2scad.core.converter import stl2scad, validate_stl
 import stl
 from .utils import setup_logging, verify_debug_files
+import numpy
 
 def test_basic_conversion(sample_stl_file, test_output_dir):
     """Test basic STL to SCAD conversion without debug features."""

@@ -20,7 +20,7 @@ stl2scad.code-workspace
 .clinerules-ask
 .clinerules-code
 
-# debug logs and created files
+# Debug logs and created files
 debug*.log
 debug*.scad
 debug*.png
@@ -35,6 +35,14 @@ output*.echo
 output*.txt
 output*.json
 
+# Additional testing output files
+test*.log
+test*.scad
+test*.png
+test*.echo
+test*.txt
+test*.json
+
 # Other common files
 .DS_Store
 *.log
@@ -43,7 +51,5 @@ output*.json
 *.lock
 *.sqlite
 *.stl
-*.scad.clinerules-architect
-.clinerules-ask
-.clinerules-code
+*.scad
 memory-bank/

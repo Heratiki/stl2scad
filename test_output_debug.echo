@@ -1,0 +1,4 @@
+ERROR: Parser error: Unterminated comment in file test_output_debug.scad, line 21
+ERROR: Parser error: syntax error in file test_output_debug.scad, line 21
+Can't parse file 'test_output_debug.scad'!
+

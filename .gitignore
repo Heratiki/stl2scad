@@ -23,4 +23,7 @@ stl2scad.code-workspace
 *.lock
 *.sqlite
 *.stl
-*.scad
+*.scad.clinerules-architect
+.clinerules-ask
+.clinerules-code
+memory-bank/

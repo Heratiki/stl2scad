@@ -12,6 +12,59 @@ import re
 from typing import Tuple, List, Dict
 from dataclasses import dataclass
 
+def run_openscad(description: str, args: list, log_file: str, openscad_path: str = None) -> bool:
+    """Execute OpenSCAD command with proper error handling and logging."""
+    print(f"\nExecuting OpenSCAD: {description}")
+    logging.debug(f"Command args: {args}")
+    logging.debug(f"Log file: {log_file}")
+    
+    try:
+        # Build PowerShell command for Windows
+        if sys.platform == "win32":
+            args_str = ' '.join(args)
+            ps_script = f"""
+            $ErrorActionPreference = 'Stop'
+            try {{
+                & '{openscad_path or "openscad"}' {args_str} *>&1 | Tee-Object -FilePath '{log_file}'
+                if (-not $?) {{ throw "OpenSCAD command failed" }}
+            }} catch {{
+                Write-Error "OpenSCAD error: $_"
+                exit 1
+            }}
+            """
+            command = ['powershell', '-NoProfile', '-Command', ps_script]
+        else:
+            command = [(openscad_path or "openscad")] + args
+        
+        logging.debug(f"Final command: {command}")
+        print(f"Running command: {' '.join(command)}")
+        
+        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        if result.stdout:
+            print("stdout:", result.stdout)
+        if result.stderr:
+            print("stderr:", result.stderr)
+        
+        print("Command completed successfully")
+        return True
+        
+    except subprocess.CalledProcessError as e:
+        print(f"Command failed with exit code {e.returncode}")
+        if e.stdout:
+            print("stdout:", e.stdout)
+        if e.stderr:
+            print("stderr:", e.stderr)
+        return False
+    except Exception as e:
+        print(f"Error executing OpenSCAD: {str(e)}")
+        return False
+
+def format_arg(arg):
+    """Format argument for PowerShell."""
+    if ' ' in str(arg):
+        return f'"{arg}"'
+    return str(arg)
+
 def get_openscad_path():
     """Get OpenSCAD executable path and verify version requirements."""
     REQUIRED_VERSION = "2025.02.19"
@@ -20,29 +73,27 @@ def get_openscad_path():
         """Check if OpenSCAD at path is nightly build with required version."""
         try:
             print(f"Checking OpenSCAD version at: {path}")
-            if sys.platform == "win32":
-                # Use PowerShell to run OpenSCAD command
-                cmd = ['powershell', '-Command', f"& '{path}' --info"]
-            else:
-                cmd = [path, '--info']
-                
-            print("Running command:", cmd)
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            args = ['--info']
+            log_file = "version_check.log"
             
-            if result.stderr:
-                print("stderr output:", result.stderr)
-            if result.stdout:
-                print("stdout output:", result.stdout)
-                
-            info = result.stdout.strip() if result.stdout else ""
+            if not run_openscad("Version check", args, log_file, path):
+                return False, "Failed to run version check"
+            
+            # Read version info from log
+            with open(log_file, 'r') as f:
+                info = f.read().strip()
             print(f"Found OpenSCAD info: {info}")
             
-            # Check if it's a nightly build
-            if 'nightly' not in info.lower() and 'dev' not in info.lower():
-                return False, "Not a nightly/dev build"
+            # Clean up the info string by removing extra spaces and normalizing
+            info = ' '.join(info.split())
+            print(f"Cleaned version info: {info}")
             
-            # Extract version number (assuming format contains "2025.02.19" somewhere)
-            version_match = re.search(r'(\d{4}\.\d{2}\.\d{2})', info)
+            # Extract version number
+            version_match = re.search(r'Version:\s*(\d{4}\.\d{2}\.\d{2})', info)
+            
+            # Check if it's installed in the nightly directory
+            if sys.platform == "win32" and "OpenSCAD (Nightly)" not in path:
+                return False, "Not installed in OpenSCAD (Nightly) directory"
             if not version_match:
                 return False, "Could not determine version"
             
@@ -219,7 +270,12 @@ def extract_metadata(mesh: stl.mesh.Mesh) -> Dict[str, str]:
     if hasattr(mesh, 'name') and mesh.name:
         metadata['name'] = mesh.name.decode('utf-8').strip()
     metadata['volume'] = str(mesh.get_mass_properties()[0])
-    metadata['bbox'] = str(tuple(zip(mesh.min_, mesh.max_)))
+    # Format bbox as a clean string with proper numeric values
+    # Format bbox as a clean string with proper numeric values
+    bbox_min = [float(x) for x in mesh.min_]
+    bbox_max = [float(x) for x in mesh.max_]
+    bbox_str = f"[{bbox_min[0]:.1f}, {bbox_min[1]:.1f}, {bbox_min[2]:.1f}] to [{bbox_max[0]:.1f}, {bbox_max[1]:.1f}, {bbox_max[2]:.1f}]"
+    metadata['bbox'] = bbox_str
     return metadata
 
 def render_stl_preview(stl_mesh: stl.mesh.Mesh, output_path: str) -> None:
@@ -332,6 +388,14 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
     Raises:
         STLValidationError: If STL validation fails
     """
+    # Configure logging for debugging
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        force=True
+    )
+    
+    logging.debug('Starting STL to SCAD conversion')
     logging.debug('Input file: %s', input_file)
     logging.debug('Output file: %s', output_file)
     logging.debug('Debug mode: %s', debug)
@@ -362,11 +426,16 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
 
     # Write SCAD file with metadata as comments
     with open(output_file, "w") as f:
-        # Write metadata as comments
-        f.write("// STL to SCAD Conversion\n")
+        # Write metadata as comments with proper formatting
+        f.write("/*\n")
+        f.write(" * STL to SCAD Conversion\n")
         for key, value in metadata.items():
-            f.write(f"// {key}: {value}\n")
-        f.write("\n")
+            # Clean up the value string
+            clean_value = str(value).strip()  # Remove leading/trailing whitespace
+            clean_value = ' '.join(clean_value.split())  # Normalize internal whitespace
+            f.write(f" * {key}: {clean_value}\n")
+        f.write(" *\n")  # Add a blank line for readability
+        f.write(" */\n\n")
 
         # Write the polyhedron
         f.write("polyhedron(\n")
@@ -422,74 +491,105 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
             debug_echo = debug_files['echo']
             debug_png = debug_files['png']
 
-            # Generate debug SCAD file
+            # Generate debug SCAD file with proper path handling
             with open(debug_scad, 'w') as f:
-                f.write("// Original STL Import\n")
-                f.write(f'import("{input_file}");\n\n')
-                f.write("// Our SCAD Conversion\n")
-                f.write("%{\n")  # Echo will appear in console
-                f.write('  echo("=== Conversion Debug Info ===");\n')
+                # Write file header with metadata
+                f.write("// STL to SCAD Debug View\n")
+                f.write("// Generated by stl2scad debug feature\n\n")
+
+                # Import original STL with proper path handling
+                stl_path = os.path.abspath(input_file).replace("\\", "/")  # Convert to absolute path with forward slashes
+                f.write(f'// Original STL Model\n')
+                f.write(f'import("{stl_path}");\n\n')
+
+                # Add debug information as echo statements
+                f.write("// Debug Information\n")
+                f.write("module debug_info() {\n")
+                f.write('  echo("=== Conversion Statistics ===");\n')
                 f.write(f'  echo("Original vertices:", {original_vertex_count});\n')
                 f.write(f'  echo("Optimized vertices:", {len(final_points)});\n')
                 f.write(f'  echo("Faces:", {len(final_faces)});\n')
                 f.write(f'  echo("Reduction:", {100 * (1 - len(final_points)/original_vertex_count):.1f}, "%");\n')
-                f.write("}\n\n")
-                f.write("translate([50, 0, 0]) {\n")  # Offset for side-by-side view
-                with open(output_file) as orig:
-                    f.write(orig.read())
                 f.write("}\n")
+                f.write("debug_info();\n\n")
+
+                # Add converted SCAD model with offset
+                f.write("// Converted SCAD Model\n")
+                f.write("translate([100, 0, 0]) {\n")  # Increased offset for better visibility
+                with open(output_file) as orig:
+                    f.write(orig.read().strip())  # Remove any trailing whitespace
+                f.write("\n}\n")  # Ensure proper closing brace
 
             # Run OpenSCAD with advanced debug options
             print("\nGenerating debug analysis...")
             print(f"Using OpenSCAD at: {openscad_path}")
             
-            # Build OpenSCAD arguments
-            scad_args = [
-                "--backend=Manifold",  # Use faster renderer
-                "--summary=all",  # Enable all statistics
-                f"--summary-file='{debug_json}'",  # Save analysis to JSON
-                "--view=axes,edges,scales",  # Show helpful guides
+            def format_arg(arg):
+                """Format argument for PowerShell."""
+                if ' ' in str(arg):
+                    return f'"{arg}"'
+                return str(arg)
+
+            # Add breakpoint for debugging
+            import pdb; pdb.set_trace()  # Breakpoint before OpenSCAD commands
+            
+            debug_base = os.path.splitext(debug_scad)[0]
+            success = True
+            
+            # Generate preview image
+            preview_args = [
+                "--backend=Manifold",
+                "--view=axes",  # Separate view options
+                "--view=edges",
+                "--view=scales",
                 "--autocenter",
                 "--viewall",
-                "--colorscheme=Tomorrow Night",
-                f"-o '{debug_echo}'",  # Capture echo output
-                f"-o '{debug_png}'",  # Generate preview image
-                f"'{debug_scad}'"  # Input file
+                "--colorscheme=Tomorrow_Night",
+                "--imgsize=1024,768",
+                "-o", format_arg(debug_png),
+                format_arg(debug_scad)
             ]
+            if not run_openscad("Preview image", preview_args, f"{debug_base}_preview.log", openscad_path):
+                success = False
+                print("Warning: Preview generation failed")
+
+            # Generate analysis JSON
+            analysis_args = [
+                "--backend=Manifold",
+                "--summary=all",
+                "--summary-file", format_arg(debug_json),
+                format_arg(debug_scad)
+            ]
+            if not run_openscad("Analysis data", analysis_args, f"{debug_base}_analysis.log", openscad_path):
+                success = False
+                print("Warning: Analysis generation failed")
+
+            # Generate echo output
+            echo_args = [
+                "--backend=Manifold",
+                "--render",
+                "-o", format_arg(debug_echo),
+                format_arg(debug_scad)
+            ]
+            if not run_openscad("Debug output", echo_args, f"{debug_base}_echo.log", openscad_path):
+                success = False
+                print("Warning: Debug output generation failed")
+
+            # Verify all files were created
+            files_status = {
+                'Preview Image': (debug_png, os.path.exists(debug_png)),
+                'Analysis JSON': (debug_json, os.path.exists(debug_json)),
+                'Debug Output': (debug_echo, os.path.exists(debug_echo)),
+                'Comparison SCAD': (debug_scad, os.path.exists(debug_scad))
+            }
             
-            # Use PowerShell to run OpenSCAD
-            if sys.platform == "win32":
-                cmd = ['powershell', '-Command', f"& '{openscad_path}' {' '.join(scad_args)}"]
-            else:
-                cmd = [openscad_path] + [arg.strip("'") for arg in scad_args]
-                
-            print("Running command:", ' '.join(cmd))
-            
-            try:
-                result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-                print("\nCommand output:")
-                if result.stdout:
-                    print("stdout:", result.stdout)
-                if result.stderr:
-                    print("stderr:", result.stderr)
-            except subprocess.CalledProcessError as e:
-                print(f"Command failed with exit code {e.returncode}")
-                if e.stdout:
-                    print("stdout:", e.stdout)
-                if e.stderr:
-                    print("stderr:", e.stderr)
-                raise
-            
-            print("\nDebug files generated:")
-            print(f"1. Comparison SCAD: {debug_scad}")
-            print(f"2. Analysis JSON: {debug_json}")
-            print(f"3. Debug output: {debug_echo}")
-            print(f"4. Preview image: {debug_png}")
-            
-            # Print any OpenSCAD output
-            if result.stdout:
-                print("\nOpenSCAD output:")
-                print(result.stdout)
+            print("\nDebug files status:")
+            for name, (path, exists) in files_status.items():
+                status = "[OK]" if exists else "[MISSING]"
+                size = os.path.getsize(path) if exists else 0
+                print(f"{name}: {status} ({size:,} bytes)")
+                if not exists:
+                    print(f"Warning: {name} was not generated at {path}")
             
             print("\nTo verify the conversion:")
             print(f"1. Open {debug_scad} in OpenSCAD")

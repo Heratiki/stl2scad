@@ -46,7 +46,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def setup_ui(self):
         """Initialize the user interface."""
-        self.gl_view = gl.GLViewWidget()  # For STL preview
+        # Initialize GL view with some basic settings
+        self.gl_view = gl.GLViewWidget()
+        self.gl_view.setBackgroundColor('w')  # White background
+        self.gl_view.setCameraPosition(distance=40)
+
+        # Add a grid to help with orientation
+        grid = gl.GLGridItem()
+        grid.setSize(x=100, y=100, z=1)
+        grid.setSpacing(x=10, y=10, z=10)
+        self.gl_view.addItem(grid)
 
         # QLabel for displaying the rendered SCAD image
         self.image_label = QLabel()
@@ -144,13 +153,25 @@ class MainWindow(QtWidgets.QMainWindow):
             vertices = np.concatenate(your_mesh.vectors)
             faces = np.array([(i, i+1, i+2) for i in range(0, len(vertices), 3)])
             self.mesh_data = gl.MeshData(vertexes=vertices, faces=faces)
+            # Create mesh with improved rendering settings
             self.mesh_item = gl.GLMeshItem(
                 meshdata=self.mesh_data,
                 color=(0.7, 0.7, 0.7, 1.0),
-                smooth=False,
-                drawEdges=True
+                smooth=True,  # Enable smooth shading
+                shader='shaded',  # Use shaded shader for better 3D appearance
+                drawEdges=True,
+                edgeColor=(0.2, 0.2, 0.2, 1.0),  # Darker edges for better contrast
+                glOptions='opaque'  # Ensure proper depth testing
             )
             self.gl_view.addItem(self.mesh_item)
+
+            # Add lighting for better 3D visualization
+            light = gl.GLScatterPlotItem(
+                pos=np.array([[50, 50, 50]]),
+                color=(1, 1, 1, 1),
+                size=0.1
+            )
+            self.gl_view.addItem(light)
 
             # Center and fit
             self.center_object()
@@ -207,31 +228,77 @@ class MainWindow(QtWidgets.QMainWindow):
     def center_object(self):
         """Center the 3D object in the view."""
         if self.mesh_data is not None:
-            center = self.mesh_data.vertexes().mean(axis=0)
-            self.gl_view.opts['center'] = pg.Vector(center[0], center[1], center[2])
+            vertices = self.mesh_data.vertexes()
+            center = vertices.mean(axis=0)
+            
+            # Set camera position relative to object size
+            min_vals = vertices.min(axis=0)
+            max_vals = vertices.max(axis=0)
+            size = np.max(max_vals - min_vals)
+            
+            # Position camera at an isometric view
+            distance = size * 2
+            self.gl_view.setCameraPosition(
+                pos=pg.Vector(distance, distance, distance),
+                distance=distance,
+                center=pg.Vector(center[0], center[1], center[2])
+            )
             self.gl_view.update()
 
     def rotate_object(self, axis):
         """Rotate the view to look along the specified axis."""
         if self.mesh_data is not None:
+            vertices = self.mesh_data.vertexes()
+            center = vertices.mean(axis=0)
+            size = np.max(vertices.max(axis=0) - vertices.min(axis=0))
+            distance = size * 2
+
             if axis == 'x':
-                self.gl_view.opts['elevation'] = 90
-                self.gl_view.opts['azimuth'] = 0
+                pos = pg.Vector(distance, 0, 0)
+                up = pg.Vector(0, 0, 1)
             elif axis == 'y':
-                self.gl_view.opts['elevation'] = 0
-                self.gl_view.opts['azimuth'] = 90
+                pos = pg.Vector(0, distance, 0)
+                up = pg.Vector(0, 0, 1)
             elif axis == 'z':
-                self.gl_view.opts['elevation'] = 0
-                self.gl_view.opts['azimuth'] = 0
+                pos = pg.Vector(0, 0, distance)
+                up = pg.Vector(0, 1, 0)
+
+            self.gl_view.setCameraPosition(
+                pos=pos,
+                distance=distance,
+                center=pg.Vector(center[0], center[1], center[2]),
+                up=up
+            )
             self.gl_view.update()
     
     def fit_to_window(self):
         """Scale the view to fit the object."""
         if self.mesh_data is not None:
-            min_vals = self.mesh_data.vertexes().min(axis=0)
-            max_vals = self.mesh_data.vertexes().max(axis=0)
-            ranges = max_vals - min_vals
-            self.gl_view.opts['distance'] = max(ranges)
+            vertices = self.mesh_data.vertexes()
+            min_vals = vertices.min(axis=0)
+            max_vals = vertices.max(axis=0)
+            
+            # Calculate bounding box size
+            size = np.max(max_vals - min_vals)
+            center = (max_vals + min_vals) / 2
+            
+            # Set camera distance based on object size
+            distance = size * 2
+            current_pos = self.gl_view.cameraPosition()
+            if isinstance(current_pos, tuple):
+                current_pos = current_pos[0]  # Extract position vector if tuple
+            
+            # Maintain camera direction but adjust distance
+            direction = current_pos - pg.Vector(center[0], center[1], center[2])
+            if direction.length() > 0:
+                direction = direction.normalized()
+                new_pos = pg.Vector(center[0], center[1], center[2]) + direction * distance
+                
+                self.gl_view.setCameraPosition(
+                    pos=new_pos,
+                    distance=distance,
+                    center=pg.Vector(center[0], center[1], center[2])
+                )
             self.gl_view.update()
 
     def select_color(self):

@@ -23,13 +23,15 @@ def run_openscad(description: str, args: list, log_file: str, openscad_path: str
     try:
         # Build PowerShell command for Windows
         if sys.platform == "win32":
-            args_str = ' '.join(args)
+            # Format each argument properly for PowerShell
+            formatted_args = [format_arg(arg) for arg in args]
+            args_str = ' '.join(formatted_args)
             # Run OpenSCAD with timeout and output redirection
             ps_script = f"""
             $ErrorActionPreference = 'Stop'
             try {{
-                $output = & '{openscad_path or "openscad"}' {args_str} 2>&1
-                $output | Out-File -FilePath '{log_file}' -Encoding UTF8
+                $output = & {format_arg(openscad_path or 'openscad')} {args_str} 2>&1
+                $output | Out-File -FilePath {format_arg(log_file)} -Encoding UTF8
                 if ($LASTEXITCODE -ne 0) {{
                     throw "OpenSCAD command failed with exit code $LASTEXITCODE"
                 }}

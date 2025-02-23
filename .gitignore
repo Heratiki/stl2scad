@@ -13,16 +13,25 @@ venv
 
 # VS Code settings
 .vscode/
-stl2scad.code-workspace 
+stl2scad.code-workspace
+
+# clinerules
+.clinerules*
 
 # debug logs and created files
 debug*.log
 debug*.scad
 debug*.png
+debug*.echo
+debug*.txt
+debug*.json
+
 output*.log
 output*.scad
 output*.png
-
+output*.echo
+output*.txt
+output*.json
 
 # Other common files
 .DS_Store

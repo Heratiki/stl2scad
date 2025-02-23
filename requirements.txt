@@ -1,6 +1,13 @@
+# Core dependencies
 numpy>=1.24.3
 numpy-stl>=3.2.0
 PyQt5>=5.15.11
 pyqtgraph>=0.13.3
 typing_extensions>=4.12.2
 psutil>=5.9.0
+
+# Test dependencies
+pytest>=8.0.0
+pytest-cov>=4.1.0  # For coverage reporting
+pytest-xdist>=3.5.0  # For parallel test execution
+pytest-timeout>=2.2.0  # For test timeouts

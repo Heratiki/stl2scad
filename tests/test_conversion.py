@@ -4,7 +4,7 @@ Tests for STL to SCAD conversion functionality.
 
 import pytest
 from pathlib import Path
-from stl2scad.core.converter import stl2scad, validate_stl
+from stl2scad.core.converter import stl2scad, validate_stl, STLValidationError
 import stl
 from .utils import setup_logging, verify_debug_files
 import numpy

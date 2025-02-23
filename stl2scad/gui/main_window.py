@@ -96,7 +96,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.debug_action.triggered.connect(self.toggle_debug_mode)
         self.toolbar.addAction(self.debug_action)
 
-
         # Create layout
         layout = QVBoxLayout()
         layout.addWidget(self.gl_view)
@@ -106,7 +105,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.info_label = QtWidgets.QLabel()
         self.info_label.setAlignment(Qt.AlignBottom)
         layout.addWidget(self.info_label)
-
 
         # Status label for conversion
         self.status_label = QtWidgets.QLabel()
@@ -154,7 +152,6 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             self.gl_view.addItem(self.mesh_item)
 
-
             # Center and fit
             self.center_object()
             self.fit_to_window()
@@ -182,8 +179,6 @@ class MainWindow(QtWidgets.QMainWindow):
         """Update the status label with a message."""
         self.status_label.setText(message)
 
-    def conversion_finished(self, stats):
-        """Handle successful conversion completion."""
     def conversion_finished(self, stats):
         """Handle successful conversion completion."""
         self.convert_action.setEnabled(True)

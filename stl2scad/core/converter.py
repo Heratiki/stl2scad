@@ -14,10 +14,11 @@ from dataclasses import dataclass
 
 def run_openscad(description: str, args: list, log_file: str, openscad_path: str = None, timeout: int = 30) -> bool:
     """Execute OpenSCAD command with proper error handling and logging."""
-    print(f"\nExecuting OpenSCAD: {description}")
-    logging.debug(f"Command args: {args}")
-    logging.debug(f"Log file: {log_file}")
-    logging.debug(f"Timeout: {timeout} seconds")
+    logging.info(f"Executing OpenSCAD: {description}")
+    logging.debug(f"Command arguments: {args}")
+    logging.debug(f"Log file path: {log_file}")
+    logging.debug(f"Command timeout: {timeout} seconds")
+    logging.debug(f"OpenSCAD path: {openscad_path or 'default'}")
     
     try:
         # Build PowerShell command for Windows
@@ -43,39 +44,39 @@ def run_openscad(description: str, args: list, log_file: str, openscad_path: str
             # Direct command for non-Windows
             command = [(openscad_path or "openscad")] + args
         
-        logging.debug(f"Final command: {command}")
-        print(f"Running command: {' '.join(command)}")
+        logging.info(f"Executing command: {' '.join(command)}")
         
         # Run with timeout
         result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=timeout)
         if result.stdout:
-            print("stdout:", result.stdout)
+            logging.debug(f"Command output: {result.stdout}")
         if result.stderr:
-            print("stderr:", result.stderr)
+            logging.warning(f"Command stderr: {result.stderr}")
         
         # Check if OpenSCAD is still running
         if sys.platform == "win32":
             check_process = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq openscad.exe'], capture_output=True, text=True)
             if 'openscad.exe' in check_process.stdout:
-                print("Warning: OpenSCAD process still running, attempting to terminate...")
+                logging.warning("OpenSCAD process still running, attempting to terminate...")
                 subprocess.run(['taskkill', '/F', '/IM', 'openscad.exe'], capture_output=True)
                 return False
         
-        print("Command completed successfully")
+        logging.info("Command completed successfully")
         return True
         
     except subprocess.TimeoutExpired:
-        print(f"Command timed out after {timeout} seconds")
+        logging.error(f"Command timed out after {timeout} seconds. This may indicate that OpenSCAD is having trouble processing the file or the system is under heavy load.")
         return False
     except subprocess.CalledProcessError as e:
-        print(f"Command failed with exit code {e.returncode}")
+        logging.error(f"Command failed with exit code {e.returncode}. This typically indicates an issue with the OpenSCAD command or its arguments.")
         if e.stdout:
-            print("stdout:", e.stdout)
+            logging.debug(f"Command output: {e.stdout}")
         if e.stderr:
-            print("stderr:", e.stderr)
+            logging.error(f"Error details: {e.stderr}")
         return False
     except Exception as e:
-        print(f"Error executing OpenSCAD: {str(e)}")
+        logging.error(f"Unexpected error executing OpenSCAD: {str(e)}")
+        logging.debug("Stack trace:", exc_info=True)
         return False
 
 def format_arg(arg):
@@ -84,69 +85,76 @@ def format_arg(arg):
         return f'"{arg}"'
     return str(arg)
 
+from . import config
+
 def get_openscad_path():
     """Get OpenSCAD executable path and verify version requirements."""
-    REQUIRED_VERSION = "2025.02.19"
-    
     def check_version(path):
         """Check if OpenSCAD at path is nightly build with required version."""
         try:
-            print(f"Checking OpenSCAD version at: {path}")
+            logging.info(f"Checking OpenSCAD version at: {path}")
             args = ['--info']
             log_file = "version_check.log"
             
             if not run_openscad("Version check", args, log_file, path):
+                logging.error("Failed to run OpenSCAD version check")
                 return False, "Failed to run version check"
             
             # Read version info from log
             with open(log_file, 'r', encoding='utf-8') as f:
                 info = f.read().strip()
-            print(f"Found OpenSCAD info: {info}")
+            logging.debug(f"Raw OpenSCAD info: {info}")
             
             # Clean up the info string
             info = ' '.join(info.split())
-            print(f"Cleaned version info: {info}")
+            logging.debug(f"Cleaned version info: {info}")
             
             # Extract version number
             version_match = re.search(r'Version:\s*(\d{4}\.\d{2}\.\d{2})', info)
-            print(f"Version match: {version_match.group(1) if version_match else 'No match'}")
+            logging.debug(f"Version match: {version_match.group(1) if version_match else 'No match'}")
             
             # Check installation path
-            print(f"Checking path: {path}")
-            if sys.platform == "win32":
-                print(f"Is nightly path: {'OpenSCAD (Nightly)' in path}")
-                if "OpenSCAD (Nightly)" not in path:
-                    return False, "Not installed in OpenSCAD (Nightly) directory"
+            logging.debug(f"Checking installation path: {path}")
+            if sys.platform == "win32" and "OpenSCAD (Nightly)" not in path:
+                logging.error("OpenSCAD not installed in Nightly directory")
+                return False, "Not installed in OpenSCAD (Nightly) directory"
+            
             if not version_match:
+                logging.error("Could not determine OpenSCAD version from output")
                 return False, "Could not determine version"
             
             version = version_match.group(1)
-            print(f"Detected version: {version}")
-            if version < REQUIRED_VERSION:
-                return False, f"Version {version} is older than required {REQUIRED_VERSION}"
+            required_version = config.get_required_version()
+            logging.info(f"Detected OpenSCAD version: {version}")
+            if version < required_version:
+                logging.error(f"OpenSCAD version {version} is older than required {required_version}")
+                return False, f"Version {version} is older than required {required_version}"
                 
-            print(f"Version check passed: {version} >= {REQUIRED_VERSION}")
+            logging.info(f"OpenSCAD version check passed: {version} >= {required_version}")
             return True, info
         except subprocess.CalledProcessError as e:
-            print(f"Command failed with return code {e.returncode}")
+            logging.error(f"OpenSCAD command failed with return code {e.returncode}")
             if e.stdout:
-                print("stdout:", e.stdout)
+                logging.debug(f"Command output: {e.stdout}")
             if e.stderr:
-                print("stderr:", e.stderr)
+                logging.error(f"Error details: {e.stderr}")
             return False, f"Error checking version: {e}"
         except Exception as e:
-            print(f"Unexpected error: {str(e)}")
+            logging.error(f"Unexpected error checking OpenSCAD version: {str(e)}")
+            logging.debug("Stack trace:", exc_info=True)
             return False, f"Error checking version: {str(e)}"
     
+    paths_config = config.get_openscad_paths()
     if sys.platform == "win32":
-        base_path = r"C:\Program Files\OpenSCAD (Nightly)"
-        exe_path = os.path.join(base_path, "openscad.exe")  # For GUI operations
-        com_path = os.path.join(base_path, "openscad.com")  # For command-line operations
+        base_path = paths_config["win32"]["base"]
+        exe_path = os.path.join(base_path, paths_config["win32"]["exe"])  # For GUI operations
+        com_path = os.path.join(base_path, paths_config["win32"]["com"])  # For command-line operations
         
         if not (os.path.exists(exe_path) and os.path.exists(com_path)):
             raise FileNotFoundError(
-                "OpenSCAD (Nightly) not found. Please install OpenSCAD (Nightly) version 25.02.19 or later "
-                "from https://openscad.org/downloads.html#snapshots. The regular OpenSCAD release does not "
+                "OpenSCAD (Nightly) not found. Please install OpenSCAD (Nightly) version "
+                f"{config.get_required_version()} or later from "
+                "https://openscad.org/downloads.html#snapshots. The regular OpenSCAD release does not "
                 "support the required debug features."
             )
         
@@ -154,15 +162,16 @@ def get_openscad_path():
         is_valid, message = check_version(com_path)
         if not is_valid:
             raise FileNotFoundError(
-                f"Invalid OpenSCAD version: {message}. Please install OpenSCAD (Nightly) version 25.02.19 or later "
-                "from https://openscad.org/downloads.html#snapshots"
+                f"Invalid OpenSCAD version: {message}. Please install OpenSCAD (Nightly) version "
+                f"{config.get_required_version()} or later from "
+                "https://openscad.org/downloads.html#snapshots"
             )
         
         return com_path  # Return the .com path for command-line operations
     else:
         # For non-Windows systems
-        paths = ["/usr/bin/openscad", "/usr/local/bin/openscad"]
-        for path in paths:
+        platform_paths = paths_config.get(sys.platform, [])
+        for path in platform_paths:
             if os.path.exists(path):
                 is_valid, message = check_version(path)
                 if is_valid:
@@ -170,8 +179,9 @@ def get_openscad_path():
                 print(f"Warning: Found OpenSCAD at {path} but {message}", file=sys.stderr)
                 
         raise FileNotFoundError(
-            "OpenSCAD (Nightly) not found. Please install OpenSCAD (Nightly) version 25.02.19 or later "
-            "from https://openscad.org/downloads.html#snapshots"
+            "OpenSCAD (Nightly) not found. Please install OpenSCAD (Nightly) version "
+            f"{config.get_required_version()} or later from "
+            "https://openscad.org/downloads.html#snapshots"
         )
 
 # Configure logging to stdout with more verbose format
@@ -310,20 +320,20 @@ def render_stl_preview(stl_mesh: stl.mesh.Mesh, output_path: str) -> None:
         output_path: Path to save the preview image
     """
     try:
-        print("Attempting to render STL preview...")
+        logging.info("Attempting to render STL preview...")
         import vtk
         from vtk.util import numpy_support # type: ignore
-        print("VTK imported successfully")
+        logging.info("VTK imported successfully")
         
         # Create points array
-        print("Creating points array...")
+        logging.debug("Creating points array...")
         points = vtk.vtkPoints()
         vertices = stl_mesh.vectors.reshape(-1, 3)
         for vertex in vertices:
             points.InsertNextPoint(vertex)
             
         # Create triangles array
-        print("Creating triangles array...")
+        logging.debug("Creating triangles array...")
         triangles = vtk.vtkCellArray()
         for i in range(0, len(vertices), 3):
             triangle = vtk.vtkTriangle()
@@ -333,13 +343,13 @@ def render_stl_preview(stl_mesh: stl.mesh.Mesh, output_path: str) -> None:
             triangles.InsertNextCell(triangle)
             
         # Create polydata
-        print("Creating polydata...")
+        logging.debug("Creating polydata...")
         polydata = vtk.vtkPolyData()
         polydata.SetPoints(points)
         polydata.SetPolys(triangles)
         
         # Create mapper and actor
-        print("Setting up visualization pipeline...")
+        logging.debug("Setting up visualization pipeline...")
         mapper = vtk.vtkPolyDataMapper()
         mapper.SetInputData(polydata)
         
@@ -368,7 +378,7 @@ def render_stl_preview(stl_mesh: stl.mesh.Mesh, output_path: str) -> None:
         render_window.SetSize(800, 600)
         
         # Render and save
-        print(f"Saving preview to {output_path}...")
+        logging.info(f"Saving preview to {output_path}...")
         render_window.Render()
         
         # Reset camera to fit scene
@@ -385,15 +395,14 @@ def render_stl_preview(stl_mesh: stl.mesh.Mesh, output_path: str) -> None:
         writer.SetInputConnection(window_to_image.GetOutputPort())
         writer.Write()
         
-        print("STL preview generated successfully")
+        logging.info("STL preview generated successfully")
         
     except ImportError as e:
-        print(f"Warning: VTK import error: {str(e)}", file=sys.stderr)
-        print("Install with: pip install vtk", file=sys.stderr)
+        logging.warning(f"VTK import error: {str(e)}")
+        logging.warning("Install with: pip install vtk")
     except Exception as e:
-        print(f"Error generating STL preview: {str(e)}", file=sys.stderr)
-        import traceback
-        traceback.print_exc()
+        logging.error(f"Error generating STL preview: {str(e)}")
+        logging.debug("Stack trace:", exc_info=True)
 
 def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: bool = False) -> ConversionStats:
     """
@@ -482,7 +491,7 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
 
     if debug:
         try:
-            print("\nRunning debug analysis...")
+            logging.info("Starting debug analysis...")
             openscad_path = get_openscad_path()
             if not openscad_path:
                 raise FileNotFoundError("OpenSCAD not found in standard locations")
@@ -498,14 +507,14 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
             }
 
             # Clean up any existing debug files
-            print("\nCleaning up old debug files...")
+            logging.info("Cleaning up old debug files...")
             for name, path in debug_files.items():
                 if os.path.exists(path):
                     try:
                         os.remove(path)
-                        print(f"Removed old {name} file")
+                        logging.debug(f"Removed old {name} file")
                     except Exception as e:
-                        print(f"Warning: Could not remove old {name} file: {e}", file=sys.stderr)
+                        logging.warning(f"Could not remove old {name} file: {e}")
 
             # Assign paths for easier reference
             debug_scad = debug_files['scad']
@@ -548,15 +557,9 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
                 f.write('\necho(version=version());\n')
 
             # Run OpenSCAD with advanced debug options
-            print("\nGenerating debug analysis...")
-            print(f"Using OpenSCAD at: {openscad_path}")
+            logging.info("Generating debug analysis...")
+            logging.info(f"Using OpenSCAD at: {openscad_path}")
             
-            def format_arg(arg):
-                """Format argument for PowerShell."""
-                if ' ' in str(arg):
-                    return f'"{arg}"'
-                return str(arg)
-
             debug_base = os.path.splitext(debug_scad)[0]
             success = True
             
@@ -570,7 +573,7 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
             ]
             if not run_openscad("Preview image", preview_args, f"{debug_base}_preview.log", openscad_path):
                 success = False
-                print("Warning: Preview generation failed")
+                logging.warning("Preview image generation failed")
 
             # Generate analysis JSON with basic options
             analysis_args = [
@@ -582,7 +585,7 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
             ]
             if not run_openscad("Analysis data", analysis_args, f"{debug_base}_analysis.log", openscad_path):
                 success = False
-                print("Warning: Analysis generation failed")
+                logging.warning("Analysis data generation failed")
 
             # Generate echo output
             echo_args = [
@@ -593,7 +596,7 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
             ]
             if not run_openscad("Debug output", echo_args, f"{debug_base}_echo.log", openscad_path):
                 success = False
-                print("Warning: Debug output generation failed")
+                logging.warning("Debug output generation failed")
 
             # Verify all files were created
             files_status = {
@@ -603,27 +606,27 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
                 'Comparison SCAD': (debug_scad, os.path.exists(debug_scad))
             }
             
-            print("\nDebug files status:")
+            logging.info("\nDebug files status:")
             for name, (path, exists) in files_status.items():
                 status = "[OK]" if exists else "[MISSING]"
                 size = os.path.getsize(path) if exists else 0
-                print(f"{name}: {status} ({size:,} bytes)")
-                if not exists:
-                    print(f"Warning: {name} was not generated at {path}")
+                if exists:
+                    logging.info(f"{name}: {status} ({size:,} bytes)")
+                else:
+                    logging.warning(f"{name}: {status} - File was not generated at {path}")
             
-            print("\nTo verify the conversion:")
-            print(f"1. Open {debug_scad} in OpenSCAD")
-            print("2. Use F5 to preview both models side by side")
-            print(f"3. Check {debug_echo} for measurements")
-            print(f"4. Review {debug_json} for detailed geometry analysis")
+            logging.info("\nTo verify the conversion:")
+            logging.info(f"1. Open {debug_scad} in OpenSCAD")
+            logging.info("2. Use F5 to preview both models side by side")
+            logging.info(f"3. Check {debug_echo} for measurements")
+            logging.info(f"4. Review {debug_json} for detailed geometry analysis")
 
         except subprocess.CalledProcessError as e:
-            print(f"Error running OpenSCAD debug: {e.stderr}", file=sys.stderr)
+            logging.error(f"Error running OpenSCAD debug: {e.stderr}")
         except FileNotFoundError as e:
-            print(f"Error: {str(e)}. Ensure OpenSCAD is installed.", file=sys.stderr)
+            logging.error(f"Error: {str(e)}. Ensure OpenSCAD is installed.")
         except Exception as e:
-            print(f"Error during debug analysis: {str(e)}", file=sys.stderr)
-            import traceback
-            traceback.print_exc()
+            logging.error(f"Error during debug analysis: {str(e)}")
+            logging.debug("Stack trace:", exc_info=True)
 
     return stats

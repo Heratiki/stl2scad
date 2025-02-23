@@ -94,7 +94,7 @@ def test_stl_validation(sample_stl_file):
         log("STL validation passed")
         
         # Test validation with empty mesh
-        empty_mesh = stl.mesh.Mesh(numpy.zeros(0))
+        empty_mesh = stl.mesh.Mesh(numpy.zeros((0, 3, 3)))
         with pytest.raises(Exception) as e:
             validate_stl(empty_mesh)
         log("Empty mesh validation correctly failed")

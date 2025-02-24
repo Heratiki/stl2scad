@@ -279,11 +279,10 @@ class MainWindow(QtWidgets.QMainWindow):
             
             # Position camera at an isometric view
             distance = size * 2
-            self.gl_view.setCameraPosition(
-                pos=pg.Vector(distance, distance, distance),
-                distance=distance,
-                center=pg.Vector(center[0], center[1], center[2])
-            )
+            # Set center point
+            self.gl_view.opts['center'] = pg.Vector(center[0], center[1], center[2])
+            # Set camera position for isometric view
+            self.gl_view.setCameraPosition(distance=distance, elevation=45, azimuth=45)
             self.gl_view.update()
 
     def rotate_object(self, axis):
@@ -294,22 +293,17 @@ class MainWindow(QtWidgets.QMainWindow):
             size = np.max(vertices.max(axis=0) - vertices.min(axis=0))
             distance = size * 2
 
+            # Set center point
+            self.gl_view.opts['center'] = pg.Vector(center[0], center[1], center[2])
+            
+            # Set camera position based on axis
             if axis == 'x':
-                pos = pg.Vector(distance, 0, 0)
-                up = pg.Vector(0, 0, 1)
+                self.gl_view.setCameraPosition(distance=distance, elevation=0, azimuth=90)
             elif axis == 'y':
-                pos = pg.Vector(0, distance, 0)
-                up = pg.Vector(0, 0, 1)
+                self.gl_view.setCameraPosition(distance=distance, elevation=0, azimuth=0)
             elif axis == 'z':
-                pos = pg.Vector(0, 0, distance)
-                up = pg.Vector(0, 1, 0)
-
-            self.gl_view.setCameraPosition(
-                pos=pos,
-                distance=distance,
-                center=pg.Vector(center[0], center[1], center[2]),
-                up=up
-            )
+                self.gl_view.setCameraPosition(distance=distance, elevation=90, azimuth=0)
+            
             self.gl_view.update()
     
     def fit_to_window(self):
@@ -323,23 +317,20 @@ class MainWindow(QtWidgets.QMainWindow):
             size = np.max(max_vals - min_vals)
             center = (max_vals + min_vals) / 2
             
-            # Set camera distance based on object size
+            # Set center point and adjust distance
+            self.gl_view.opts['center'] = pg.Vector(center[0], center[1], center[2])
             distance = size * 2
+            
+            # Keep current elevation and azimuth, just update distance
             current_pos = self.gl_view.cameraPosition()
             if isinstance(current_pos, tuple):
-                current_pos = current_pos[0]  # Extract position vector if tuple
+                pos, elevation, azimuth = current_pos
+            else:
+                elevation = self.gl_view.opts['elevation']
+                azimuth = self.gl_view.opts['azimuth']
             
-            # Maintain camera direction but adjust distance
-            direction = current_pos - pg.Vector(center[0], center[1], center[2])
-            if direction.length() > 0:
-                direction = direction.normalized()
-                new_pos = pg.Vector(center[0], center[1], center[2]) + direction * distance
-                
-                self.gl_view.setCameraPosition(
-                    pos=new_pos,
-                    distance=distance,
-                    center=pg.Vector(center[0], center[1], center[2])
-                )
+            # Update camera with new distance but keep orientation
+            self.gl_view.setCameraPosition(distance=distance, elevation=elevation, azimuth=azimuth)
             self.gl_view.update()
 
     def select_color(self):

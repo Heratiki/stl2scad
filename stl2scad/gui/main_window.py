@@ -42,20 +42,82 @@ class MainWindow(QtWidgets.QMainWindow):
         super(MainWindow, self).__init__(*args, **kwargs)
         self.current_stl_file = None
         self.debug_mode = False
+        self.current_color = (0.8, 0.8, 0.8, 1.0)  # Initial light gray color
         self.setup_ui()
 
     def setup_ui(self):
         """Initialize the user interface."""
-        # Initialize GL view with some basic settings
+        # Initialize GL view with enhanced settings
         self.gl_view = gl.GLViewWidget()
         self.gl_view.setBackgroundColor('w')  # White background
-        self.gl_view.setCameraPosition(distance=40)
+        
+        # Set initial view parameters for better default view
+        self.gl_view.opts['distance'] = 100  # Start further back
+        self.gl_view.opts['elevation'] = 20  # Lower angle
+        self.gl_view.opts['azimuth'] = 45   # 45-degree view
+        self.gl_view.opts['fov'] = 45       # Narrower field of view for less distortion
+        self.gl_view.opts['center'] = pg.Vector(0, 0, 0)  # Center at origin
+        
+        # Add grids for better orientation
+        # XY plane grid (ground plane)
+        xy_grid = gl.GLGridItem()
+        xy_grid.setSize(x=200, y=200, z=1)
+        xy_grid.setSpacing(x=20, y=20, z=20)
+        xy_grid.translate(0, 0, 0)  # Place at origin
+        xy_grid.setColor((0.7, 0.7, 0.7, 0.4))  # Semi-transparent gray
+        self.gl_view.addItem(xy_grid)
 
-        # Add a grid to help with orientation
-        grid = gl.GLGridItem()
-        grid.setSize(x=100, y=100, z=1)
-        grid.setSpacing(x=10, y=10, z=10)
-        self.gl_view.addItem(grid)
+        # XZ plane grid (back wall)
+        xz_grid = gl.GLGridItem()
+        xz_grid.setSize(x=200, z=200, y=1)
+        xz_grid.setSpacing(x=20, z=20, y=20)
+        xz_grid.rotate(90, 1, 0, 0)  # Rotate to XZ plane
+        xz_grid.translate(0, -100, 100)  # Position as back wall
+        xz_grid.setColor((0.7, 0.7, 0.7, 0.2))  # More transparent
+        self.gl_view.addItem(xz_grid)
+
+        # YZ plane grid (side wall)
+        yz_grid = gl.GLGridItem()
+        yz_grid.setSize(y=200, z=200, x=1)
+        yz_grid.setSpacing(y=20, z=20, x=20)
+        yz_grid.rotate(90, 0, 1, 0)  # Rotate to YZ plane
+        yz_grid.translate(-100, 0, 100)  # Position as side wall
+        yz_grid.setColor((0.7, 0.7, 0.7, 0.2))  # More transparent
+        self.gl_view.addItem(yz_grid)
+        
+        # Add coordinate axes for reference
+        axis_length = 20
+        axes = gl.GLAxisItem(size=pg.Vector(axis_length, axis_length, axis_length))
+        self.gl_view.addItem(axes)
+        
+        # Setup lighting
+        self.setup_lighting()
+        
+    def setup_lighting(self):
+        """Setup lighting for better 3D visualization."""
+        # Add key light (main illumination)
+        key_light = gl.GLScatterPlotItem(
+            pos=np.array([[50, 50, 100]]),
+            color=(1, 1, 1, 0),  # Invisible point
+            size=0.1
+        )
+        self.gl_view.addItem(key_light)
+        
+        # Add fill light (softer light from opposite side)
+        fill_light = gl.GLScatterPlotItem(
+            pos=np.array([[-50, -50, 50]]),
+            color=(0.5, 0.5, 0.5, 0),  # Invisible point
+            size=0.1
+        )
+        self.gl_view.addItem(fill_light)
+        
+        # Add rim light (back light for edge definition)
+        rim_light = gl.GLScatterPlotItem(
+            pos=np.array([[0, -50, -50]]),
+            color=(0.2, 0.2, 0.2, 0),  # Invisible point
+            size=0.1
+        )
+        self.gl_view.addItem(rim_light)
 
         # QLabel for displaying the rendered SCAD image
         self.image_label = QLabel()
@@ -105,28 +167,37 @@ class MainWindow(QtWidgets.QMainWindow):
         self.debug_action.triggered.connect(self.toggle_debug_mode)
         self.toolbar.addAction(self.debug_action)
 
-        # Create layout
+        # Create layout with better proportions
         layout = QVBoxLayout()
-        layout.addWidget(self.gl_view)
-        layout.addWidget(self.image_label)  # Add the image label
-
-        # Info label
+        
+        # Give the GL view more space
+        self.gl_view.setMinimumSize(1000, 700)  # Larger minimum size
+        layout.addWidget(self.gl_view, stretch=8)  # Much more vertical space
+        
+        # Add other widgets with less space
+        layout.addWidget(self.image_label, stretch=1)  # Add the image label
+        
+        # Info and status in a horizontal layout
+        info_layout = QtWidgets.QHBoxLayout()
+        
         self.info_label = QtWidgets.QLabel()
-        self.info_label.setAlignment(Qt.AlignBottom)
-        layout.addWidget(self.info_label)
-
-        # Status label for conversion
+        self.info_label.setAlignment(Qt.AlignLeft)
+        info_layout.addWidget(self.info_label)
+        
         self.status_label = QtWidgets.QLabel()
-        self.status_label.setAlignment(Qt.AlignBottom)
-        layout.addWidget(self.status_label)
+        self.status_label.setAlignment(Qt.AlignRight)
+        info_layout.addWidget(self.status_label)
+        
+        layout.addLayout(info_layout, stretch=0)  # Minimal space for info
 
         # Set central widget
         widget = QtWidgets.QWidget()
         widget.setLayout(layout)
         self.setCentralWidget(widget)
 
-        # Resize window
-        self.resize(800, 600)
+        # Set window size and constraints
+        self.resize(1200, 800)  # Larger initial size
+        self.setMinimumSize(1024, 768)  # Prevent window from being too small
 
     def toggle_debug_mode(self):
         """Toggle debug mode on/off."""
@@ -174,14 +245,15 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 print("Creating mesh with improved rendering settings")
                 # Create mesh with improved rendering settings
+                # Create mesh with enhanced rendering settings
                 self.mesh_item = gl.GLMeshItem(
                     meshdata=self.mesh_data,
-                    color=(0.7, 0.7, 0.7, 1.0),
+                    color=self.current_color,  # Use current color
                     smooth=True,  # Enable smooth shading
-                    shader='shaded',  # Use shaded shader for better 3D appearance
-                    drawEdges=True,
-                    edgeColor=(0.2, 0.2, 0.2, 1.0),  # Darker edges for better contrast
-                    glOptions='opaque'  # Ensure proper depth testing
+                    shader='balloon',  # Better 3D appearance
+                    drawFaces=True,  # Show faces
+                    drawEdges=False,  # Hide edges for smoother look
+                    glOptions='opaque'  # Proper depth testing
                 )
                 print("GLMeshItem created successfully")
                 
@@ -339,12 +411,30 @@ class MainWindow(QtWidgets.QMainWindow):
         color = QtWidgets.QColorDialog.getColor(initial=initial_color)
 
         if color.isValid():
-            self.mesh_item.setColor(color.getRgbF())
+            # Store current color
+            self.current_color = color.getRgbF()
+            
+            # Remove old mesh item
+            self.gl_view.removeItem(self.mesh_item)
+            
+            # Create new mesh item with updated color and enhanced rendering
+            self.mesh_item = gl.GLMeshItem(
+                meshdata=self.mesh_data,
+                color=self.current_color,
+                smooth=True,
+                shader='balloon',
+                drawFaces=True,
+                drawEdges=False,
+                glOptions='opaque'
+            )
+            
+            # Add new mesh item
+            self.gl_view.addItem(self.mesh_item)
             self.update_info_label()
 
     def update_info_label(self):
         """Update the information label with current view settings."""
-        color = self.mesh_item.color()
         pos = self.gl_view.cameraPosition()
         x, y, z = pos.x(), pos.y(), pos.z()
-        self.info_label.setText(f"Camera Position - X: {x}, Y: {y}, Z: {z}, Color: {color}")
+        color_str = f"({self.current_color[0]:.2f}, {self.current_color[1]:.2f}, {self.current_color[2]:.2f})"
+        self.info_label.setText(f"Camera Position - X: {x:.1f}, Y: {y:.1f}, Z: {z:.1f}, Color: {color_str}")

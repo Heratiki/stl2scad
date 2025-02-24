@@ -1,39 +1,108 @@
 """
 OpenSCAD command builder with platform-aware argument handling.
+
+This module provides classes for building and validating OpenSCAD commands,
+ensuring proper shell escaping and format validation across different platforms.
 """
+
 import os
 import sys
 from pathlib import Path
-from typing import List, Union, Dict, Set
+from typing import List, Union, Dict, Set, Optional, TypedDict, Literal, Final
+
+class ExportFormat(TypedDict):
+    """Type definition for export format configuration."""
+    extensions: List[str]
+    description: str
+
+class OpenSCADError(Exception):
+    """Base class for OpenSCAD-related errors."""
+    pass
+
+class CommandError(OpenSCADError):
+    """Raised when command construction fails."""
+    pass
+
+class ValidationError(OpenSCADError):
+    """Raised when command validation fails."""
+    pass
 
 class OpenSCADCommandBuilder:
-    """Builds OpenSCAD commands with proper shell escaping."""
+    """
+    Builds OpenSCAD commands with proper shell escaping.
     
-    def __init__(self, openscad_path: Union[str, Path]):
+    Example:
+        >>> builder = OpenSCADCommandBuilder("/usr/bin/openscad")
+        >>> builder.set_input("model.scad")
+        >>> builder.set_output("output.stl")
+        >>> builder.add_arg("--render")
+        >>> command = builder.build()
+    """
+    
+    def __init__(self, openscad_path: Union[str, Path]) -> None:
+        """
+        Initialize the command builder.
+        
+        Args:
+            openscad_path: Path to OpenSCAD executable
+        """
         self.openscad_path = Path(openscad_path)
         self.args: List[str] = []
-        self.output_file: Union[str, Path, None] = None
-        self.input_file: Union[str, Path, None] = None
+        self.output_file: Optional[str] = None
+        self.input_file: Optional[str] = None
         
-    def add_arg(self, arg: str, value: Union[str, Path, None] = None) -> 'OpenSCADCommandBuilder':
-        """Add a command-line argument with optional value."""
+    def add_arg(self, arg: str, value: Optional[Union[str, Path]] = None) -> 'OpenSCADCommandBuilder':
+        """
+        Add a command-line argument with optional value.
+        
+        Args:
+            arg: Argument name (e.g., "--render")
+            value: Optional argument value
+            
+        Returns:
+            self for method chaining
+        """
         self.args.append(arg)
         if value is not None:
             self.args.append(self._escape_value(value))
         return self
     
     def set_input(self, input_file: Union[str, Path]) -> 'OpenSCADCommandBuilder':
-        """Set input SCAD file path."""
+        """
+        Set input SCAD file path.
+        
+        Args:
+            input_file: Path to input file
+            
+        Returns:
+            self for method chaining
+        """
         self.input_file = self._escape_value(input_file)
         return self
     
     def set_output(self, output_file: Union[str, Path]) -> 'OpenSCADCommandBuilder':
-        """Set output file path."""
+        """
+        Set output file path.
+        
+        Args:
+            output_file: Path to output file
+            
+        Returns:
+            self for method chaining
+        """
         self.output_file = self._escape_value(output_file)
         return self
     
     def _escape_value(self, value: Union[str, Path]) -> str:
-        """Platform-specific value escaping."""
+        """
+        Platform-specific value escaping.
+        
+        Args:
+            value: Value to escape
+            
+        Returns:
+            str: Escaped value
+        """
         str_value = str(value)
         if sys.platform == "win32":
             # PowerShell escaping rules
@@ -45,11 +114,19 @@ class OpenSCADCommandBuilder:
             return f"'{str_value}'" if ' ' in str_value else str_value
     
     def build(self) -> List[str]:
-        """Build the final command list."""
+        """
+        Build the final command list.
+        
+        Returns:
+            List[str]: Command parts ready for execution
+            
+        Raises:
+            CommandError: If input or output file is not specified
+        """
         if not self.input_file:
-            raise ValueError("Input file must be specified")
+            raise CommandError("Input file must be specified")
         if not self.output_file:
-            raise ValueError("Output file must be specified")
+            raise CommandError("Output file must be specified")
             
         return [
             str(self.openscad_path),
@@ -59,29 +136,34 @@ class OpenSCADCommandBuilder:
         ]
 
 class OpenSCADCommandValidator:
-    """Validates OpenSCAD commands and output formats."""
+    """
+    Validates OpenSCAD commands and output formats.
+    
+    This class provides static methods for validating OpenSCAD commands,
+    ensuring proper file formats and valid argument combinations.
+    """
     
     # Supported export formats and their file extensions
-    EXPORT_FORMATS = {
-        'stl': ['.stl'],
-        'off': ['.off'],
-        'amf': ['.amf'],
-        '3mf': ['.3mf'],
-        'csg': ['.csg'],
-        'dxf': ['.dxf'],
-        'svg': ['.svg'],
-        'pdf': ['.pdf'],
-        'png': ['.png'],
-        'echo': ['.txt', '.echo'],
-        'ast': ['.ast'],
-        'term': ['.term'],
-        'nef3': ['.nef3'],
-        'nefdbg': ['.nefdbg'],
-        'json': ['.json']
+    EXPORT_FORMATS: Final[Dict[str, ExportFormat]] = {
+        'stl': {'extensions': ['.stl'], 'description': '3D model format'},
+        'off': {'extensions': ['.off'], 'description': 'Object File Format'},
+        'amf': {'extensions': ['.amf'], 'description': 'Additive Manufacturing Format'},
+        '3mf': {'extensions': ['.3mf'], 'description': '3D Manufacturing Format'},
+        'csg': {'extensions': ['.csg'], 'description': 'Constructive Solid Geometry'},
+        'dxf': {'extensions': ['.dxf'], 'description': 'AutoCAD DXF'},
+        'svg': {'extensions': ['.svg'], 'description': 'Scalable Vector Graphics'},
+        'pdf': {'extensions': ['.pdf'], 'description': 'Portable Document Format'},
+        'png': {'extensions': ['.png'], 'description': 'Portable Network Graphics'},
+        'echo': {'extensions': ['.txt', '.echo'], 'description': 'Debug output'},
+        'ast': {'extensions': ['.ast'], 'description': 'Abstract Syntax Tree'},
+        'term': {'extensions': ['.term'], 'description': 'Terminal output'},
+        'nef3': {'extensions': ['.nef3'], 'description': 'CGAL Nef polyhedron'},
+        'nefdbg': {'extensions': ['.nefdbg'], 'description': 'CGAL Nef debug info'},
+        'json': {'extensions': ['.json'], 'description': 'JSON format'}
     }
 
     # Valid command-line arguments and their allowed values
-    VALID_ARGS = {
+    VALID_ARGS: Final[Dict[str, Optional[Set[str]]]] = {
         '--render': None,  # No value needed
         '--preview': {'throwntogether', 'show-edges', 'show-axes', 'show-scales', 'show-crosshairs'},
         '--csglimit': None,  # Numeric value
@@ -104,7 +186,7 @@ class OpenSCADCommandValidator:
     }
 
     @staticmethod
-    def validate_output_format(output_file: Union[str, Path], export_format: str = None) -> None:
+    def validate_output_format(output_file: Union[str, Path], export_format: Optional[str] = None) -> None:
         """
         Validate output file extension matches command arguments.
         
@@ -113,7 +195,7 @@ class OpenSCADCommandValidator:
             export_format: Optional export format specified in command
             
         Raises:
-            ValueError: If output format is invalid or incompatible
+            ValidationError: If output format is invalid or incompatible
         """
         output_path = Path(output_file)
         ext = output_path.suffix.lower()
@@ -121,19 +203,19 @@ class OpenSCADCommandValidator:
         # If export format is specified, validate extension matches
         if export_format:
             if export_format not in OpenSCADCommandValidator.EXPORT_FORMATS:
-                raise ValueError(f"Invalid export format: {export_format}")
+                raise ValidationError(f"Invalid export format: {export_format}")
             
-            valid_extensions = OpenSCADCommandValidator.EXPORT_FORMATS[export_format]
+            valid_extensions = OpenSCADCommandValidator.EXPORT_FORMATS[export_format]['extensions']
             if ext not in valid_extensions:
-                raise ValueError(
+                raise ValidationError(
                     f"Output file extension '{ext}' does not match export format '{export_format}'. "
                     f"Expected one of: {', '.join(valid_extensions)}"
                 )
         else:
             # Without explicit format, validate extension is supported
-            valid_extensions = {ext for exts in OpenSCADCommandValidator.EXPORT_FORMATS.values() for ext in exts}
+            valid_extensions = {ext for fmt in OpenSCADCommandValidator.EXPORT_FORMATS.values() for ext in fmt['extensions']}
             if ext not in valid_extensions:
-                raise ValueError(
+                raise ValidationError(
                     f"Unsupported output file extension: {ext}. "
                     f"Must be one of: {', '.join(sorted(valid_extensions))}"
                 )
@@ -147,7 +229,7 @@ class OpenSCADCommandValidator:
             input_file: Path to input file
             
         Raises:
-            ValueError: If input file is invalid
+            ValidationError: If input file is invalid
             FileNotFoundError: If input file does not exist
         """
         input_path = Path(input_file)
@@ -156,13 +238,13 @@ class OpenSCADCommandValidator:
         
         ext = input_path.suffix.lower()
         if ext not in {'.scad', '.stl', '.off', '.amf', '.3mf'}:
-            raise ValueError(
+            raise ValidationError(
                 f"Unsupported input file extension: {ext}. "
                 "Must be one of: .scad, .stl, .off, .amf, .3mf"
             )
 
     @staticmethod
-    def validate_arg(arg: str, value: str = None) -> None:
+    def validate_arg(arg: str, value: Optional[str] = None) -> None:
         """
         Validate command-line argument and its value.
         
@@ -171,15 +253,15 @@ class OpenSCADCommandValidator:
             value: Optional argument value
             
         Raises:
-            ValueError: If argument or value is invalid
+            ValidationError: If argument or value is invalid
         """
         if arg not in OpenSCADCommandValidator.VALID_ARGS:
-            raise ValueError(f"Invalid argument: {arg}")
+            raise ValidationError(f"Invalid argument: {arg}")
         
         allowed_values = OpenSCADCommandValidator.VALID_ARGS[arg]
         if allowed_values is not None and value is not None:
             if value not in allowed_values:
-                raise ValueError(
+                raise ValidationError(
                     f"Invalid value '{value}' for argument {arg}. "
                     f"Must be one of: {', '.join(sorted(allowed_values))}"
                 )
@@ -193,10 +275,11 @@ class OpenSCADCommandValidator:
             command: List of command parts
             
         Raises:
-            ValueError: If command is invalid
+            ValidationError: If command is invalid
+            FileNotFoundError: If OpenSCAD executable not found
         """
         if not command:
-            raise ValueError("Empty command")
+            raise ValidationError("Empty command")
         
         openscad_path = command[0]
         if not os.path.exists(openscad_path):
@@ -205,7 +288,8 @@ class OpenSCADCommandValidator:
         # Track if we've seen input/output files
         has_input = False
         has_output = False
-        export_format = None
+        export_format: Optional[str] = None
+        output_file: Optional[str] = None
         
         i = 1
         while i < len(command):
@@ -214,7 +298,7 @@ class OpenSCADCommandValidator:
             # Handle -o/--output
             if arg in {'-o', '--output'}:
                 if i + 1 >= len(command):
-                    raise ValueError(f"Missing value for {arg}")
+                    raise ValidationError(f"Missing value for {arg}")
                 has_output = True
                 output_file = command[i + 1]
                 i += 2
@@ -223,7 +307,7 @@ class OpenSCADCommandValidator:
             # Handle export format
             if arg == '--export-format':
                 if i + 1 >= len(command):
-                    raise ValueError("Missing value for --export-format")
+                    raise ValidationError("Missing value for --export-format")
                 export_format = command[i + 1]
                 i += 2
                 continue
@@ -238,7 +322,7 @@ class OpenSCADCommandValidator:
                     else:
                         i += 1
                 else:
-                    raise ValueError(f"Invalid argument: {arg}")
+                    raise ValidationError(f"Invalid argument: {arg}")
             else:
                 # Assume it's the input file
                 has_input = True
@@ -248,10 +332,10 @@ class OpenSCADCommandValidator:
         
         # Validate required parts
         if not has_input:
-            raise ValueError("No input file specified")
+            raise ValidationError("No input file specified")
         if not has_output:
-            raise ValueError("No output file specified (-o/--output required)")
+            raise ValidationError("No output file specified (-o/--output required)")
         
         # If export format specified, validate output extension
-        if export_format:
+        if export_format and output_file:
             OpenSCADCommandValidator.validate_output_format(output_file, export_format)

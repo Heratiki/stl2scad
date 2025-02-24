@@ -7,7 +7,10 @@ import numpy as np
 from stl import mesh
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtGui import QColor, QPixmap
-from PyQt5.QtWidgets import QVBoxLayout, QProgressDialog, QLabel
+from PyQt5.QtWidgets import (
+    QVBoxLayout, QProgressDialog, QLabel, QMainWindow, QWidget,
+    QHBoxLayout, QAction, QFileDialog, QMessageBox, QColorDialog
+)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSize
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
@@ -20,14 +23,14 @@ class ConversionWorker(QThread):
     finished = pyqtSignal(ConversionStats)
     error = pyqtSignal(str)
 
-    def __init__(self, input_file, output_file, tolerance=1e-6, debug=False):
+    def __init__(self, input_file: str, output_file: str, tolerance: float = 1e-6, debug: bool = False) -> None:
         super().__init__()
         self.input_file = input_file
         self.output_file = output_file
         self.tolerance = tolerance
         self.debug = debug
 
-    def run(self):
+    def run(self) -> None:
         try:
             self.progress.emit("Loading STL file...")
             stats = stl2scad(self.input_file, self.output_file, self.tolerance, self.debug)
@@ -38,14 +41,15 @@ class ConversionWorker(QThread):
 class MainWindow(QtWidgets.QMainWindow):
     """Main window for the STL to OpenSCAD converter application."""
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize the main window."""
         super(MainWindow, self).__init__(*args, **kwargs)
         self.current_stl_file = None
         self.debug_mode = False
         self.current_color = (0.8, 0.8, 0.8, 1.0)  # Initial light gray color
         self.setup_ui()
 
-    def setup_ui(self):
+    def setup_ui(self) -> None:
         """Initialize the user interface."""
         # Initialize GL view with enhanced settings
         self.gl_view = gl.GLViewWidget()
@@ -93,7 +97,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Setup lighting
         self.setup_lighting()
         
-    def setup_lighting(self):
+    def setup_lighting(self) -> None:
         """Setup lighting for better 3D visualization."""
         # Add key light (main illumination)
         key_light = gl.GLScatterPlotItem(
@@ -199,13 +203,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resize(1200, 800)  # Larger initial size
         self.setMinimumSize(1024, 768)  # Prevent window from being too small
 
-    def toggle_debug_mode(self):
+    def toggle_debug_mode(self) -> None:
         """Toggle debug mode on/off."""
         self.debug_mode = self.debug_action.isChecked()
         if not self.debug_mode:
             self.image_label.clear() # Clear image when debug mode is off
 
-    def load_stl_file(self):
+    def load_stl_file(self) -> None:
         """Load and display an STL file."""
         file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, "Open STL File", "", "STL Files (*.stl)")
@@ -290,7 +294,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.center_object()
             self.fit_to_window()
 
-    def convert_to_scad(self):
+    def convert_to_scad(self) -> None:
         """Convert the loaded STL file to OpenSCAD format."""
         if not self.current_stl_file:
             return
@@ -309,11 +313,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # Start conversion
         self.worker.start()
 
-    def update_status(self, message):
+    def update_status(self, message: str) -> None:
         """Update the status label with a message."""
         self.status_label.setText(message)
 
-    def conversion_finished(self, stats):
+    def conversion_finished(self, stats: ConversionStats) -> None:
         """Handle successful conversion completion."""
         self.convert_action.setEnabled(True)
         reduction = 100 * (1 - stats.deduplicated_vertices/stats.original_vertices)
@@ -332,13 +336,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.status_label.setText("Error: SCAD rendering failed.")
                 QtWidgets.QMessageBox.critical(self, "Rendering Error", "SCAD rendering failed. See console for details.")
 
-    def conversion_error(self, error_message):
+    def conversion_error(self, error_message: str) -> None:
         """Handle conversion error."""
         self.convert_action.setEnabled(True)
         self.status_label.setText(f"Error: {error_message}")
         QtWidgets.QMessageBox.critical(self, "Conversion Error", error_message)
 
-    def center_object(self):
+    def center_object(self) -> None:
         """Center the 3D object in the view."""
         if self.mesh_data is not None:
             vertices = self.mesh_data.vertexes()
@@ -357,7 +361,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.gl_view.setCameraPosition(distance=distance, elevation=45, azimuth=45)
             self.gl_view.update()
 
-    def rotate_object(self, axis):
+    def rotate_object(self, axis: str) -> None:
+        """
+        Rotate the view to look along the specified axis.
+        
+        Args:
+            axis: One of 'x', 'y', or 'z'
+        """
         """Rotate the view to look along the specified axis."""
         if self.mesh_data is not None:
             vertices = self.mesh_data.vertexes()
@@ -378,7 +388,7 @@ class MainWindow(QtWidgets.QMainWindow):
             
             self.gl_view.update()
     
-    def fit_to_window(self):
+    def fit_to_window(self) -> None:
         """Scale the view to fit the object."""
         if self.mesh_data is not None:
             vertices = self.mesh_data.vertexes()
@@ -405,7 +415,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.gl_view.setCameraPosition(distance=distance, elevation=elevation, azimuth=azimuth)
             self.gl_view.update()
 
-    def select_color(self):
+    def select_color(self) -> None:
         """Open a color picker and update the object color."""
         initial_color = QColor(180, 180, 180)  # Initial color is light gray
         color = QtWidgets.QColorDialog.getColor(initial=initial_color)
@@ -432,7 +442,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.gl_view.addItem(self.mesh_item)
             self.update_info_label()
 
-    def update_info_label(self):
+    def update_info_label(self) -> None:
         """Update the information label with current view settings."""
         pos = self.gl_view.cameraPosition()
         x, y, z = pos.x(), pos.y(), pos.z()

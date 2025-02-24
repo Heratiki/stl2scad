@@ -148,22 +148,63 @@ class MainWindow(QtWidgets.QMainWindow):
             # Clear existing mesh if any
             self.gl_view.clear()
 
-            # Load and display new mesh
-            your_mesh = mesh.Mesh.from_file(file_path)
-            vertices = np.concatenate(your_mesh.vectors)
-            faces = np.array([(i, i+1, i+2) for i in range(0, len(vertices), 3)])
-            self.mesh_data = gl.MeshData(vertexes=vertices, faces=faces)
-            # Create mesh with improved rendering settings
-            self.mesh_item = gl.GLMeshItem(
-                meshdata=self.mesh_data,
-                color=(0.7, 0.7, 0.7, 1.0),
-                smooth=True,  # Enable smooth shading
-                shader='shaded',  # Use shaded shader for better 3D appearance
-                drawEdges=True,
-                edgeColor=(0.2, 0.2, 0.2, 1.0),  # Darker edges for better contrast
-                glOptions='opaque'  # Ensure proper depth testing
-            )
-            self.gl_view.addItem(self.mesh_item)
+            try:
+                print(f"Loading STL file: {file_path}")
+                
+                # Load and display new mesh
+                your_mesh = mesh.Mesh.from_file(file_path)
+                print(f"STL loaded successfully:")
+                print(f"Number of triangles: {len(your_mesh.vectors)}")
+                print(f"Mesh bounds: {your_mesh.min_} to {your_mesh.max_}")
+                
+                vertices = np.concatenate(your_mesh.vectors)
+                faces = np.array([(i, i+1, i+2) for i in range(0, len(vertices), 3)])
+                print(f"Processed vertices: {len(vertices)}")
+                print(f"Processed faces: {len(faces)}")
+                
+                self.mesh_data = gl.MeshData(vertexes=vertices, faces=faces)
+                print("MeshData created successfully")
+                
+            except Exception as e:
+                error_msg = f"Error loading STL file: {str(e)}"
+                print(error_msg)
+                self.status_label.setText(error_msg)
+                QtWidgets.QMessageBox.critical(self, "Loading Error", error_msg)
+                return
+            try:
+                print("Creating mesh with improved rendering settings")
+                # Create mesh with improved rendering settings
+                self.mesh_item = gl.GLMeshItem(
+                    meshdata=self.mesh_data,
+                    color=(0.7, 0.7, 0.7, 1.0),
+                    smooth=True,  # Enable smooth shading
+                    shader='shaded',  # Use shaded shader for better 3D appearance
+                    drawEdges=True,
+                    edgeColor=(0.2, 0.2, 0.2, 1.0),  # Darker edges for better contrast
+                    glOptions='opaque'  # Ensure proper depth testing
+                )
+                print("GLMeshItem created successfully")
+                
+                self.gl_view.addItem(self.mesh_item)
+                print("Mesh added to view")
+                
+                # Update status with mesh information
+                vertices = self.mesh_data.vertexes()
+                min_vals = vertices.min(axis=0)
+                max_vals = vertices.max(axis=0)
+                size = np.max(max_vals - min_vals)
+                self.status_label.setText(
+                    f"Model loaded: Size = {size:.2f} units, "
+                    f"Vertices = {len(vertices)}, "
+                    f"Faces = {len(self.mesh_data.faces())}"
+                )
+                
+            except Exception as e:
+                error_msg = f"Error rendering mesh: {str(e)}"
+                print(error_msg)
+                self.status_label.setText(error_msg)
+                QtWidgets.QMessageBox.critical(self, "Rendering Error", error_msg)
+                return
 
             # Add lighting for better 3D visualization
             light = gl.GLScatterPlotItem(

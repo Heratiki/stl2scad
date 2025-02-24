@@ -9,11 +9,23 @@ import subprocess
 import os
 import sys
 import re
-from typing import Tuple, List, Dict
+from typing import Tuple, List, Dict, Optional, Union, Any
 from dataclasses import dataclass
+from numpy.typing import NDArray
 
-def run_openscad(description: str, args: list, log_file: str, openscad_path: str = None, timeout: int = 30) -> bool:
-    """Execute OpenSCAD command with proper error handling and logging."""
+def run_openscad(description: str, args: List[str], log_file: str, openscad_path: Optional[str] = None, timeout: int = 30) -> bool:
+    """Execute OpenSCAD command with proper error handling and logging.
+    
+    Args:
+        description: Description of the command being executed
+        args: List of command arguments
+        log_file: Path to the log file
+        openscad_path: Optional path to OpenSCAD executable
+        timeout: Command timeout in seconds
+        
+    Returns:
+        bool: True if command executed successfully, False otherwise
+    """
     logging.info(f"Executing OpenSCAD: {description}")
     logging.debug(f"Command arguments: {args}")
     logging.debug(f"Log file path: {log_file}")
@@ -81,18 +93,36 @@ def run_openscad(description: str, args: list, log_file: str, openscad_path: str
         logging.debug("Stack trace:", exc_info=True)
         return False
 
-def format_arg(arg):
-    """Format argument for PowerShell."""
+def format_arg(arg: Any) -> str:
+    """Format argument for PowerShell.
+    
+    Args:
+        arg: The argument to format
+        
+    Returns:
+        str: Formatted argument string
+    """
     if ' ' in str(arg):
         return f'"{arg}"'
     return str(arg)
 
 from . import config
 
-def get_openscad_path():
-    """Get OpenSCAD executable path and verify version requirements."""
-    def check_version(path):
-        """Check if OpenSCAD at path is nightly build with required version."""
+def get_openscad_path() -> Optional[str]:
+    """Get OpenSCAD executable path and verify version requirements.
+    
+    Returns:
+        Optional[str]: Path to OpenSCAD executable if found and valid, None otherwise
+    """
+    def check_version(path: str) -> Tuple[bool, str]:
+        """Check if OpenSCAD at path is nightly build with required version.
+        
+        Args:
+            path: Path to OpenSCAD executable
+            
+        Returns:
+            Tuple[bool, str]: (is_valid, message)
+        """
         try:
             logging.info(f"Checking OpenSCAD version at: {path}")
             args = ['--info']
@@ -220,7 +250,7 @@ def validate_stl(mesh: stl.mesh.Mesh) -> None:
         raise STLValidationError("Empty STL file")
     
     # Check for non-manifold edges
-    edges = {}
+    edges: Dict[Tuple[Tuple[float, float, float], Tuple[float, float, float]], List[int]] = {}
     for i, face in enumerate(mesh.vectors):
         for j in range(3):
             edge = tuple(sorted([
@@ -236,7 +266,7 @@ def validate_stl(mesh: stl.mesh.Mesh) -> None:
     if non_manifold:
         raise STLValidationError(f"Non-manifold edges found: {len(non_manifold)} edges")
 
-def find_unique_vertices(points: np.ndarray, tolerance: float = 1e-6) -> Tuple[np.ndarray, Dict[int, int]]:
+def find_unique_vertices(points: NDArray[np.float64], tolerance: float = 1e-6) -> Tuple[NDArray[np.float64], Dict[int, int]]:
     """
     Deduplicate vertices within given tolerance.
     
@@ -245,10 +275,10 @@ def find_unique_vertices(points: np.ndarray, tolerance: float = 1e-6) -> Tuple[n
         tolerance: Distance tolerance for considering vertices identical
         
     Returns:
-        Tuple of unique vertices array and mapping from original to unique indices
+        Tuple[NDArray[np.float64], Dict[int, int]]: Tuple of unique vertices array and mapping from original to unique indices
     """
-    unique_vertices = []
-    vertex_map = {}
+    unique_vertices: List[NDArray[np.float64]] = []
+    vertex_map: Dict[int, int] = {}
     
     for i, vertex in enumerate(points):
         found = False
@@ -263,7 +293,7 @@ def find_unique_vertices(points: np.ndarray, tolerance: float = 1e-6) -> Tuple[n
     
     return np.array(unique_vertices), vertex_map
 
-def optimize_scad(points: np.ndarray, faces: List[List[int]]) -> Tuple[np.ndarray, List[List[int]]]:
+def optimize_scad(points: NDArray[np.float64], faces: List[List[int]]) -> Tuple[NDArray[np.float64], List[List[int]]]:
     """
     Optimize SCAD output for better performance.
     
@@ -272,15 +302,15 @@ def optimize_scad(points: np.ndarray, faces: List[List[int]]) -> Tuple[np.ndarra
         faces: List of face vertex indices
         
     Returns:
-        Tuple of optimized points array and faces list
+        Tuple[NDArray[np.float64], List[List[int]]]: Tuple of optimized points array and faces list
     """
     # Remove unused vertices
     used_vertices = set()
     for face in faces:
         used_vertices.update(face)
     
-    vertex_map = {}
-    new_points = []
+    vertex_map: Dict[int, int] = {}
+    new_points: List[NDArray[np.float64]] = []
     for i, vertex in enumerate(points):
         if i in used_vertices:
             vertex_map[i] = len(new_points)
@@ -299,13 +329,12 @@ def extract_metadata(mesh: stl.mesh.Mesh) -> Dict[str, str]:
         mesh: The STL mesh to extract metadata from
         
     Returns:
-        Dictionary of metadata
+        Dict[str, str]: Dictionary of metadata
     """
-    metadata = {}
+    metadata: Dict[str, str] = {}
     if hasattr(mesh, 'name') and mesh.name:
         metadata['name'] = mesh.name.decode('utf-8').strip()
     metadata['volume'] = str(mesh.get_mass_properties()[0])
-    # Format bbox as a clean string with proper numeric values
     # Format bbox as a clean string with proper numeric values
     bbox_min = [float(x) for x in mesh.min_]
     bbox_max = [float(x) for x in mesh.max_]
@@ -417,10 +446,11 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
         debug: Enable debug mode (renders comparison previews)
 
     Returns:
-        ConversionStats object with conversion statistics
+        ConversionStats: Object with conversion statistics
 
     Raises:
         STLValidationError: If STL validation fails
+        FileNotFoundError: If OpenSCAD is not found or invalid version
     """
     # Configure logging for debugging
     logging.basicConfig(
@@ -450,7 +480,7 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
     unique_points, vertex_map = find_unique_vertices(points, tolerance)
     
     # Create faces using mapped vertices
-    faces = []
+    faces: List[List[int]] = []
     for i in range(0, len(points), 3):
         face = [vertex_map[i], vertex_map[i+1], vertex_map[i+2]]
         faces.append(face)

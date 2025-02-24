@@ -54,3 +54,6 @@ test*.json
 *.scad
 memory-bank/
 tests/data/Cube_3d_printing_sample_debug.echo
+
+# Ignore debug folder
+debug/

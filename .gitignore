@@ -53,3 +53,4 @@ test*.json
 *.stl
 *.scad
 memory-bank/
+tests/data/Cube_3d_printing_sample_debug.echo

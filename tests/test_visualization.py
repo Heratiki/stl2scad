@@ -17,9 +17,10 @@ def test_preview_generation(sample_stl_file, test_output_dir):
     output_file = test_output_dir / "preview_test.scad"
     
     # Write test SCAD file that imports the STL
+    # Use as_posix() so Windows backslashes don't break OpenSCAD's path parser
     output_file.write_text(f'''
     // Preview test
-    import("{sample_stl_file}");
+    import("{sample_stl_file.as_posix()}");
     ''')
     
     # Test different preview options
@@ -75,9 +76,10 @@ def test_analysis_generation(sample_stl_file, test_output_dir):
     output_file = test_output_dir / "analysis_test.scad"
     
     # Write test SCAD file
+    # Use as_posix() so Windows backslashes don't break OpenSCAD's path parser
     output_file.write_text(f'''
     // Analysis test
-    import("{sample_stl_file}");
+    import("{sample_stl_file.as_posix()}");
     echo("Starting analysis...");
     ''')
     

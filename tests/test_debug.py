@@ -10,10 +10,6 @@ import datetime
 import psutil
 from pathlib import Path
 
-# Add the project root to Python path
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
-
 from stl2scad.core.converter import stl2scad, get_openscad_path
 
 def test_debug_features(verbose=True, log_file="test_run.log"):
@@ -102,18 +98,13 @@ def test_debug_features(verbose=True, log_file="test_run.log"):
                 all_files_exist = False
                 log(f"Warning: {name} file is empty at {path}")
         
-        if all_files_exist:
-            log("\nTest completed successfully - all debug files generated!")
-            return True
-        else:
-            log("\nTest completed with warnings - some debug files missing or empty")
-            return False
-            
+        assert all_files_exist, "Some debug files are missing or empty"
+        log("\nTest completed successfully - all debug files generated!")
+
     except Exception as e:
         print(f"\nError during testing: {str(e)}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
-        return False
+        raise
 
 if __name__ == "__main__":
-    success = test_debug_features()
-    sys.exit(0 if success else 1)
+    test_debug_features()

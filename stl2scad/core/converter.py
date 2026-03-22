@@ -10,7 +10,7 @@ import os
 import sys
 import re
 import tempfile
-from typing import Tuple, List, Dict, Optional, Union, Any
+from typing import Tuple, List, Dict, Optional, Union
 from dataclasses import dataclass
 from numpy.typing import NDArray
 
@@ -34,80 +34,37 @@ def run_openscad(description: str, args: List[str], log_file: str, openscad_path
     logging.debug(f"OpenSCAD path: {openscad_path or 'default'}")
     
     try:
-        # Build PowerShell command for Windows
-        if sys.platform == "win32":
-            # Format each argument properly for PowerShell
-            formatted_args = [format_arg(arg) for arg in args]
-            args_str = ' '.join(formatted_args)
-            # Run OpenSCAD with timeout and output redirection
-            ps_script = f"""
-            $ErrorActionPreference = 'Stop';
-            try {{
-                $output = & {format_arg(openscad_path or 'openscad')} {args_str} 2>&1;
-                $output | Out-File -FilePath {format_arg(log_file)} -Encoding UTF8;
-                if ($LASTEXITCODE -ne 0) {{
-                    throw "OpenSCAD command failed with exit code $LASTEXITCODE";
-                }}
-                $output;
-            }} catch {{
-                Write-Error "OpenSCAD error: $_";
-                exit 1;
-            }}
-            """
-            import base64
-            encoded_script = base64.b64encode(ps_script.encode('utf-16-le')).decode('utf-8')
-            command = ['powershell', '-NoProfile', '-EncodedCommand', encoded_script]
-        else:
-            # Direct command for non-Windows
-            command = [(openscad_path or "openscad")] + args
-        
-        logging.info(f"Executing command: {' '.join(command)}")
-        
-        # Run with timeout
-        result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=timeout)
+        command = [(openscad_path or "openscad")] + args
+        logging.info(f"Executing command: {' '.join(str(c) for c in command)}")
+
+        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+
+        # Always write output to log file so callers (e.g. version check) can read it
+        with open(log_file, 'w', encoding='utf-8') as f:
+            if result.stdout:
+                f.write(result.stdout)
+            if result.stderr:
+                f.write(result.stderr)
+
         if result.stdout:
             logging.debug(f"Command output: {result.stdout}")
         if result.stderr:
             logging.warning(f"Command stderr: {result.stderr}")
-        
-        # Check if OpenSCAD is still running
-        if sys.platform == "win32":
-            check_process = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq openscad.exe'], capture_output=True, text=True)
-            if 'openscad.exe' in check_process.stdout:
-                logging.warning("OpenSCAD process still running, attempting to terminate...")
-                subprocess.run(['taskkill', '/F', '/IM', 'openscad.exe'], capture_output=True)
-                return False
-        
+
+        if result.returncode != 0:
+            logging.error(f"Command failed with exit code {result.returncode}.")
+            return False
+
         logging.info("Command completed successfully")
         return True
-        
+
     except subprocess.TimeoutExpired:
         logging.error(f"Command timed out after {timeout} seconds. This may indicate that OpenSCAD is having trouble processing the file or the system is under heavy load.")
-        return False
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Command failed with exit code {e.returncode}. This typically indicates an issue with the OpenSCAD command or its arguments.")
-        if e.stdout:
-            logging.debug(f"Command output: {e.stdout}")
-        if e.stderr:
-            logging.error(f"Error details: {e.stderr}")
         return False
     except Exception as e:
         logging.error(f"Unexpected error executing OpenSCAD: {str(e)}")
         logging.debug("Stack trace:", exc_info=True)
         return False
-
-def format_arg(arg: Any) -> str:
-    """Format argument for PowerShell.
-    
-    Args:
-        arg: The argument to format
-        
-    Returns:
-        str: Formatted argument string
-    """
-    if ' ' in str(arg):
-        return f'"{arg}"'
-    return str(arg)
 
 from . import config
 
@@ -169,7 +126,10 @@ def get_openscad_path() -> Optional[str]:
             version = version_match.group(1)
             required_version = config.get_required_version()
             logging.info(f"Detected OpenSCAD version: {version}")
-            if version < required_version:
+            # Compare versions using tuples for proper semantic versioning
+            version_tuple = tuple(map(int, version.split('.')))
+            required_tuple = tuple(map(int, required_version.split('.')))
+            if version_tuple < required_tuple:
                 logging.error(f"OpenSCAD version {version} is older than required {required_version}")
                 return False, f"Version {version} is older than required {required_version}"
                 
@@ -227,13 +187,9 @@ def get_openscad_path() -> Optional[str]:
             "https://openscad.org/downloads.html#snapshots"
         )
 
-# Configure logging to stdout with more verbose format
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(levelname)s: %(message)s',
-    stream=sys.stdout,
-    force=True  # Override any existing handlers
-)
+# Configure logging for subprocesses (detailed format used in stl2scad function)
+# NOTE: Module-level logging config is removed to avoid interfering with pytest.
+# Logging is configured in the stl2scad() function when needed.
 
 @dataclass
 class ConversionStats:
@@ -490,13 +446,6 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
         STLValidationError: If STL validation fails
         FileNotFoundError: If OpenSCAD is not found or invalid version
     """
-    # Configure logging for debugging
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        force=True
-    )
-    
     logging.debug('Starting STL to SCAD conversion')
     logging.debug('Input file: %s', input_file)
     logging.debug('Output file: %s', output_file)

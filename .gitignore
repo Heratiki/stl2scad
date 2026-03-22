@@ -57,3 +57,7 @@ tests/data/Cube_3d_printing_sample_debug.echo
 
 # Ignore debug folder
 debug/
+
+# Test output artifacts
+tests/output/
+tests/.tmp_output/

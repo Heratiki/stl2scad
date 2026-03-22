@@ -2,8 +2,9 @@
 Test configuration and fixtures for STL2SCAD tests.
 """
 
-import os
 import pytest
+import shutil
+import tempfile
 from pathlib import Path
 
 @pytest.fixture
@@ -13,10 +14,12 @@ def test_data_dir():
 
 @pytest.fixture
 def test_output_dir():
-    """Return path to test output directory."""
-    output_dir = Path(__file__).parent / "output"
-    output_dir.mkdir(exist_ok=True)
-    return output_dir
+    """Return an isolated temporary output directory for each test."""
+    base_tmp = Path(__file__).parent / ".tmp_output"
+    base_tmp.mkdir(exist_ok=True)
+    temp_dir = Path(tempfile.mkdtemp(prefix="test-", dir=base_tmp))
+    yield temp_dir
+    shutil.rmtree(temp_dir, ignore_errors=True)
 
 @pytest.fixture
 def sample_stl_file(test_data_dir):
@@ -25,10 +28,5 @@ def sample_stl_file(test_data_dir):
 
 @pytest.fixture
 def cleanup_output(test_output_dir):
-    """Clean up test output files after test."""
+    """Clean up temporary test output files after test."""
     yield
-    for file in test_output_dir.glob("*"):
-        try:
-            file.unlink()
-        except Exception as e:
-            print(f"Warning: Could not delete {file}: {e}")

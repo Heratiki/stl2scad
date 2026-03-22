@@ -41,20 +41,22 @@ def run_openscad(description: str, args: List[str], log_file: str, openscad_path
             args_str = ' '.join(formatted_args)
             # Run OpenSCAD with timeout and output redirection
             ps_script = f"""
-            $ErrorActionPreference = 'Stop'
+            $ErrorActionPreference = 'Stop';
             try {{
-                $output = & {format_arg(openscad_path or 'openscad')} {args_str} 2>&1
-                $output | Out-File -FilePath {format_arg(log_file)} -Encoding UTF8
+                $output = & {format_arg(openscad_path or 'openscad')} {args_str} 2>&1;
+                $output | Out-File -FilePath {format_arg(log_file)} -Encoding UTF8;
                 if ($LASTEXITCODE -ne 0) {{
-                    throw "OpenSCAD command failed with exit code $LASTEXITCODE"
+                    throw "OpenSCAD command failed with exit code $LASTEXITCODE";
                 }}
-                $output
+                $output;
             }} catch {{
-                Write-Error "OpenSCAD error: $_"
-                exit 1
+                Write-Error "OpenSCAD error: $_";
+                exit 1;
             }}
             """
-            command = ['powershell', '-NoProfile', '-Command', ps_script]
+            import base64
+            encoded_script = base64.b64encode(ps_script.encode('utf-16-le')).decode('utf-8')
+            command = ['powershell', '-NoProfile', '-EncodedCommand', encoded_script]
         else:
             # Direct command for non-Windows
             command = [(openscad_path or "openscad")] + args

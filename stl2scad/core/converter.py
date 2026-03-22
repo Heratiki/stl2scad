@@ -10,6 +10,7 @@ import os
 import sys
 import re
 import tempfile
+import json
 from typing import Tuple, List, Dict, Optional, Union
 from dataclasses import dataclass
 from numpy.typing import NDArray
@@ -321,7 +322,9 @@ def extract_metadata(mesh: stl.mesh.Mesh) -> Dict[str, str]:
         # (a null byte in a comment causes OpenSCAD to report a parse error).
         raw_name = mesh.name.decode('utf-8', errors='replace')
         metadata['name'] = raw_name.replace('\x00', '').strip()
-    metadata['volume'] = str(mesh.get_mass_properties()[0])
+    with np.errstate(all='ignore'):
+        volume = float(mesh.get_mass_properties()[0])
+    metadata['volume'] = str(volume) if np.isfinite(volume) else "unknown"
     # Format bbox as a clean string with proper numeric values
     bbox_min = [float(x) for x in mesh.min_]
     bbox_max = [float(x) for x in mesh.max_]
@@ -450,6 +453,8 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
     logging.debug('Input file: %s', input_file)
     logging.debug('Output file: %s', output_file)
     logging.debug('Debug mode: %s', debug)
+    if tolerance <= 0:
+        raise ValueError("Tolerance must be positive")
 
     try:
         stl_mesh = stl.mesh.Mesh.from_file(input_file)
@@ -466,15 +471,28 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
     points = stl_mesh.points.reshape(-1, 3)
     unique_points, vertex_map = find_unique_vertices(points, tolerance)
     
-    # Create faces using mapped vertices
-    # TODO: degenerate faces (where two or more mapped indices are identical,
-    #       which can happen when distinct STL vertices snap to the same grid
-    #       cell) are passed through silently.  OpenSCAD ignores zero-area
-    #       faces, but it would be cleaner to filter them here.
+    # Create faces using mapped vertices and filter degenerate triangles that
+    # collapse during vertex snapping.
     faces: List[List[int]] = []
+    degenerate_faces_removed = 0
     for i in range(0, len(points), 3):
         face = [vertex_map[i], vertex_map[i+1], vertex_map[i+2]]
+        if len(set(face)) < 3:
+            degenerate_faces_removed += 1
+            continue
         faces.append(face)
+
+    if not faces:
+        raise STLValidationError(
+            "No valid faces remain after vertex deduplication. "
+            "Try reducing the tolerance."
+        )
+    if degenerate_faces_removed:
+        metadata['degenerate_faces_removed'] = str(degenerate_faces_removed)
+        logging.warning(
+            "Filtered %d degenerate face(s) after vertex deduplication.",
+            degenerate_faces_removed
+        )
 
     # Optimize SCAD output
     final_points, final_faces = optimize_scad(unique_points, faces)
@@ -591,6 +609,8 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
             # fails when invoked via openscad.com; --render works headlessly.
             preview_args = [
                 "--render",
+                "--summary=all",
+                "--summary-file", debug_json,
                 "--autocenter",
                 "--viewall",
                 "-o", debug_png,
@@ -599,18 +619,6 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
             if not run_openscad("Preview image", preview_args, f"{debug_base}_preview.log", openscad_path):
                 success = False
                 logging.warning("Preview image generation failed")
-
-            # Generate analysis JSON with basic options
-            analysis_args = [
-                "--render",  # Use render mode for analysis
-                "--quiet",   # Reduce unnecessary output
-                "--export-format", "json",
-                "-o", debug_json,
-                debug_scad
-            ]
-            if not run_openscad("Analysis data", analysis_args, f"{debug_base}_analysis.log", openscad_path):
-                success = False
-                logging.warning("Analysis data generation failed")
 
             # Generate echo output
             echo_args = [
@@ -622,6 +630,42 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
             if not run_openscad("Debug output", echo_args, f"{debug_base}_echo.log", openscad_path):
                 success = False
                 logging.warning("Debug output generation failed")
+
+            # Fallbacks for analysis JSON when the installed OpenSCAD build
+            # does not support --summary-file (or does not emit it for this run).
+            json_exists = os.path.exists(debug_json) and os.path.getsize(debug_json) > 0
+            if not json_exists:
+                legacy_analysis_args = [
+                    "--render",
+                    "--quiet",
+                    "--export-format", "json",
+                    "-o", debug_json,
+                    debug_scad
+                ]
+                if not run_openscad(
+                    "Analysis data (legacy JSON export)",
+                    legacy_analysis_args,
+                    f"{debug_base}_analysis.log",
+                    openscad_path
+                ):
+                    logging.warning("Legacy JSON export not available; writing fallback analysis JSON.")
+
+            json_exists = os.path.exists(debug_json) and os.path.getsize(debug_json) > 0
+            if not json_exists:
+                fallback_analysis = {
+                    "note": "Fallback analysis generated by stl2scad because OpenSCAD JSON export is unavailable.",
+                    "conversion": {
+                        "input_file": os.path.abspath(input_file),
+                        "output_file": os.path.abspath(output_file),
+                        "original_vertices": original_vertex_count,
+                        "optimized_vertices": len(final_points),
+                        "faces": len(final_faces),
+                        "degenerate_faces_removed": degenerate_faces_removed,
+                    },
+                    "metadata": metadata
+                }
+                with open(debug_json, "w", encoding="utf-8") as analysis_file:
+                    json.dump(fallback_analysis, analysis_file, indent=2)
 
             # Verify all files were created
             files_status = {

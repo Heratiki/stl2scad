@@ -3,7 +3,6 @@ Tests for STL to SCAD conversion functionality.
 """
 
 import pytest
-from pathlib import Path
 from stl2scad.core.converter import stl2scad, validate_stl, STLValidationError
 import stl
 from .utils import setup_logging, verify_debug_files
@@ -119,3 +118,36 @@ def test_vertex_deduplication(sample_stl_file, test_output_dir):
         reduction = 100 * (1 - stats.deduplicated_vertices/stats.original_vertices)
         log(f"Vertex reduction: {reduction:.1f}%")
         assert stats.deduplicated_vertices > 0, "No vertices after deduplication"
+
+def test_degenerate_faces_filtered(test_output_dir):
+    """Degenerate faces created by tolerance snapping should be removed."""
+    log = setup_logging()
+    log("\nTesting Degenerate Face Filtering")
+
+    input_file = test_output_dir / "degenerate_input.stl"
+    output_file = test_output_dir / "degenerate_output.scad"
+
+    # Two triangles: one valid, one that collapses with tolerance=1e-3.
+    mesh = stl.mesh.Mesh(numpy.zeros(2, dtype=stl.mesh.Mesh.dtype))
+    mesh.vectors[0] = numpy.array([
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0]
+    ])
+    mesh.vectors[1] = numpy.array([
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0001],
+        [0.0, 1.0, 0.0]
+    ])
+    mesh.save(str(input_file))
+
+    stats = stl2scad(str(input_file), str(output_file), tolerance=1e-3)
+    assert output_file.exists(), "Output SCAD file not created"
+    assert stats.faces == 1, "One degenerate face should have been filtered"
+    assert stats.metadata.get("degenerate_faces_removed") == "1"
+
+def test_invalid_tolerance_raises(sample_stl_file, test_output_dir):
+    """API should reject zero/negative tolerance values."""
+    output_file = test_output_dir / "invalid_tolerance.scad"
+    with pytest.raises(ValueError, match="Tolerance must be positive"):
+        stl2scad(str(sample_stl_file), str(output_file), tolerance=0)

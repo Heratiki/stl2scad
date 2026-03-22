@@ -21,7 +21,7 @@ def main():
     else:
         # CLI mode
         from stl2scad.cli import main as cli_main
-        cli_main()
+        sys.exit(cli_main())
 
 if __name__ == "__main__":
     main()

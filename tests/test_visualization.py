@@ -83,7 +83,7 @@ def test_analysis_generation(sample_stl_file, test_output_dir):
     echo("Starting analysis...");
     ''')
     
-    # Test different analysis options
+    # Test different analysis options via OpenSCAD summary-file JSON output.
     analysis_configs = [
         {
             'name': 'basic',
@@ -101,10 +101,11 @@ def test_analysis_generation(sample_stl_file, test_output_dir):
     for config in analysis_configs:
         log(f"\nTesting {config['name']} analysis")
         output_json = test_output_dir / f"analysis_{config['name']}.json"
+        output_png = test_output_dir / f"analysis_{config['name']}.png"
         
         args = config['args'] + [
-            '--export-format', 'json',
-            '-o', str(output_json),
+            '--summary-file', str(output_json),
+            '-o', str(output_png),
             str(output_file)
         ]
         
@@ -115,21 +116,19 @@ def test_analysis_generation(sample_stl_file, test_output_dir):
             openscad_path
         )
         
-        if result:
-            log(f"{config['name']} analysis generated successfully")
-            assert output_json.exists(), f"{config['name']} JSON not created"
-            assert output_json.stat().st_size > 0, f"{config['name']} JSON is empty"
-            
-            # Verify JSON content
-            try:
-                with open(output_json) as f:
-                    data = json.load(f)
-                log(f"Successfully parsed {config['name']} JSON")
-            except json.JSONDecodeError as e:
-                log(f"Error parsing {config['name']} JSON: {e}", "ERROR")
-                raise
-        else:
-            log(f"Warning: {config['name']} analysis generation failed", "WARNING")
+        assert result, f"{config['name']} analysis generation failed"
+        log(f"{config['name']} analysis generated successfully")
+        assert output_json.exists(), f"{config['name']} JSON not created"
+        assert output_json.stat().st_size > 0, f"{config['name']} JSON is empty"
+        
+        # Verify JSON content
+        try:
+            with open(output_json) as f:
+                json.load(f)
+            log(f"Successfully parsed {config['name']} JSON")
+        except json.JSONDecodeError as e:
+            log(f"Error parsing {config['name']} JSON: {e}", "ERROR")
+            raise
 
 def test_measurement_tools(test_output_dir):
     """Test measurement tool generation."""

@@ -228,3 +228,33 @@ def create_cube_stl(output_file):
     
     # Write the mesh to file
     cube.save(output_file)
+
+
+def test_phase2_metrics(test_data_dir, test_output_dir):
+    """Test Hausdorff distance and normal deviation calculations."""
+    from stl2scad.core.verification.metrics import calculate_hausdorff_distance, compare_normal_vectors, sample_mesh_points
+    log = setup_logging()
+    log("\nTesting Phase 2 Metrics")
+    
+    cube_file = test_output_dir / "cube_metrics.stl"
+    create_cube_stl(cube_file)
+    mesh1 = stl.mesh.Mesh.from_file(str(cube_file))
+    
+    # Create a slightly shifted, identically shaped mesh for comparison
+    mesh2 = stl.mesh.Mesh.from_file(str(cube_file))
+    mesh2.translate(np.array([0.1, 0.0, 0.0]))
+    
+    points1, normals1 = sample_mesh_points(mesh1, 1000)
+    points2, normals2 = sample_mesh_points(mesh2, 1000)
+    
+    hausdorff = calculate_hausdorff_distance(points1, points2)
+    log(f"Hausdorff Distance: {hausdorff}")
+    
+    # Distance should be close to the true offset of 0.1.
+    assert hausdorff < 0.3, "Hausdorff distance should reflect the defined translation"
+    
+    normal_dev = compare_normal_vectors(points1, normals1, points1, normals1)
+    log(f"Normal Deviation: {normal_dev} degrees")
+    
+    # Normals should match perfectly on identical meshes
+    assert normal_dev < 1.0, "Normals should perfectly match for identical geometries"

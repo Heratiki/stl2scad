@@ -86,16 +86,133 @@ def get_stl_bounding_box(mesh: Mesh) -> Dict[str, float]:
     }
 
 
-def calculate_scad_metrics(scad_file: Union[str, Path], timeout: int = 60) -> Dict[str, Any]:
+def sample_mesh_points(mesh: Mesh, num_samples: int) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Calculate volume and surface area of a SCAD model using OpenSCAD.
+    Uniformly sample points and their normals from an STL mesh.
+    
+    Args:
+        mesh: The STL mesh
+        num_samples: Number of points to sample
+        
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: Arrays of sampled points and their corresponding normals
+    """
+    # Calculate areas of all triangles
+    v0 = mesh.vectors[:, 0]
+    v1 = mesh.vectors[:, 1]
+    v2 = mesh.vectors[:, 2]
+    
+    # Cross product magnitude is twice the area
+    cross_prod = np.cross(v1 - v0, v2 - v0)
+    areas = 0.5 * np.linalg.norm(cross_prod, axis=1)
+    
+    total_area = np.sum(areas)
+    if total_area == 0:
+        return np.zeros((0, 3)), np.zeros((0, 3))
+        
+    probabilities = areas / total_area
+    
+    # Choose triangles based on area
+    triangle_indices = np.random.choice(len(mesh.vectors), size=num_samples, p=probabilities)
+    sampled_triangles = mesh.vectors[triangle_indices]
+    sampled_normals = mesh.normals[triangle_indices]
+    
+    # Normalize normals to handle any unnormalized normals in the mesh
+    norms = np.linalg.norm(sampled_normals, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0 # avoid division by zero
+    sampled_normals = sampled_normals / norms
+    
+    # Generate random barycentric coordinates
+    u = np.random.rand(num_samples, 1)
+    v = np.random.rand(num_samples, 1)
+    
+    # Adjust to keep within the triangle
+    mask = u + v > 1
+    u[mask] = 1 - u[mask]
+    v[mask] = 1 - v[mask]
+    w = 1 - u - v
+    
+    # Calculate uniform points inside chosen triangles
+    A = sampled_triangles[:, 0]
+    B = sampled_triangles[:, 1]
+    C = sampled_triangles[:, 2]
+    
+    points = u * A + v * B + w * C
+    
+    return points, sampled_normals
+
+
+def calculate_hausdorff_distance(points1: np.ndarray, points2: np.ndarray) -> float:
+    """
+    Calculate Hausdorff distance between two sets of points using broadcasting.
+    
+    Args:
+        points1: First array of points (N, 3)
+        points2: Second array of points (M, 3)
+        
+    Returns:
+        float: Hausdorff distance
+    """
+    if len(points1) == 0 or len(points2) == 0:
+        return 0.0
+    
+    # Calculate pairwise distances (N, M)
+    # Using squared distance first to save computation
+    diff = points1[:, np.newaxis, :] - points2[np.newaxis, :, :]
+    dist_sq = np.sum(diff ** 2, axis=-1)
+    
+    # For each point in points1, find the minimum distance to points2
+    min_dist_sq_1 = np.min(dist_sq, axis=1)
+    
+    # For each point in points2, find the minimum distance to points1
+    min_dist_sq_2 = np.min(dist_sq, axis=0)
+    
+    # The Hausdorff distance is the maximum of these minimums
+    hausdorff_sq = max(np.max(min_dist_sq_1), np.max(min_dist_sq_2))
+    
+    return float(np.sqrt(hausdorff_sq))
+
+
+def compare_normal_vectors(points1: np.ndarray, normals1: np.ndarray, 
+                         points2: np.ndarray, normals2: np.ndarray) -> float:
+    """
+    Compare normal deviations between two surfaces.
+    For each point in points1, finds nearest point in points2 and measures angle between normals.
+    
+    Returns:
+        float: Maximum normal deviation in degrees (95th percentile to ignore outliers).
+    """
+    if len(points1) == 0 or len(points2) == 0:
+        return 0.0
+        
+    # Find nearest neighbors from points1 to points2
+    diff = points1[:, np.newaxis, :] - points2[np.newaxis, :, :]
+    dist_sq = np.sum(diff ** 2, axis=-1)
+    nearest_idx = np.argmin(dist_sq, axis=1)
+    
+    nearest_normals = normals2[nearest_idx]
+    
+    # Calculate angles between normals1 and nearest_normals via dot product
+    dot_products = np.sum(normals1 * nearest_normals, axis=1)
+    dot_products = np.clip(dot_products, -1.0, 1.0)
+    
+    angles_rad = np.arccos(dot_products)
+    angles_deg = np.degrees(angles_rad)
+    
+    # Return the 95th percentile of errors to be robust against a few outliers
+    return float(np.percentile(angles_deg, 95))
+
+
+def calculate_scad_metrics(scad_file: Union[str, Path], timeout: int = 120) -> Dict[str, Any]:
+    """
+    Calculate volume and surface area of a SCAD model using OpenSCAD via STL export.
     
     Args:
         scad_file: Path to the SCAD file
         timeout: Timeout in seconds for OpenSCAD execution
         
     Returns:
-        Dict[str, Any]: Dictionary with volume, surface_area, and bounding_box
+        Dict[str, Any]: Dictionary with volume, surface_area, bounding_box, and mesh
         
     Raises:
         RuntimeError: If OpenSCAD execution fails
@@ -107,100 +224,49 @@ def calculate_scad_metrics(scad_file: Union[str, Path], timeout: int = 60) -> Di
     # Get OpenSCAD path
     openscad_path = get_openscad_path()
     
-    # TODO: This entire implementation is non-functional and needs to be
-    #       rewritten.  There are two separate bugs:
-    #
-    #  1.  The generated metrics.scad echoes undefined variables (`volume`,
-    #      `surface_area`, `bbox_min`, `bbox_max`).  A stl2scad-generated
-    #      polyhedron SCAD file does not define those variables, so OpenSCAD
-    #      would print `VOLUME= undef` etc. and the regex below would never
-    #      match.  To get volume/surface-area from OpenSCAD you need to either:
-    #        a) render to STL and measure the resulting mesh (reliable), or
-    #        b) use `echo(volume=$preview ? 0 : volume(geometry()))` with a
-    #           custom wrapper that calls OpenSCAD's built-in functions (version
-    #           dependent).
-    #
-    #  2.  Echo output is written to OpenSCAD's *stderr* (or the log file
-    #      passed via --hardwarnings), NOT to the `-o` output file.  The `-o`
-    #      flag specifies a geometry export (STL, OFF, etc.), not a text log.
-    #      To capture echo output you must parse the log file written by
-    #      run_openscad, not the echo_file.
-    #
-    #  Until this is fixed, calculate_scad_metrics always returns
-    #  {'volume': None, 'surface_area': None, 'bounding_box': None} and the
-    #  verify_existing_conversion comparison will silently produce no results.
-
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Create metrics calculation SCAD file
-        metrics_file = Path(temp_dir) / "metrics.scad"
-        echo_file = Path(temp_dir) / "metrics.echo"
-
-        with open(metrics_file, 'w') as f:
-            f.write(f'include "{scad_path.absolute()}";\n')
-            f.write('$fn = 100;\n')  # Set facet number for accurate calculations
-            f.write('echo("VOLUME=", $fn=100, volume);\n')
-            f.write('echo("AREA=", $fn=100, surface_area);\n')
-            f.write('echo("BBOX_MIN=", $fn=100, bbox_min);\n')
-            f.write('echo("BBOX_MAX=", $fn=100, bbox_max);\n')
-
+        temp_stl = Path(temp_dir) / "rendered.stl"
+        log_file = Path(temp_dir) / "render.log"
+        
+        args = ["-o", str(temp_stl), str(scad_path)]
+        
         # Run OpenSCAD to calculate metrics
         success = run_openscad(
-            "Calculate metrics",
-            ["--render", "-o", str(echo_file), str(metrics_file)],
-            str(Path(temp_dir) / "metrics.log"),
+            "Export SCAD to STL for metrics",
+            args,
+            str(log_file),
             openscad_path,
             timeout
         )
 
-        if not success:
-            raise RuntimeError(f"Failed to calculate metrics for {scad_file}")
+        if not success or not temp_stl.exists():
+            return {
+                'volume': None,
+                'surface_area': None,
+                'bounding_box': None,
+                'mesh': None
+            }
 
-        # Parse metrics from echo file
-        metrics = {
-            'volume': None,
-            'surface_area': None,
-            'bounding_box': None
-        }
-
-        if echo_file.exists():
-            with open(echo_file, 'r') as f:
-                content = f.read()
-
-                # Extract volume
-                volume_match = re.search(r'VOLUME=\s*([\d.e+-]+)', content)
-                if volume_match:
-                    metrics['volume'] = float(volume_match.group(1))
-
-                # Extract surface area
-                area_match = re.search(r'AREA=\s*([\d.e+-]+)', content)
-                if area_match:
-                    metrics['surface_area'] = float(area_match.group(1))
-
-                # Extract bounding box
-                bbox_min_match = re.search(r'BBOX_MIN=\s*\[([\d.e+-]+),\s*([\d.e+-]+),\s*([\d.e+-]+)\]', content)
-                bbox_max_match = re.search(r'BBOX_MAX=\s*\[([\d.e+-]+),\s*([\d.e+-]+),\s*([\d.e+-]+)\]', content)
-
-                if bbox_min_match and bbox_max_match:
-                    min_x = float(bbox_min_match.group(1))
-                    min_y = float(bbox_min_match.group(2))
-                    min_z = float(bbox_min_match.group(3))
-                    max_x = float(bbox_max_match.group(1))
-                    max_y = float(bbox_max_match.group(2))
-                    max_z = float(bbox_max_match.group(3))
-
-                    metrics['bounding_box'] = {
-                        'min_x': min_x,
-                        'min_y': min_y,
-                        'min_z': min_z,
-                        'max_x': max_x,
-                        'max_y': max_y,
-                        'max_z': max_z,
-                        'width': max_x - min_x,
-                        'height': max_y - min_y,
-                        'depth': max_z - min_z
-                    }
-
-        return metrics
+        try:
+            rendered_mesh = stl.mesh.Mesh.from_file(str(temp_stl))
+            
+            volume = calculate_stl_volume(rendered_mesh)
+            surface_area = calculate_stl_surface_area(rendered_mesh)
+            bounding_box = get_stl_bounding_box(rendered_mesh)
+            
+            return {
+                'volume': volume,
+                'surface_area': surface_area,
+                'bounding_box': bounding_box,
+                'mesh': rendered_mesh
+            }
+        except Exception:
+            return {
+                'volume': None,
+                'surface_area': None,
+                'bounding_box': None,
+                'mesh': None
+            }
 
 
 def compare_metrics(stl_metrics: Dict[str, Any], scad_metrics: Dict[str, Any]) -> Dict[str, Any]:
@@ -265,7 +331,35 @@ def compare_metrics(stl_metrics: Dict[str, Any], scad_metrics: Dict[str, Any]) -
                 }
         
         results['bounding_box'] = bbox_results
-    
+
+    # Calculate point-based metrics if both meshes are available
+    if 'mesh' in stl_metrics and 'mesh' in scad_metrics and stl_metrics['mesh'] is not None and scad_metrics['mesh'] is not None:
+        stl_mesh = stl_metrics['mesh']
+        scad_mesh = scad_metrics['mesh']
+        
+        num_samples = 1000
+        stl_points, stl_normals = sample_mesh_points(stl_mesh, num_samples)
+        scad_points, scad_normals = sample_mesh_points(scad_mesh, num_samples)
+        
+        hausdorff = calculate_hausdorff_distance(stl_points, scad_points)
+        normal_dev = compare_normal_vectors(stl_points, stl_normals, scad_points, scad_normals)
+        
+        # Compute relative bounding box diagonal for percentage calculation of Hausdorff
+        # using STL mesh bounding box
+        stl_bbox = stl_metrics['bounding_box']
+        diagonal = np.sqrt(stl_bbox['width']**2 + stl_bbox['height']**2 + stl_bbox['depth']**2)
+        hausdorff_pct = (hausdorff / diagonal * 100) if diagonal > 0 else 0.0
+        
+        results['hausdorff_distance'] = {
+            'value': hausdorff,
+            'difference_percent': hausdorff_pct
+        }
+        
+        results['normal_deviation'] = {
+            'value': normal_dev,
+            'difference_percent': normal_dev  # In degrees, acts as its own percentage/delta conceptually
+        }
+
     return results
 
 
@@ -277,7 +371,7 @@ def get_stl_metrics(stl_file: Union[str, Path]) -> Dict[str, Any]:
         stl_file: Path to the STL file
         
     Returns:
-        Dict[str, Any]: Dictionary with volume, surface_area, and bounding_box
+        Dict[str, Any]: Dictionary with volume, surface_area, bounding_box, and mesh
         
     Raises:
         FileNotFoundError: If STL file not found
@@ -297,5 +391,6 @@ def get_stl_metrics(stl_file: Union[str, Path]) -> Dict[str, Any]:
     return {
         'volume': volume,
         'surface_area': surface_area,
-        'bounding_box': bounding_box
+        'bounding_box': bounding_box,
+        'mesh': mesh
     }

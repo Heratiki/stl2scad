@@ -69,7 +69,7 @@ class VerificationResult:
         bbox_str = ""
         if 'bounding_box' in self.comparison:
             bbox_comp = self.comparison['bounding_box']
-            dimensions = []
+            dimensions: List[str] = []
             for dim in ['width', 'height', 'depth']:
                 if dim in bbox_comp:
                     dim_comp = bbox_comp[dim]
@@ -252,19 +252,14 @@ def verify_existing_conversion(
         tolerance=tolerance
     )
     
-    # Generate detailed report
-    report = {
-        'verification_result': 'passed' if passed else 'failed',
-        'metrics_comparison': comparison,
-        'tolerance_used': tolerance,
-        'failures': []
-    }
+    # Create failures list first to avoid type issues with Dict[str, Any]
+    failures: List[Dict[str, Any]] = []
     
     # Add failure details
     if 'volume' in comparison:
         volume_diff_percent = abs(comparison['volume']['difference_percent'])
         if volume_diff_percent > tolerance['volume']:
-            report['failures'].append({
+            failures.append({
                 'metric': 'volume',
                 'difference_percent': volume_diff_percent,
                 'tolerance': tolerance['volume'],
@@ -274,7 +269,7 @@ def verify_existing_conversion(
     if 'surface_area' in comparison:
         area_diff_percent = abs(comparison['surface_area']['difference_percent'])
         if area_diff_percent > tolerance['surface_area']:
-            report['failures'].append({
+            failures.append({
                 'metric': 'surface_area',
                 'difference_percent': area_diff_percent,
                 'tolerance': tolerance['surface_area'],
@@ -285,7 +280,7 @@ def verify_existing_conversion(
         for dim, values in comparison['bounding_box'].items():
             dim_diff_percent = abs(values['difference_percent'])
             if dim_diff_percent > tolerance['bounding_box']:
-                report['failures'].append({
+                failures.append({
                     'metric': f"bounding_box_{dim}",
                     'difference_percent': dim_diff_percent,
                     'tolerance': tolerance['bounding_box'],
@@ -295,7 +290,7 @@ def verify_existing_conversion(
     if 'hausdorff_distance' in comparison and 'hausdorff_distance' in tolerance:
         hausdorff_pct = abs(comparison['hausdorff_distance']['difference_percent'])
         if hausdorff_pct > tolerance['hausdorff_distance']:
-            report['failures'].append({
+            failures.append({
                 'metric': 'hausdorff_distance',
                 'difference_percent': hausdorff_pct,
                 'tolerance': tolerance['hausdorff_distance'],
@@ -305,12 +300,20 @@ def verify_existing_conversion(
     if 'normal_deviation' in comparison and 'normal_deviation' in tolerance:
         normal_dev = abs(comparison['normal_deviation']['difference_percent'])
         if normal_dev > tolerance['normal_deviation']:
-            report['failures'].append({
+            failures.append({
                 'metric': 'normal_deviation',
                 'difference_percent': normal_dev,
                 'tolerance': tolerance['normal_deviation'],
                 'message': f"Normal deviation ({normal_dev:.2f} deg) exceeds tolerance ({tolerance['normal_deviation']:.2f} deg)"
             })
+            
+    # Generate detailed report
+    report: Dict[str, Any] = {
+        'verification_result': 'passed' if passed else 'failed',
+        'metrics_comparison': comparison,
+        'tolerance_used': tolerance,
+        'failures': failures
+    }
     
     result.report = report
     

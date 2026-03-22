@@ -280,7 +280,7 @@ def compare_metrics(stl_metrics: Dict[str, Any], scad_metrics: Dict[str, Any]) -
     Returns:
         Dict[str, Any]: Comparison results with differences and percentages
     """
-    results = {}
+    results: Dict[str, Any] = {}
     
     # Compare volume
     if 'volume' in stl_metrics and 'volume' in scad_metrics and stl_metrics['volume'] is not None and scad_metrics['volume'] is not None:

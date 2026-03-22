@@ -7,11 +7,32 @@ and difference highlighting.
 """
 
 import os
-import tempfile
 from pathlib import Path
 from typing import Dict, Any, Optional, Union, List, Tuple
+import stl
 
 from ..converter import run_openscad, get_openscad_path
+
+def _get_stl_z_bounds(stl_path: Path) -> Tuple[float, float]:
+    """Return min and max Z bounds for an STL mesh."""
+    mesh = stl.mesh.Mesh.from_file(str(stl_path))
+    return float(mesh.min_[2]), float(mesh.max_[2])
+
+
+def _compute_cross_section_heights(min_z: float, max_z: float, count: int = 5) -> List[float]:
+    """Compute cross-section heights between 10% and 90% of model height."""
+    if count <= 0:
+        return []
+    if max_z <= min_z:
+        return [min_z] * count
+    if count == 1:
+        return [min_z + (max_z - min_z) * 0.5]
+
+    model_height = max_z - min_z
+    return [
+        min_z + model_height * (0.1 + 0.8 * i / (count - 1))
+        for i in range(count)
+    ]
 
 
 def generate_comparison_visualization(
@@ -55,6 +76,16 @@ def generate_comparison_visualization(
     
     # Get OpenSCAD path
     openscad_path = get_openscad_path()
+
+    # Derive cross-section levels from the source model's actual Z bounds.
+    try:
+        model_min_z, model_max_z = _get_stl_z_bounds(stl_path)
+    except Exception:
+        model_min_z, model_max_z = 0.0, 0.0
+    cross_sections = 5
+    section_heights = _compute_cross_section_heights(model_min_z, model_max_z, cross_sections)
+    model_height = max(0.0, model_max_z - model_min_z)
+    cross_section_thickness = max(0.1, model_height * 0.01)
     
     stl_path_posix = stl_path.absolute().as_posix()
     scad_path_posix = scad_path.absolute().as_posix()
@@ -69,6 +100,7 @@ def generate_comparison_visualization(
     show_scad = true;
     cross_section = false;
     cross_section_z = 0;
+    cross_section_thickness = 0.1;
     view_type = "side_by_side"; // override at command line using -D view_type="..."
     
     // Colors
@@ -114,7 +146,7 @@ def generate_comparison_visualization(
                 show_scad_model();
             }}
             translate([0, 0, cross_section_z])
-            cube([1000, 1000, 0.1], center=true);
+            cube([1000, 1000, cross_section_thickness], center=true);
         }}
     }}
     
@@ -144,10 +176,6 @@ def generate_comparison_visualization(
         'side': {'eye': [200, 0, 0], 'center': [0, 0, 0], 'up': [0, 0, 1]},
     }
     
-    # TODO: All render calls below use --preview=throwntogether which requires
-    #       an active OpenGL context and fails when invoked via openscad.com on
-    #       Windows.  Replace with --render for headless-compatible PNG export.
-    #       Tracked as part of the debug-mode render fix.
     for view_name in views:
         output_file = output_path / f"{view_name}_view.png"
 
@@ -160,7 +188,7 @@ def generate_comparison_visualization(
 
                 success = run_openscad(
                     f"Comparison view {angle}°",
-                    ["-D", 'view_type="overlay"', "--camera", camera, "--preview=throwntogether", "--autocenter", "--viewall", "-o", str(angle_file), str(vis_file)],
+                    ["-D", 'view_type="overlay"', "--camera", camera, "--render", "--autocenter", "--viewall", "-o", str(angle_file), str(vis_file)],
                     str(output_path / f"comparison_{angle}.log"),
                     openscad_path
                 )
@@ -181,7 +209,7 @@ def generate_comparison_visualization(
                 
                 success = run_openscad(
                     f"{view_name.capitalize()} view",
-                    ["-D", 'view_type="overlay"', "--camera", camera_str, "--preview=throwntogether", "--autocenter", "--viewall", "-o", str(output_file), str(vis_file)],
+                    ["-D", 'view_type="overlay"', "--camera", camera_str, "--render", "--autocenter", "--viewall", "-o", str(output_file), str(vis_file)],
                     str(output_path / f"{view_name}_view.log"),
                     openscad_path
                 )
@@ -191,24 +219,22 @@ def generate_comparison_visualization(
                 else:
                     print(f"Warning: Failed to generate {view_name} view")
     
-    # Generate cross-section views at different heights
-    # TODO: model_height is always 0 so all cross-sections land at z=0 and
-    #       show identical (empty) slices.  Derive the actual model height from
-    #       the STL bounding box using get_stl_bounding_box() from metrics.py
-    #       and pass it in (or load the STL here).
-    model_height = 0  # This should be determined from the model
-    cross_sections = 5  # Number of cross-sections
-    
-    for i in range(cross_sections):
-        # Calculate cross-section height (from 10% to 90% of model height)
-        height_percent = 0.1 + (0.8 * i / (cross_sections - 1))
-        height = model_height * height_percent
-        
+    # Generate cross-section views at actual model heights.
+    for i, height in enumerate(section_heights):
         # Generate cross-section image
         output_file = output_path / f"cross_section_{i+1}.png"
         success = run_openscad(
             f"Cross-section {i+1}",
-            ["-D", 'view_type="cross_section"', "-D", f"cross_section_z={height}", "--preview=throwntogether", "--autocenter", "--viewall", "-o", str(output_file), str(vis_file)],
+            [
+                "-D", 'view_type="cross_section"',
+                "-D", f"cross_section_z={height}",
+                "-D", f"cross_section_thickness={cross_section_thickness}",
+                "--render",
+                "--autocenter",
+                "--viewall",
+                "-o", str(output_file),
+                str(vis_file)
+            ],
             str(output_path / f"cross_section_{i+1}.log"),
             openscad_path
         )

@@ -6,7 +6,13 @@ import pytest
 import json
 from pathlib import Path
 from stl2scad.core.converter import get_openscad_path, run_openscad
+from stl2scad.core.verification.visualization import _compute_cross_section_heights
 from .utils import setup_logging, verify_debug_files
+
+def test_cross_section_height_calculation():
+    """Cross-sections should span 10%..90% of model z-range."""
+    heights = _compute_cross_section_heights(10.0, 30.0, 5)
+    assert heights == pytest.approx([12.0, 16.0, 20.0, 24.0, 28.0])
 
 def test_preview_generation(sample_stl_file, test_output_dir):
     """Test generation of preview images."""

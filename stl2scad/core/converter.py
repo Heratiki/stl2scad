@@ -9,6 +9,7 @@ import subprocess
 import os
 import sys
 import re
+import tempfile
 from typing import Tuple, List, Dict, Optional, Union, Any
 from dataclasses import dataclass
 from numpy.typing import NDArray
@@ -126,15 +127,23 @@ def get_openscad_path() -> Optional[str]:
         try:
             logging.info(f"Checking OpenSCAD version at: {path}")
             args = ['--info']
-            log_file = "version_check.log"
-            
-            if not run_openscad("Version check", args, log_file, path):
-                logging.error("Failed to run OpenSCAD version check")
-                return False, "Failed to run version check"
-            
-            # Read version info from log
-            with open(log_file, 'r', encoding='utf-8') as f:
-                info = f.read().strip()
+            # Use a temp file so the log doesn't litter the working directory
+            tmp_fd, log_file = tempfile.mkstemp(suffix='.log', prefix='openscad_version_')
+            os.close(tmp_fd)
+
+            try:
+                if not run_openscad("Version check", args, log_file, path):
+                    logging.error("Failed to run OpenSCAD version check")
+                    return False, "Failed to run version check"
+
+                # Read version info from log
+                with open(log_file, 'r', encoding='utf-8') as f:
+                    info = f.read().strip()
+            finally:
+                try:
+                    os.unlink(log_file)
+                except OSError:
+                    pass
             logging.debug(f"Raw OpenSCAD info: {info}")
             
             # Clean up the info string
@@ -239,59 +248,75 @@ class STLValidationError(Exception):
 def validate_stl(mesh: stl.mesh.Mesh) -> None:
     """
     Validate STL mesh integrity.
-    
+
     Args:
         mesh: The STL mesh to validate
-        
+
     Raises:
         STLValidationError: If validation fails
     """
     if len(mesh.points) == 0:
         raise STLValidationError("Empty STL file")
-    
+
     # Check for non-manifold edges
+    # TODO: This builds edge keys as tuples of float tuples which is fragile
+    #       for coordinates that differ by floating-point rounding.  Replace
+    #       with a rounded/integer-keyed approach consistent with
+    #       find_unique_vertices, or use a proper mesh library (e.g. trimesh).
     edges: Dict[Tuple[Tuple[float, float, float], Tuple[float, float, float]], List[int]] = {}
     for i, face in enumerate(mesh.vectors):
         for j in range(3):
             edge = tuple(sorted([
-                tuple(face[j]), 
+                tuple(face[j]),
                 tuple(face[(j + 1) % 3])
             ]))
             if edge in edges:
                 edges[edge].append(i)
             else:
                 edges[edge] = [i]
-    
+
     non_manifold = [e for e, faces in edges.items() if len(faces) > 2]
     if non_manifold:
         raise STLValidationError(f"Non-manifold edges found: {len(non_manifold)} edges")
 
 def find_unique_vertices(points: NDArray[np.float64], tolerance: float = 1e-6) -> Tuple[NDArray[np.float64], Dict[int, int]]:
     """
-    Deduplicate vertices within given tolerance.
-    
+    Deduplicate vertices within given tolerance using O(n log n) numpy sorting.
+
+    Vertices are snapped to a grid of size `tolerance` before comparison so that
+    nearly-identical coordinates (within one grid cell) are treated as the same
+    point.  The first occurrence of each unique grid cell is used as the
+    canonical vertex coordinate.
+
     Args:
-        points: Array of vertex coordinates
-        tolerance: Distance tolerance for considering vertices identical
-        
+        points: Array of vertex coordinates, shape (N, 3)
+        tolerance: Grid cell size for vertex snapping (default 1e-6)
+
     Returns:
-        Tuple[NDArray[np.float64], Dict[int, int]]: Tuple of unique vertices array and mapping from original to unique indices
+        Tuple of (unique_points array, vertex_map dict) where vertex_map[i]
+        gives the index into unique_points for original vertex i.
     """
-    unique_vertices: List[NDArray[np.float64]] = []
-    vertex_map: Dict[int, int] = {}
-    
-    for i, vertex in enumerate(points):
-        found = False
-        for j, unique in enumerate(unique_vertices):
-            if np.allclose(vertex, unique, rtol=tolerance):
-                vertex_map[i] = j
-                found = True
-                break
-        if not found:
-            vertex_map[i] = len(unique_vertices)
-            unique_vertices.append(vertex)
-    
-    return np.array(unique_vertices), vertex_map
+    # Round to a grid defined by tolerance to merge nearly-identical vertices.
+    # Multiply by 1/tolerance then round to integer so that any two points
+    # closer than `tolerance` map to the same integer cell.
+    scale = 1.0 / tolerance
+    rounded = np.round(points * scale).astype(np.int64)
+
+    # np.unique on rows is O(n log n) via lexicographic sort.
+    # first_occurrence[j] = index in `points` of the first row matching
+    #                        the j-th unique rounded row (sorted order).
+    # inverse[i]          = index into unique rows for original row i.
+    _, first_occurrence, inverse = np.unique(
+        rounded, axis=0, return_index=True, return_inverse=True
+    )
+
+    # Use original (unrounded) coordinates for the canonical vertices so we
+    # don't shift geometry by up to half a tolerance cell.
+    unique_points = points[first_occurrence]
+
+    vertex_map: Dict[int, int] = {i: int(inverse[i]) for i in range(len(points))}
+
+    return unique_points, vertex_map
 
 def optimize_scad(points: NDArray[np.float64], faces: List[List[int]]) -> Tuple[NDArray[np.float64], List[List[int]]]:
     """
@@ -333,7 +358,11 @@ def extract_metadata(mesh: stl.mesh.Mesh) -> Dict[str, str]:
     """
     metadata: Dict[str, str] = {}
     if hasattr(mesh, 'name') and mesh.name:
-        metadata['name'] = mesh.name.decode('utf-8').strip()
+        # Binary STL headers are 80 bytes padded with null bytes; strip them
+        # along with whitespace so they don't end up embedded in SCAD comments
+        # (a null byte in a comment causes OpenSCAD to report a parse error).
+        raw_name = mesh.name.decode('utf-8', errors='replace')
+        metadata['name'] = raw_name.replace('\x00', '').strip()
     metadata['volume'] = str(mesh.get_mass_properties()[0])
     # Format bbox as a clean string with proper numeric values
     bbox_min = [float(x) for x in mesh.min_]
@@ -345,10 +374,17 @@ def extract_metadata(mesh: stl.mesh.Mesh) -> Dict[str, str]:
 def render_stl_preview(stl_mesh: stl.mesh.Mesh, output_path: str) -> None:
     """
     Render STL preview using VTK.
-    
+
     Args:
         stl_mesh: The STL mesh to render
         output_path: Path to save the preview image
+
+    .. note::
+        TODO: This function is optional/incomplete.  VTK is not listed as a
+        required dependency (it is not in requirements.txt), so it will silently
+        do nothing on most installs.  Either add vtk to the dependencies and
+        document the requirement, or remove this function and rely solely on the
+        OpenSCAD-based --render preview generated in debug mode.
     """
     try:
         logging.info("Attempting to render STL preview...")
@@ -480,6 +516,10 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
     unique_points, vertex_map = find_unique_vertices(points, tolerance)
     
     # Create faces using mapped vertices
+    # TODO: degenerate faces (where two or more mapped indices are identical,
+    #       which can happen when distinct STL vertices snap to the same grid
+    #       cell) are passed through silently.  OpenSCAD ignores zero-area
+    #       faces, but it would be cleaner to filter them here.
     faces: List[List[int]] = []
     for i in range(0, len(points), 3):
         face = [vertex_map[i], vertex_map[i+1], vertex_map[i+2]]
@@ -595,9 +635,11 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
             debug_base = os.path.splitext(debug_scad)[0]
             success = True
             
-            # Generate preview image with minimal options
+            # Generate preview image using full render mode.
+            # --preview=throwntogether requires an active OpenGL context and
+            # fails when invoked via openscad.com; --render works headlessly.
             preview_args = [
-                "--preview=throwntogether",  # Use simpler preview mode
+                "--render",
                 "--autocenter",
                 "--viewall",
                 "-o", format_arg(debug_png),

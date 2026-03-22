@@ -62,16 +62,18 @@ def parse_convert_args(argv: List[str]) -> tuple[str, str, float, bool]:
     Raises:
         ValueError: If tolerance value is invalid
     """
-    if len(argv) < 3:
+    # argv here is sys.argv[2:] (command name already stripped by main())
+    # so positional args are at index 0 and 1, not 1 and 2.
+    if len(argv) < 2:
         usage()
-    
-    input_file = argv[1]
-    output_file = argv[2]
+
+    input_file = argv[0]
+    output_file = argv[1]
     tolerance: float = 1e-6
     debug: bool = False
 
     # Parse optional arguments
-    for arg in argv[3:]:
+    for arg in argv[2:]:
         if arg.startswith('--tolerance='):
             try:
                 tolerance = float(arg.split('=')[1])
@@ -100,24 +102,25 @@ def parse_verify_args(argv: List[str]) -> tuple[str, Optional[str], Dict[str, fl
     Raises:
         ValueError: If tolerance values are invalid
     """
-    if len(argv) < 2:
+    # argv here is sys.argv[2:] (command name already stripped by main())
+    if len(argv) < 1:
         usage()
-    
-    input_file = argv[1]
-    output_file = argv[2] if len(argv) > 2 and not argv[2].startswith('--') else None
-    
+
+    input_file = argv[0]
+    output_file = argv[1] if len(argv) > 1 and not argv[1].startswith('--') else None
+
     # Default tolerance values
     tolerance = {
         'volume': 1.0,  # 1% volume difference
         'surface_area': 2.0,  # 2% surface area difference
         'bounding_box': 0.5  # 0.5% bounding box dimension difference
     }
-    
+
     visualize = False
     html_report = False
-    
+
     # Parse optional arguments
-    args_to_check = argv[2:] if output_file is None else argv[3:]
+    args_to_check = argv[1:] if output_file is None else argv[2:]
     for arg in args_to_check:
         if arg.startswith('--volume-tol='):
             try:
@@ -166,23 +169,24 @@ def parse_batch_args(argv: List[str]) -> tuple[str, str, Dict[str, float], bool]
     Raises:
         ValueError: If tolerance values are invalid
     """
-    if len(argv) < 3:
+    # argv here is sys.argv[2:] (command name already stripped by main())
+    if len(argv) < 2:
         usage()
-    
-    input_dir = argv[1]
-    output_dir = argv[2]
-    
+
+    input_dir = argv[0]
+    output_dir = argv[1]
+
     # Default tolerance values
     tolerance = {
         'volume': 1.0,
         'surface_area': 2.0,
         'bounding_box': 0.5
     }
-    
+
     html_report = False
-    
+
     # Parse optional arguments
-    for arg in argv[3:]:
+    for arg in argv[2:]:
         if arg.startswith('--volume-tol='):
             try:
                 tolerance['volume'] = float(arg.split('=')[1])

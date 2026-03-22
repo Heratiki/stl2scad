@@ -132,16 +132,20 @@ def generate_comparison_visualization(
         'side': {'eye': [200, 0, 0], 'center': [0, 0, 0], 'up': [0, 0, 1]},
     }
     
+    # TODO: All render calls below use --preview=throwntogether which requires
+    #       an active OpenGL context and fails when invoked via openscad.com on
+    #       Windows.  Replace with --render for headless-compatible PNG export.
+    #       Tracked as part of the debug-mode render fix.
     for view_name in views:
         output_file = output_path / f"{view_name}_view.png"
-        
+
         if view_name == 'comparison':
             # Generate side-by-side comparison with multiple angles
             angles = [0, 45, 90, 135, 180, 225, 270, 315]
             for angle in angles:
                 angle_file = output_path / f"comparison_{angle}.png"
                 camera = f"0,0,0,0,0,{angle},200"
-                
+
                 success = run_openscad(
                     f"Comparison view {angle}°",
                     ["--camera", camera, "--preview=throwntogether", "--autocenter", "--viewall", "-o", str(angle_file), str(vis_file)],
@@ -176,6 +180,10 @@ def generate_comparison_visualization(
                     print(f"Warning: Failed to generate {view_name} view")
     
     # Generate cross-section views at different heights
+    # TODO: model_height is always 0 so all cross-sections land at z=0 and
+    #       show identical (empty) slices.  Derive the actual model height from
+    #       the STL bounding box using get_stl_bounding_box() from metrics.py
+    #       and pass it in (or load the STL here).
     model_height = 0  # This should be determined from the model
     cross_sections = 5  # Number of cross-sections
     

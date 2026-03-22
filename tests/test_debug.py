@@ -47,9 +47,10 @@ def test_debug_features(verbose=True, log_file="test_run.log"):
     if check_openscad_processes():
         log("Warning: OpenSCAD processes found at start, they may interfere with testing", "WARNING")
     
-    # Test file paths
-    input_file = os.path.join("testobjects", "Cube_3d_printing_sample.stl")
-    output_file = "test_output.scad"
+    # Test file paths — resolve relative to this file so the test works
+    # regardless of the working directory pytest is invoked from.
+    input_file = str(Path(__file__).parent / "data" / "Cube_3d_printing_sample.stl")
+    output_file = str(Path(__file__).parent / "output" / "test_output.scad")
     
     log(f"Input STL: {input_file}")
     log(f"Output SCAD: {output_file}")

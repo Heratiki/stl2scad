@@ -34,17 +34,22 @@ def calculate_stl_volume(mesh: Mesh) -> float:
 def calculate_stl_surface_area(mesh: Mesh) -> float:
     """
     Calculate the surface area of an STL mesh.
-    
+
     Args:
         mesh: The STL mesh
-        
+
     Returns:
         float: Surface area of the mesh
     """
+    # TODO: This Python loop over mesh.vectors is O(n) but slow for large
+    #       meshes because it processes one triangle at a time in Python.
+    #       Vectorise with numpy:
+    #           v1 = mesh.vectors[:, 1] - mesh.vectors[:, 0]
+    #           v2 = mesh.vectors[:, 2] - mesh.vectors[:, 0]
+    #           area = 0.5 * np.sum(np.linalg.norm(np.cross(v1, v2), axis=1))
     area = 0.0
     for i in range(len(mesh.vectors)):
         triangle = mesh.vectors[i]
-        # Calculate triangle area using cross product
         v1 = triangle[1] - triangle[0]
         v2 = triangle[2] - triangle[0]
         area += 0.5 * np.linalg.norm(np.cross(v1, v2))
@@ -102,12 +107,34 @@ def calculate_scad_metrics(scad_file: Union[str, Path], timeout: int = 60) -> Di
     # Get OpenSCAD path
     openscad_path = get_openscad_path()
     
-    # Create temporary directory for output
+    # TODO: This entire implementation is non-functional and needs to be
+    #       rewritten.  There are two separate bugs:
+    #
+    #  1.  The generated metrics.scad echoes undefined variables (`volume`,
+    #      `surface_area`, `bbox_min`, `bbox_max`).  A stl2scad-generated
+    #      polyhedron SCAD file does not define those variables, so OpenSCAD
+    #      would print `VOLUME= undef` etc. and the regex below would never
+    #      match.  To get volume/surface-area from OpenSCAD you need to either:
+    #        a) render to STL and measure the resulting mesh (reliable), or
+    #        b) use `echo(volume=$preview ? 0 : volume(geometry()))` with a
+    #           custom wrapper that calls OpenSCAD's built-in functions (version
+    #           dependent).
+    #
+    #  2.  Echo output is written to OpenSCAD's *stderr* (or the log file
+    #      passed via --hardwarnings), NOT to the `-o` output file.  The `-o`
+    #      flag specifies a geometry export (STL, OFF, etc.), not a text log.
+    #      To capture echo output you must parse the log file written by
+    #      run_openscad, not the echo_file.
+    #
+    #  Until this is fixed, calculate_scad_metrics always returns
+    #  {'volume': None, 'surface_area': None, 'bounding_box': None} and the
+    #  verify_existing_conversion comparison will silently produce no results.
+
     with tempfile.TemporaryDirectory() as temp_dir:
         # Create metrics calculation SCAD file
         metrics_file = Path(temp_dir) / "metrics.scad"
         echo_file = Path(temp_dir) / "metrics.echo"
-        
+
         with open(metrics_file, 'w') as f:
             f.write(f'include "{scad_path.absolute()}";\n')
             f.write('$fn = 100;\n')  # Set facet number for accurate calculations
@@ -115,7 +142,7 @@ def calculate_scad_metrics(scad_file: Union[str, Path], timeout: int = 60) -> Di
             f.write('echo("AREA=", $fn=100, surface_area);\n')
             f.write('echo("BBOX_MIN=", $fn=100, bbox_min);\n')
             f.write('echo("BBOX_MAX=", $fn=100, bbox_max);\n')
-        
+
         # Run OpenSCAD to calculate metrics
         success = run_openscad(
             "Calculate metrics",
@@ -124,35 +151,35 @@ def calculate_scad_metrics(scad_file: Union[str, Path], timeout: int = 60) -> Di
             openscad_path,
             timeout
         )
-        
+
         if not success:
             raise RuntimeError(f"Failed to calculate metrics for {scad_file}")
-        
+
         # Parse metrics from echo file
         metrics = {
             'volume': None,
             'surface_area': None,
             'bounding_box': None
         }
-        
+
         if echo_file.exists():
             with open(echo_file, 'r') as f:
                 content = f.read()
-                
+
                 # Extract volume
                 volume_match = re.search(r'VOLUME=\s*([\d.e+-]+)', content)
                 if volume_match:
                     metrics['volume'] = float(volume_match.group(1))
-                
+
                 # Extract surface area
                 area_match = re.search(r'AREA=\s*([\d.e+-]+)', content)
                 if area_match:
                     metrics['surface_area'] = float(area_match.group(1))
-                
+
                 # Extract bounding box
                 bbox_min_match = re.search(r'BBOX_MIN=\s*\[([\d.e+-]+),\s*([\d.e+-]+),\s*([\d.e+-]+)\]', content)
                 bbox_max_match = re.search(r'BBOX_MAX=\s*\[([\d.e+-]+),\s*([\d.e+-]+),\s*([\d.e+-]+)\]', content)
-                
+
                 if bbox_min_match and bbox_max_match:
                     min_x = float(bbox_min_match.group(1))
                     min_y = float(bbox_min_match.group(2))
@@ -160,7 +187,7 @@ def calculate_scad_metrics(scad_file: Union[str, Path], timeout: int = 60) -> Di
                     max_x = float(bbox_max_match.group(1))
                     max_y = float(bbox_max_match.group(2))
                     max_z = float(bbox_max_match.group(3))
-                    
+
                     metrics['bounding_box'] = {
                         'min_x': min_x,
                         'min_y': min_y,
@@ -172,7 +199,7 @@ def calculate_scad_metrics(scad_file: Union[str, Path], timeout: int = 60) -> Di
                         'height': max_y - min_y,
                         'depth': max_z - min_z
                     }
-        
+
         return metrics
 
 

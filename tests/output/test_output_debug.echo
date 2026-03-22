@@ -1,3 +1,6 @@
-ERROR: Parser error: syntax error in file tests/output/test_output_debug.scad, line 23
-Can't parse file 'C:\Users\herat\source\stl2scad\tests\output\test_output_debug.scad'!
-
+ECHO: "=== Conversion Statistics ==="
+ECHO: "Original vertices:", 36
+ECHO: "Optimized vertices:", 8
+ECHO: "Faces:", 12
+ECHO: "Reduction:", 77.8, "%"
+ECHO: version = [2025, 2, 19]

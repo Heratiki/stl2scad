@@ -642,8 +642,8 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
                 "--render",
                 "--autocenter",
                 "--viewall",
-                "-o", format_arg(debug_png),
-                format_arg(debug_scad)
+                "-o", debug_png,
+                debug_scad
             ]
             if not run_openscad("Preview image", preview_args, f"{debug_base}_preview.log", openscad_path):
                 success = False
@@ -654,8 +654,8 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
                 "--render",  # Use render mode for analysis
                 "--quiet",   # Reduce unnecessary output
                 "--export-format", "json",
-                "-o", format_arg(debug_json),
-                format_arg(debug_scad)
+                "-o", debug_json,
+                debug_scad
             ]
             if not run_openscad("Analysis data", analysis_args, f"{debug_base}_analysis.log", openscad_path):
                 success = False
@@ -665,8 +665,8 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
             echo_args = [
                 "--backend=Manifold",
                 "--render",
-                "-o", format_arg(debug_echo),
-                format_arg(debug_scad)
+                "-o", debug_echo,
+                debug_scad
             ]
             if not run_openscad("Debug output", echo_args, f"{debug_base}_echo.log", openscad_path):
                 success = False

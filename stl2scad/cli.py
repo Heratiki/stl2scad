@@ -338,11 +338,20 @@ def verify_command(argv: List[str]) -> int:
     try:
         input_file, output_file, tolerance, visualize, html_report = parse_verify_args(argv)
         
+        import tempfile
+        from stl2scad.core.converter import stl2scad
+        
+        temp_dir_obj = None
+        
         print(f"Verifying conversion of {input_file}")
         if output_file:
             print(f"Using existing SCAD file: {output_file}")
+            scad_file_to_use = output_file
         else:
             print("Will generate temporary SCAD file")
+            temp_dir_obj = tempfile.TemporaryDirectory()
+            scad_file_to_use = str(Path(temp_dir_obj.name) / f"{Path(input_file).stem}.scad")
+            stl2scad(input_file, scad_file_to_use)
         
         print("Tolerance settings:")
         print(f"  Volume: {tolerance['volume']}%")
@@ -354,8 +363,8 @@ def verify_command(argv: List[str]) -> int:
         if html_report:
             print("HTML report enabled")
         
-        # Verify conversion
-        result = verify_conversion(input_file, output_file, tolerance, debug=False)
+        # Verify conversion using the explicit scad file
+        result = verify_conversion(input_file, scad_file_to_use, tolerance, debug=False)
         print_verification_result(result)
         
         # Save verification report
@@ -371,10 +380,9 @@ def verify_command(argv: List[str]) -> int:
             vis_dir.mkdir(exist_ok=True, parents=True)
             
             print(f"\nGenerating visualizations in: {vis_dir}")
-            scad_file = output_file if output_file else result.scad_file
             visualizations = generate_comparison_visualization(
                 input_file,
-                scad_file,
+                scad_file_to_use,
                 vis_dir
             )
             

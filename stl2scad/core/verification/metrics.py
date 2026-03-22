@@ -41,18 +41,9 @@ def calculate_stl_surface_area(mesh: Mesh) -> float:
     Returns:
         float: Surface area of the mesh
     """
-    # TODO: This Python loop over mesh.vectors is O(n) but slow for large
-    #       meshes because it processes one triangle at a time in Python.
-    #       Vectorise with numpy:
-    #           v1 = mesh.vectors[:, 1] - mesh.vectors[:, 0]
-    #           v2 = mesh.vectors[:, 2] - mesh.vectors[:, 0]
-    #           area = 0.5 * np.sum(np.linalg.norm(np.cross(v1, v2), axis=1))
-    area = 0.0
-    for i in range(len(mesh.vectors)):
-        triangle = mesh.vectors[i]
-        v1 = triangle[1] - triangle[0]
-        v2 = triangle[2] - triangle[0]
-        area += 0.5 * np.linalg.norm(np.cross(v1, v2))
+    v1 = mesh.vectors[:, 1] - mesh.vectors[:, 0]
+    v2 = mesh.vectors[:, 2] - mesh.vectors[:, 0]
+    area = 0.5 * np.sum(np.linalg.norm(np.cross(v1, v2), axis=1))
     return float(area)
 
 

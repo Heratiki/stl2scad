@@ -56,6 +56,9 @@ def generate_comparison_visualization(
     # Get OpenSCAD path
     openscad_path = get_openscad_path()
     
+    stl_path_posix = stl_path.absolute().as_posix()
+    scad_path_posix = scad_path.absolute().as_posix()
+    
     # Create visualization script
     vis_script = f"""
     // STL to SCAD Comparison Visualization
@@ -64,9 +67,9 @@ def generate_comparison_visualization(
     // Parameters
     show_stl = true;
     show_scad = true;
-    highlight_diff = false;
     cross_section = false;
     cross_section_z = 0;
+    view_type = "side_by_side"; // override at command line using -D view_type="..."
     
     // Colors
     stl_color = [0.3, 0.5, 0.9, 0.7];  // Blue, semi-transparent
@@ -75,14 +78,19 @@ def generate_comparison_visualization(
     // STL model
     module show_stl_model() {{
         if (show_stl) {{
-            color(stl_color) import("{stl_path.absolute()}");
+            color(stl_color) import("{stl_path_posix}");
         }}
+    }}
+    
+    // Wrapper for SCAD file to cleanly include it
+    module scad_wrapper() {{
+        include <{scad_path_posix}>
     }}
     
     // SCAD model
     module show_scad_model() {{
         if (show_scad) {{
-            color(scad_color) include("{scad_path.absolute()}");
+            color(scad_color) scad_wrapper();
         }}
     }}
     
@@ -111,7 +119,11 @@ def generate_comparison_visualization(
     }}
     
     // Select view based on parameter
-    if ($vpt == undef) {{
+    if (view_type == "overlay") {{
+        overlay();
+    }} else if (view_type == "cross_section") {{
+        cross_section_view();
+    }} else {{
         side_by_side();
     }}
     """
@@ -148,7 +160,7 @@ def generate_comparison_visualization(
 
                 success = run_openscad(
                     f"Comparison view {angle}°",
-                    ["--camera", camera, "--preview=throwntogether", "--autocenter", "--viewall", "-o", str(angle_file), str(vis_file)],
+                    ["-D", 'view_type="overlay"', "--camera", camera, "--preview=throwntogether", "--autocenter", "--viewall", "-o", str(angle_file), str(vis_file)],
                     str(output_path / f"comparison_{angle}.log"),
                     openscad_path
                 )
@@ -165,11 +177,11 @@ def generate_comparison_visualization(
                 eye_str = f"{camera['eye'][0]},{camera['eye'][1]},{camera['eye'][2]}"
                 center_str = f"{camera['center'][0]},{camera['center'][1]},{camera['center'][2]}"
                 up_str = f"{camera['up'][0]},{camera['up'][1]},{camera['up'][2]}"
-                camera_str = f"{eye_str},{center_str},{up_str}"
+                camera_str = f"{eye_str},{center_str}"
                 
                 success = run_openscad(
                     f"{view_name.capitalize()} view",
-                    ["--camera", camera_str, "--preview=throwntogether", "--autocenter", "--viewall", "-o", str(output_file), str(vis_file)],
+                    ["-D", 'view_type="overlay"', "--camera", camera_str, "--preview=throwntogether", "--autocenter", "--viewall", "-o", str(output_file), str(vis_file)],
                     str(output_path / f"{view_name}_view.log"),
                     openscad_path
                 )
@@ -192,19 +204,11 @@ def generate_comparison_visualization(
         height_percent = 0.1 + (0.8 * i / (cross_sections - 1))
         height = model_height * height_percent
         
-        # Create cross-section script
-        cross_section_file = output_path / f"cross_section_{i+1}.scad"
-        with open(cross_section_file, 'w') as f:
-            f.write(vis_script)
-            f.write(f"\ncross_section = true;\n")
-            f.write(f"cross_section_z = {height};\n")
-            f.write(f"cross_section_view();\n")
-        
         # Generate cross-section image
         output_file = output_path / f"cross_section_{i+1}.png"
         success = run_openscad(
             f"Cross-section {i+1}",
-            ["--preview=throwntogether", "--autocenter", "--viewall", "-o", str(output_file), str(cross_section_file)],
+            ["-D", 'view_type="cross_section"', "-D", f"cross_section_z={height}", "--preview=throwntogether", "--autocenter", "--viewall", "-o", str(output_file), str(vis_file)],
             str(output_path / f"cross_section_{i+1}.log"),
             openscad_path
         )

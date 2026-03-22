@@ -1,0 +1,219 @@
+
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>STL to SCAD Verification Report</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+            }
+            header {
+                text-align: center;
+                margin-bottom: 30px;
+                padding-bottom: 20px;
+                border-bottom: 1px solid #eee;
+            }
+            .status {
+                display: inline-block;
+                padding: 5px 10px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            .passed {
+                background-color: #d4edda;
+                color: #155724;
+            }
+            .failed {
+                background-color: #f8d7da;
+                color: #721c24;
+            }
+            .warning {
+                background-color: #fff3cd;
+                color: #856404;
+            }
+            .good {
+                color: #155724;
+            }
+            .metrics {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 20px;
+                margin-bottom: 30px;
+            }
+            .metric-card {
+                flex: 1;
+                min-width: 300px;
+                padding: 15px;
+                border-radius: 8px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                background-color: #f8f9fa;
+            }
+            .metric-card h3 {
+                margin-top: 0;
+                border-bottom: 1px solid #ddd;
+                padding-bottom: 10px;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+            td {
+                padding: 5px;
+            }
+            .failures {
+                margin: 20px 0;
+                padding: 15px;
+                border-radius: 8px;
+                background-color: #f8d7da;
+                color: #721c24;
+            }
+            .visualizations {
+                margin-top: 40px;
+            }
+            .vis-card {
+                margin-bottom: 30px;
+                padding: 15px;
+                border-radius: 8px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                background-color: #f8f9fa;
+            }
+            .main-view {
+                text-align: center;
+            }
+            .main-view img {
+                max-width: 100%;
+                max-height: 400px;
+            }
+            .view-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+                gap: 20px;
+                margin-top: 20px;
+            }
+            .view-item {
+                text-align: center;
+            }
+            .view-item img {
+                max-width: 100%;
+                border-radius: 4px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            }
+            footer {
+                margin-top: 50px;
+                text-align: center;
+                font-size: 0.9em;
+                color: #777;
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <h1>STL to SCAD Verification Report</h1>
+            <p>
+                <strong>Status:</strong> 
+                <span class="status failed">FAILED</span>
+            </p>
+            <p>
+                <strong>STL File:</strong> Cube_3d_printing_sample.stl<br>
+                <strong>SCAD File:</strong> Cube_3d_printing_sample.scad
+            </p>
+        </header>
+        
+        <section>
+            <h2>Metrics Comparison</h2>
+            <div class="metrics">
+                
+        <div class="metric-card">
+            <h3>Volume Comparison</h3>
+            <table>
+                <tr><td>STL Volume:</td><td>8000.00 mm³</td></tr>
+                <tr><td>SCAD Volume:</td><td>-8000.00 mm³</td></tr>
+                <tr><td>Difference:</td><td>-16000.00 mm³</td></tr>
+                <tr><td>Difference %:</td><td class="failed">-200.00%</td></tr>
+            </table>
+        </div>
+        
+        <div class="metric-card">
+            <h3>Surface Area Comparison</h3>
+            <table>
+                <tr><td>STL Surface Area:</td><td>2400.00 mm²</td></tr>
+                <tr><td>SCAD Surface Area:</td><td>2400.00 mm²</td></tr>
+                <tr><td>Difference:</td><td>0.00 mm²</td></tr>
+                <tr><td>Difference %:</td><td class="good">0.00%</td></tr>
+            </table>
+        </div>
+        <div class='metric-card'><h3>Bounding Box Comparison</h3><table>
+                <tr>
+                    <td>Width:</td>
+                    <td>STL: 20.00 mm</td>
+                    <td>SCAD: 20.00 mm</td>
+                    <td>Diff: 0.00 mm</td>
+                    <td class="good">0.00%</td>
+                </tr>
+                
+                <tr>
+                    <td>Height:</td>
+                    <td>STL: 20.00 mm</td>
+                    <td>SCAD: 20.00 mm</td>
+                    <td>Diff: 0.00 mm</td>
+                    <td class="good">0.00%</td>
+                </tr>
+                
+                <tr>
+                    <td>Depth:</td>
+                    <td>STL: 20.00 mm</td>
+                    <td>SCAD: 20.00 mm</td>
+                    <td>Diff: 0.00 mm</td>
+                    <td class="good">0.00%</td>
+                </tr>
+                </table></div>
+            </div>
+            <div class='failures'><h3>Verification Failures</h3><ul><li>Volume difference (200.00%) exceeds tolerance (1.00%)</li></ul></div>
+        </section>
+        
+        <div class='visualizations'><h2>Visualizations</h2>
+        <div class="vis-card">
+            <h3>Side-by-Side Comparison</h3>
+            <img src="comparison_0.png" alt="Comparison View">
+            <p>Blue: Original STL, Red: Converted SCAD</p>
+        </div>
+        <div class='standard-views'><h3>Standard Views</h3><div class='view-grid'></div></div><div class='cross-sections'><h3>Cross-Sections</h3><div class='view-grid'>
+        <div class="view-item">
+            <h4>Cross-Section 1</h4>
+            <img src="cross_section_1.png" alt="cross_section_1">
+        </div>
+        
+        <div class="view-item">
+            <h4>Cross-Section 2</h4>
+            <img src="cross_section_2.png" alt="cross_section_2">
+        </div>
+        
+        <div class="view-item">
+            <h4>Cross-Section 3</h4>
+            <img src="cross_section_3.png" alt="cross_section_3">
+        </div>
+        
+        <div class="view-item">
+            <h4>Cross-Section 4</h4>
+            <img src="cross_section_4.png" alt="cross_section_4">
+        </div>
+        
+        <div class="view-item">
+            <h4>Cross-Section 5</h4>
+            <img src="cross_section_5.png" alt="cross_section_5">
+        </div>
+        </div></div></div>
+        
+        <footer>
+            <p>Generated by STL2SCAD Verification System</p>
+        </footer>
+    </body>
+    </html>
+    

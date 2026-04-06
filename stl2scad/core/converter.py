@@ -379,7 +379,10 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
     faces: List[List[int]] = []
     degenerate_faces_removed = 0
     for i in range(0, len(points), 3):
-        face = [vertex_map[i], vertex_map[i+1], vertex_map[i+2]]
+        # OpenSCAD expects faces defined in clockwise order.
+        # numpy-stl provides faces in counter-clockwise order.
+        # Swap the 2nd and 3rd vertex to reverse the winding order.
+        face = [vertex_map[i], vertex_map[i+2], vertex_map[i+1]]
         if len(set(face)) < 3:
             degenerate_faces_removed += 1
             continue

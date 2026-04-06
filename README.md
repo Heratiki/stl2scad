@@ -25,19 +25,29 @@ The current primary engineering goal is to expand parametric conversion coverage
   - bounding-box differences
   - Hausdorff distance (sampled)
   - normal deviation (sampled)
+  - conversion metadata capture in verification JSON reports (backend, primitive, diagnostics when available)
 - Optional visualization and HTML verification reports
 - Batch conversion and verification across directory trees
 
 ## Parametric Mode Status
 
 Parametric recognition is currently early-stage:
-- Implemented: axis-aligned box/cube recognition
-- Not yet implemented: cylinder/sphere/cone and multi-primitive reconstruction
+- Native backend (`native`): axis-aligned box/cube recognition
+- Phase 1 backend (`trimesh_manifold`, optional `trimesh` dependency):
+  - connected-component preprocessing and cleanup
+  - primitive candidates for sphere, cylinder, cone/frustum, and box
+  - conservative disjoint multi-component union assembly
+- Phase 2 backend (`cgal`, optional helper):
+  - helper-executable JSON boundary and adapter path
+  - `cgal` backend attempts helper detection first, then falls back to `trimesh_manifold` when available
+  - backend/primitive/diagnostics metadata is emitted in SCAD headers and propagated into verification JSON reports
+  - release checklist tracked in `docs/planning/phase2_release_checklist.md`
+- Not yet implemented: true CGAL shape-detection internals in helper, robust confidence tuning, and full boolean-aware reconstruction
 - Fallback behavior: if recognition fails, STL2SCAD emits a standard polyhedron model
 
 ## Requirements
 
-- Python 3.7+
+- Python 3.8+
 - Dependencies from `requirements.txt`
 - OpenSCAD (Nightly recommended for debug/verification rendering workflows)
 
@@ -55,6 +65,21 @@ For development:
 pip install -r requirements-dev.txt
 ```
 
+For Phase 1 parametric backend experiments (`--recognition-backend trimesh_manifold`):
+
+```bash
+pip install -e .[parametric_phase1]
+```
+
+For Phase 2 CGAL-helper experiments (`--recognition-backend cgal`):
+
+```bash
+# Point to your helper executable/script (example on Windows)
+set STL2SCAD_CGAL_HELPER=C:\path\to\stl2scad-cgal-helper.exe
+# or prototype script:
+# set STL2SCAD_CGAL_HELPER=C:\path\to\stl2scad\scripts\stl2scad-cgal-helper.py
+```
+
 ## CLI Usage
 
 Use the module entrypoint:
@@ -66,7 +91,7 @@ python -m stl2scad --help
 ### `convert`
 
 ```bash
-python -m stl2scad convert <input.stl> <output.scad> [--tolerance 1e-6] [--debug] [--parametric]
+python -m stl2scad convert <input.stl> <output.scad> [--tolerance 1e-6] [--debug] [--parametric] [--recognition-backend native|trimesh_manifold|cgal]
 ```
 
 ### `verify`
@@ -74,19 +99,19 @@ python -m stl2scad convert <input.stl> <output.scad> [--tolerance 1e-6] [--debug
 Verify against an existing SCAD:
 
 ```bash
-python -m stl2scad verify <input.stl> <existing.scad> [--volume-tol 1.0] [--area-tol 2.0] [--bbox-tol 0.5] [--visualize] [--html-report]
+python -m stl2scad verify <input.stl> <existing.scad> [--volume-tol 1.0] [--area-tol 2.0] [--bbox-tol 0.5] [--sample-seed 123] [--visualize] [--html-report]
 ```
 
 Verify with temporary/generated SCAD:
 
 ```bash
-python -m stl2scad verify <input.stl> [--parametric] [--visualize] [--html-report]
+python -m stl2scad verify <input.stl> [--parametric] [--recognition-backend native|trimesh_manifold|cgal] [--sample-seed 123] [--visualize] [--html-report]
 ```
 
 ### `batch`
 
 ```bash
-python -m stl2scad batch <input_dir> <output_dir> [--volume-tol 1.0] [--area-tol 2.0] [--bbox-tol 0.5] [--html-report] [--parametric]
+python -m stl2scad batch <input_dir> <output_dir> [--volume-tol 1.0] [--area-tol 2.0] [--bbox-tol 0.5] [--sample-seed 123] [--html-report] [--parametric] [--recognition-backend native|trimesh_manifold|cgal]
 ```
 
 ### CLI Exit Codes
@@ -137,6 +162,25 @@ Run commonly used focused checks:
 ```bash
 pytest tests/test_cli.py -q
 pytest tests/test_conversion.py -q -k "not debug"
+pytest tests/test_conversion.py -q -k "phase1_"
+```
+
+Generate/update benchmark fixtures (Phase 0 baseline set):
+
+```bash
+python scripts/generate_benchmark_fixtures.py --output-dir tests/data/benchmark_fixtures
+```
+
+Run conversion performance baseline on representative mesh sizes:
+
+```bash
+python scripts/run_perf_baseline.py --fixtures-dir tests/data/benchmark_fixtures --output artifacts/perf_baseline.json --repeat 3
+```
+
+Run Phase 1 backend baseline (polyhedron + parametric modes with `trimesh_manifold`):
+
+```bash
+python scripts/run_perf_baseline.py --fixtures-dir tests/data/benchmark_fixtures --output artifacts/perf_phase1_trimesh.json --repeat 3 --recognition-backend trimesh_manifold
 ```
 
 ## License

@@ -11,6 +11,8 @@ This directory contains the test suite for STL2SCAD. The tests are organized int
 - Test modules:
   - `test_cli.py`: CLI parser and command dispatch tests
   - `test_conversion.py`: STL to SCAD conversion and parametric-path tests
+  - `test_cgal_backend.py`: Phase 2 CGAL helper adapter boundary tests
+  - `test_phase0_benchmarks.py`: benchmark fixture generation and perf-baseline runner checks
   - `test_verification.py`: Verification metrics and tolerances
   - `test_visualization.py`: Visualization and HTML report generation
   - `test_openscad.py`: OpenSCAD command execution tests
@@ -44,6 +46,15 @@ pytest tests/test_openscad.py
 
 # Run conversion tests
 pytest tests/test_conversion.py
+
+# Run Phase 1 parametric recognition tests
+pytest tests/test_conversion.py -k "phase1_"
+
+# Run Phase 2 CGAL adapter tests
+pytest tests/test_cgal_backend.py
+
+# Run Phase 0 benchmark fixture/perf tests
+pytest tests/test_phase0_benchmarks.py
 
 # Run CLI tests
 pytest tests/test_cli.py
@@ -108,5 +119,6 @@ See [debug_test_plan.md](debug_test_plan.md) for detailed test plan and progress
 
 3. Test Data
    - Sample STL files are in `data/` directory
+   - Phase 0 benchmark fixtures are in `data/benchmark_fixtures/`
    - Test output goes to temporary directories
    - Files are cleaned up after tests

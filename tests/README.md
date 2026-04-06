@@ -9,9 +9,12 @@ This directory contains the test suite for STL2SCAD. The tests are organized int
 - `pytest.ini`: Pytest configuration
 - `data/`: Test data files (STL samples)
 - Test modules:
+  - `test_cli.py`: CLI parser and command dispatch tests
+  - `test_conversion.py`: STL to SCAD conversion and parametric-path tests
+  - `test_verification.py`: Verification metrics and tolerances
+  - `test_visualization.py`: Visualization and HTML report generation
   - `test_openscad.py`: OpenSCAD command execution tests
-  - `test_conversion.py`: STL to SCAD conversion tests
-  - `test_visualization.py`: Preview and analysis feature tests
+  - `test_debug.py`: Debug artifact and debug-mode checks
 
 ## Running Tests
 
@@ -25,6 +28,7 @@ This directory contains the test suite for STL2SCAD. The tests are organized int
 2. Ensure OpenSCAD (Nightly) is installed and in the system PATH
    - Version 2025.02.19 or later required
    - Install from https://openscad.org/downloads.html#snapshots
+   - Note: most CLI parser tests do not require OpenSCAD; visualization/debug tests do
 
 ### Running All Tests
 
@@ -41,8 +45,17 @@ pytest tests/test_openscad.py
 # Run conversion tests
 pytest tests/test_conversion.py
 
+# Run CLI tests
+pytest tests/test_cli.py
+
+# Run verification tests
+pytest tests/test_verification.py
+
 # Run visualization tests
 pytest tests/test_visualization.py
+
+# Run debug workflow tests
+pytest tests/test_debug.py
 ```
 
 ### Test Options

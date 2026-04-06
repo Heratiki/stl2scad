@@ -6,141 +6,139 @@
 
 ## Overview
 
-STL2SCAD is a Python-based tool designed to convert STL (Stereolithography) files into OpenSCAD (.scad) format. This conversion allows for easier manipulation and modification of 3D models within the OpenSCAD environment, enabling parametric design and customization. The tool provides both a command-line interface (CLI) and a graphical user interface (GUI) for flexibility and ease of use.
+STL2SCAD converts STL meshes into OpenSCAD (`.scad`) models.
 
-## Features
+The project supports two workflows:
+- CLI-first automation (`convert`, `verify`, `batch`)
+- GUI-based interactive conversion and verification
 
-- **STL to OpenSCAD Conversion:** Accurately converts STL files to OpenSCAD format, preserving geometry and structure.
-- **Optimization:** Offers options for mesh optimization to reduce complexity and improve performance in OpenSCAD.
-- **Validation:** Performs validation checks on input STL files to ensure compatibility and identify potential issues.
-- **Command-Line Interface (CLI):** Provides a powerful CLI for automated conversion and batch processing.
-- **Graphical User Interface (GUI):** Offers an intuitive GUI for interactive use and visual preview.
-- **OpenSCAD Integration:** Generates OpenSCAD code that is well-structured and easy to understand.
-- **Preview Generation:** Integrates with OpenSCAD to provide visual previews of converted models.
-- **Cross-Platform Support:** Works seamlessly on Windows, macOS, and Linux.
+The current primary engineering goal is to expand parametric conversion coverage while preserving safe polyhedron fallback and existing verification/CLI stability.
+
+## Current Capabilities
+
+- STL validation and conversion to OpenSCAD polyhedron output
+- Tolerance-based vertex deduplication and degenerate face filtering
+- Optional parametric mode (`--parametric`) with safe fallback to polyhedron output
+- Verification metrics:
+  - volume difference
+  - surface area difference
+  - bounding-box differences
+  - Hausdorff distance (sampled)
+  - normal deviation (sampled)
+- Optional visualization and HTML verification reports
+- Batch conversion and verification across directory trees
+
+## Parametric Mode Status
+
+Parametric recognition is currently early-stage:
+- Implemented: axis-aligned box/cube recognition
+- Not yet implemented: cylinder/sphere/cone and multi-primitive reconstruction
+- Fallback behavior: if recognition fails, STL2SCAD emits a standard polyhedron model
+
+## Requirements
+
+- Python 3.7+
+- Dependencies from `requirements.txt`
+- OpenSCAD (Nightly recommended for debug/verification rendering workflows)
 
 ## Installation
 
-### Prerequisites
-
-- Python 3.7+
-- OpenSCAD (for preview generation)
-
-### Installation Steps
-
-1.  **Clone the repository:**
-
-    ```bash
-    git clone https://github.com/yourusername/stl2scad.git
-    cd stl2scad
-    ```
-
-2.  **Install dependencies:**
-
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-## Usage
-
-### Command-Line Interface (CLI)
-
 ```bash
-python stl2scad/cli.py <input_stl_file> [options]
+git clone https://github.com/yourusername/stl2scad.git
+cd stl2scad
+pip install -r requirements.txt
 ```
 
-**Options:**
-
--   `-o`, `--output`: Specify the output OpenSCAD file path (default: `<input_file>.scad`).
--   `-p`, `--preview`: Generate a preview image using OpenSCAD (requires OpenSCAD installation).
--   `--no-check`: Disable validation checks on the input STL file.
--   `--tolerance`: Set the tolerance for mesh simplification (default: 0.01).
--   `-v`, `--verbose`: Enable verbose output for debugging.
--   `-h`, `--help`: Show help message and exit.
-
-**Example:**
+For development:
 
 ```bash
-python stl2scad/cli.py input.stl -o output.scad -p
+pip install -r requirements-dev.txt
 ```
 
-### Graphical User Interface (GUI)
+## CLI Usage
+
+Use the module entrypoint:
 
 ```bash
-python stl2scad/gui/main_window.py
+python -m stl2scad --help
 ```
 
-1.  Launch the GUI using the command above.
-2.  Click the "Browse" button to select an STL file.
-3.  (Optional) Adjust conversion settings as needed.
-4.  Click the "Convert" button to start the conversion process.
-5.  (Optional) Click "Preview" to generate a visual preview using OpenSCAD.
+### `convert`
+
+```bash
+python -m stl2scad convert <input.stl> <output.scad> [--tolerance 1e-6] [--debug] [--parametric]
+```
+
+### `verify`
+
+Verify against an existing SCAD:
+
+```bash
+python -m stl2scad verify <input.stl> <existing.scad> [--volume-tol 1.0] [--area-tol 2.0] [--bbox-tol 0.5] [--visualize] [--html-report]
+```
+
+Verify with temporary/generated SCAD:
+
+```bash
+python -m stl2scad verify <input.stl> [--parametric] [--visualize] [--html-report]
+```
+
+### `batch`
+
+```bash
+python -m stl2scad batch <input_dir> <output_dir> [--volume-tol 1.0] [--area-tol 2.0] [--bbox-tol 0.5] [--html-report] [--parametric]
+```
+
+### CLI Exit Codes
+
+- `0`: success
+- `1`: runtime/input error
+- `2`: verification completed but failed tolerance checks
+
+## GUI Usage
+
+Launch GUI mode:
+
+```bash
+python -m stl2scad --gui
+```
+
+No-argument launch also opens the GUI:
+
+```bash
+python -m stl2scad
+```
+
+### GUI Controls (Current)
+
+- `Open STL File`: load STL and preview mesh
+- `Set SCAD Output`: choose output `.scad` path
+- `Convert to SCAD`: run conversion with current options
+- `Verify Conversion`: run verification workflow
+- `Use Existing SCAD`: verify STL against a selected existing SCAD instead of regenerating
+- `Select Verify SCAD`: choose the SCAD file used when `Use Existing SCAD` is enabled
+- `Debug`: generate debug artifacts during conversion
+- `Parametric`: enable primitive recognition path
+- `Visualize`: generate verification visualization images
+- `HTML Report`: generate verification HTML report
+- `Convert Tol`: conversion tolerance control
+- `Verify Tol %`: volume/surface/bounding-box verification tolerance controls
 
 ## Development
 
-### Setting up the Development Environment
-
-1.  **Clone the repository:**
-
-    ```bash
-    git clone https://github.com/yourusername/stl2scad.git
-    cd stl2scad
-    ```
-
-2.  **Create a virtual environment:**
-
-    ```bash
-    python3 -m venv venv
-    ```
-
-3.  **Activate the virtual environment:**
-
-    -   **Windows:**
-
-        ```bash
-        venv\Scripts\activate
-        ```
-
-    -   **macOS/Linux:**
-
-        ```bash
-        source venv/bin/activate
-        ```
-
-4.  **Install development dependencies:**
-
-    ```bash
-    pip install -r requirements.txt
-    pip install -r requirements-dev.txt # Install additional development dependencies
-    ```
-
-### Running Tests
+Run all tests:
 
 ```bash
 pytest
 ```
 
-### Code Style
+Run commonly used focused checks:
 
-This project adheres to the following code style guidelines:
-
--   **PEP 8:** Follows the standard Python style guide.
--   **Black:** Uses the Black code formatter for consistent formatting.
--   **Pylint/Flake8:** Employs linters to enforce code quality and identify potential issues.
--   **MyPy:** Uses MyPy for static type checking.
--   **Type Hints:** All functions and methods should include type hints.
-
-### Contributing
-
-Contributions are welcome! Please follow these guidelines:
-
-1.  Fork the repository.
-2.  Create a new branch for your feature or bug fix: `git checkout -b feature/your-feature-name`.
-3.  Make your changes and commit them with clear, descriptive messages.
-4.  Ensure your code adheres to the project's code style guidelines.
-5.  Run tests and ensure they pass.
-6.  Submit a pull request to the `main` branch.
+```bash
+pytest tests/test_cli.py -q
+pytest tests/test_conversion.py -q -k "not debug"
+```
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See `LICENSE` for details.

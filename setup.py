@@ -35,6 +35,11 @@ setup(
         "pyqtgraph>=0.13.3",
         "typing_extensions>=4.12.2",
     ],
+    extras_require={
+        "parametric_phase1": [
+            "trimesh>=4.0.0",
+        ],
+    },
     entry_points={
         "console_scripts": [
             "stl2scad=stl2scad.cli:main",

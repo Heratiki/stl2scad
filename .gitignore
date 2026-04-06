@@ -55,6 +55,11 @@ test*.json
 memory-bank/
 tests/data/Cube_3d_printing_sample_debug.echo
 
+# Keep committed benchmark fixtures/manifest for Phase 0+ regression baselines
+!tests/data/benchmark_fixtures/
+!tests/data/benchmark_fixtures/**/*.stl
+!tests/data/benchmark_fixtures/manifest.json
+
 # Ignore debug folder
 debug/
 

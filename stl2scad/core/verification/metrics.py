@@ -77,17 +77,28 @@ def get_stl_bounding_box(mesh: Mesh) -> Dict[str, float]:
     }
 
 
-def sample_mesh_points(mesh: Mesh, num_samples: int) -> Tuple[np.ndarray, np.ndarray]:
+def sample_mesh_points(
+    mesh: Mesh,
+    num_samples: int,
+    rng: Optional[np.random.Generator] = None,
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Uniformly sample points and their normals from an STL mesh.
     
     Args:
         mesh: The STL mesh
         num_samples: Number of points to sample
+        rng: Optional numpy random generator (for deterministic sampling)
         
     Returns:
         Tuple[np.ndarray, np.ndarray]: Arrays of sampled points and their corresponding normals
     """
+    if num_samples <= 0:
+        return np.zeros((0, 3)), np.zeros((0, 3))
+
+    if rng is None:
+        rng = np.random.default_rng()
+
     # Calculate areas of all triangles
     v0 = mesh.vectors[:, 0]
     v1 = mesh.vectors[:, 1]
@@ -104,7 +115,7 @@ def sample_mesh_points(mesh: Mesh, num_samples: int) -> Tuple[np.ndarray, np.nda
     probabilities = areas / total_area
     
     # Choose triangles based on area
-    triangle_indices = np.random.choice(len(mesh.vectors), size=num_samples, p=probabilities)
+    triangle_indices = rng.choice(len(mesh.vectors), size=num_samples, p=probabilities)
     sampled_triangles = mesh.vectors[triangle_indices]
     sampled_normals = mesh.normals[triangle_indices]
     
@@ -114,8 +125,8 @@ def sample_mesh_points(mesh: Mesh, num_samples: int) -> Tuple[np.ndarray, np.nda
     sampled_normals = sampled_normals / norms
     
     # Generate random barycentric coordinates
-    u = np.random.rand(num_samples, 1)
-    v = np.random.rand(num_samples, 1)
+    u = rng.random((num_samples, 1))
+    v = rng.random((num_samples, 1))
     
     # Adjust to keep within the triangle
     mask = u + v > 1
@@ -254,13 +265,18 @@ def calculate_scad_metrics(scad_file: Union[str, Path], timeout: int = 120) -> D
             raise RuntimeError(f"Failed to calculate SCAD metrics after rendering: {str(e)}")
 
 
-def compare_metrics(stl_metrics: Dict[str, Any], scad_metrics: Dict[str, Any]) -> Dict[str, Any]:
+def compare_metrics(
+    stl_metrics: Dict[str, Any],
+    scad_metrics: Dict[str, Any],
+    sample_seed: Optional[int] = None,
+) -> Dict[str, Any]:
     """
     Compare metrics between STL and SCAD models.
     
     Args:
         stl_metrics: Metrics from STL model
         scad_metrics: Metrics from SCAD model
+        sample_seed: Optional seed for deterministic point sampling comparisons
         
     Returns:
         Dict[str, Any]: Comparison results with differences and percentages
@@ -318,13 +334,22 @@ def compare_metrics(stl_metrics: Dict[str, Any], scad_metrics: Dict[str, Any]) -
         results['bounding_box'] = bbox_results
 
     # Calculate point-based metrics if both meshes are available
-    if 'mesh' in stl_metrics and 'mesh' in scad_metrics and stl_metrics['mesh'] is not None and scad_metrics['mesh'] is not None:
+    if (
+        'mesh' in stl_metrics and 'mesh' in scad_metrics and
+        stl_metrics['mesh'] is not None and scad_metrics['mesh'] is not None
+    ):
         stl_mesh = stl_metrics['mesh']
         scad_mesh = scad_metrics['mesh']
-        
+
+        if sample_seed is not None and sample_seed < 0:
+            raise ValueError("sample_seed must be non-negative when provided")
+
+        rng_stl = np.random.default_rng(sample_seed)
+        rng_scad = np.random.default_rng(None if sample_seed is None else sample_seed + 1)
+
         num_samples = 1000
-        stl_points, stl_normals = sample_mesh_points(stl_mesh, num_samples)
-        scad_points, scad_normals = sample_mesh_points(scad_mesh, num_samples)
+        stl_points, stl_normals = sample_mesh_points(stl_mesh, num_samples, rng=rng_stl)
+        scad_points, scad_normals = sample_mesh_points(scad_mesh, num_samples, rng=rng_scad)
         
         hausdorff = calculate_hausdorff_distance(stl_points, scad_points)
         normal_dev = compare_normal_vectors(stl_points, stl_normals, scad_points, scad_normals)

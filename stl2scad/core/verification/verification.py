@@ -19,6 +19,61 @@ from ..converter import stl2scad
 from .metrics import get_stl_metrics, calculate_scad_metrics, compare_metrics
 
 
+def _extract_conversion_metadata_from_scad(scad_file: Path) -> Dict[str, Any]:
+    """
+    Parse conversion metadata comments from the start of a SCAD file.
+
+    Expected header format:
+    //
+    // STL to SCAD Conversion
+    // key: value
+    //
+    """
+    metadata: Dict[str, Any] = {}
+    try:
+        with open(scad_file, "r", encoding="utf-8", errors="replace") as handle:
+            for raw_line in handle:
+                line = raw_line.strip()
+                if not line:
+                    if metadata:
+                        break
+                    continue
+
+                if not line.startswith("//"):
+                    break
+
+                comment = line[2:].strip()
+                if not comment or comment == "STL to SCAD Conversion":
+                    continue
+                if ":" not in comment:
+                    continue
+
+                key, value = comment.split(":", 1)
+                key = key.strip()
+                value = value.strip()
+                if not key:
+                    continue
+                metadata[key] = value
+    except OSError:
+        return {}
+
+    confidence_text = metadata.get("recognition_confidence")
+    if isinstance(confidence_text, str):
+        try:
+            metadata["recognition_confidence"] = float(confidence_text)
+        except ValueError:
+            pass
+
+    diagnostics_text = metadata.get("recognition_diagnostics")
+    if isinstance(diagnostics_text, str):
+        try:
+            metadata["recognition_diagnostics"] = json.loads(diagnostics_text)
+        except json.JSONDecodeError:
+            pass
+
+    return metadata
+
+
 @dataclass
 class VerificationResult:
     """
@@ -132,7 +187,8 @@ def verify_conversion(
     stl_file: Union[str, Path],
     scad_file: Optional[Union[str, Path]] = None,
     tolerance: Optional[Dict[str, float]] = None,
-    debug: bool = False
+    debug: bool = False,
+    sample_seed: Optional[int] = None,
 ) -> VerificationResult:
     """
     Verify the accuracy of an STL to SCAD conversion.
@@ -142,6 +198,7 @@ def verify_conversion(
         scad_file: Path to the SCAD file (if None, will convert STL to SCAD)
         tolerance: Dictionary of tolerance values for different metrics
         debug: Whether to enable debug mode
+        sample_seed: Optional seed for deterministic sampling-based metrics
         
     Returns:
         VerificationResult: Result of the verification
@@ -169,17 +226,22 @@ def verify_conversion(
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_scad = Path(temp_dir) / f"{stl_path.stem}.scad"
             stl2scad(str(stl_path), str(temp_scad), debug=debug)
-            return verify_existing_conversion(stl_path, temp_scad, tolerance, debug)
+            return verify_existing_conversion(
+                stl_path, temp_scad, tolerance, debug, sample_seed=sample_seed
+            )
     else:
         scad_path = Path(scad_file)
-        return verify_existing_conversion(stl_path, scad_path, tolerance, debug)
+        return verify_existing_conversion(
+            stl_path, scad_path, tolerance, debug, sample_seed=sample_seed
+        )
 
 
 def verify_existing_conversion(
     stl_file: Path,
     scad_file: Path,
     tolerance: Dict[str, float],
-    debug: bool = False
+    debug: bool = False,
+    sample_seed: Optional[int] = None,
 ) -> VerificationResult:
     """
     Verify the accuracy of an existing STL to SCAD conversion.
@@ -189,6 +251,7 @@ def verify_existing_conversion(
         scad_file: Path to the SCAD file
         tolerance: Dictionary of tolerance values for different metrics
         debug: Whether to enable debug mode
+        sample_seed: Optional seed for deterministic sampling-based metrics
         
     Returns:
         VerificationResult: Result of the verification
@@ -200,7 +263,7 @@ def verify_existing_conversion(
     scad_metrics = calculate_scad_metrics(scad_file)
     
     # Compare metrics
-    comparison = compare_metrics(stl_metrics, scad_metrics)
+    comparison = compare_metrics(stl_metrics, scad_metrics, sample_seed=sample_seed)
     
     # Remove 'mesh' object to avoid JSON serialization errors
     stl_metrics.pop('mesh', None)
@@ -307,6 +370,8 @@ def verify_existing_conversion(
                 'message': f"Normal deviation ({normal_dev:.2f} deg) exceeds tolerance ({tolerance['normal_deviation']:.2f} deg)"
             })
             
+    conversion_metadata = _extract_conversion_metadata_from_scad(scad_file)
+
     # Generate detailed report
     report: Dict[str, Any] = {
         'verification_result': 'passed' if passed else 'failed',
@@ -314,6 +379,8 @@ def verify_existing_conversion(
         'tolerance_used': tolerance,
         'failures': failures
     }
+    if conversion_metadata:
+        report['conversion_metadata'] = conversion_metadata
     
     result.report = report
     
@@ -324,7 +391,8 @@ def batch_verify(
     stl_files: List[Union[str, Path]],
     output_dir: Union[str, Path],
     tolerance: Optional[Dict[str, float]] = None,
-    debug: bool = False
+    debug: bool = False,
+    sample_seed: Optional[int] = None,
 ) -> Dict[str, VerificationResult]:
     """
     Verify multiple STL to SCAD conversions.
@@ -334,6 +402,7 @@ def batch_verify(
         output_dir: Directory to save SCAD files and reports
         tolerance: Dictionary of tolerance values for different metrics
         debug: Whether to enable debug mode
+        sample_seed: Optional seed for deterministic sampling-based metrics
         
     Returns:
         Dict[str, VerificationResult]: Dictionary of verification results keyed by STL file name
@@ -349,7 +418,9 @@ def batch_verify(
         report_path = output_path / f"{stl_path.stem}_verification.json"
         
         # Convert and verify
-        result = verify_conversion(stl_path, scad_path, tolerance, debug)
+        result = verify_conversion(
+            stl_path, scad_path, tolerance, debug, sample_seed=sample_seed
+        )
         
         # Save report
         result.save_report(report_path)

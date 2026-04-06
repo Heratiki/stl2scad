@@ -4,6 +4,8 @@ Tests for STL to SCAD conversion functionality.
 
 import pytest
 from stl2scad.core.converter import stl2scad, validate_stl, STLValidationError
+from stl2scad.core.benchmark_fixtures import ensure_benchmark_fixtures
+from stl2scad.core import recognition as recognition_module
 import stl
 from .utils import setup_logging, verify_debug_files
 import numpy
@@ -166,3 +168,176 @@ def test_parametric_cube_recognition(sample_stl_file, test_output_dir):
     assert "translate([" in content, "Missing translate() call for position"
     assert "polyhedron" not in content, "Should not emit polyhedron for a basic cube"
 
+
+def test_parametric_cube_recognition_backend_alias(sample_stl_file, test_output_dir):
+    """`default` backend alias should resolve to native backend behavior."""
+    output_file = test_output_dir / "parametric_cube_default_backend.scad"
+    stl2scad(
+        str(sample_stl_file),
+        str(output_file),
+        parametric=True,
+        recognition_backend="default",
+    )
+
+    content = output_file.read_text()
+    assert "cube([" in content, "Missing parametric cube() call for default backend alias"
+    assert "polyhedron" not in content, "Should not emit polyhedron for a detected cube"
+
+
+def test_invalid_recognition_backend_raises(sample_stl_file, test_output_dir):
+    """Unsupported backend ids should fail fast in parametric mode."""
+    output_file = test_output_dir / "invalid_backend.scad"
+    with pytest.raises(ValueError, match="Unsupported recognition backend"):
+        stl2scad(
+            str(sample_stl_file),
+            str(output_file),
+            parametric=True,
+            recognition_backend="does_not_exist",
+        )
+
+
+def test_phase1_trimesh_backend_recognizes_sphere_fixture(test_data_dir, monkeypatch):
+    """Phase 1 backend should classify sphere fixture as sphere()."""
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+    mesh = stl.mesh.Mesh.from_file(str(fixtures_dir / "primitive_sphere.stl"))
+
+    monkeypatch.setattr(
+        recognition_module,
+        "_has_trimesh_manifold_dependencies",
+        lambda: True,
+    )
+
+    scad = recognition_module.detect_primitive(
+        mesh,
+        backend="trimesh_manifold",
+    )
+    assert scad is not None
+    assert "sphere(" in scad
+
+
+def test_phase1_trimesh_backend_recognizes_rotated_cylinder_fixture(test_data_dir, monkeypatch):
+    """Phase 1 backend should classify rotated cylinder and emit transform + cylinder()."""
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+    mesh = stl.mesh.Mesh.from_file(str(fixtures_dir / "primitive_cylinder_rotated.stl"))
+
+    monkeypatch.setattr(
+        recognition_module,
+        "_has_trimesh_manifold_dependencies",
+        lambda: True,
+    )
+
+    scad = recognition_module.detect_primitive(
+        mesh,
+        backend="trimesh_manifold",
+    )
+    assert scad is not None
+    assert "cylinder(" in scad
+    assert "rotate(" in scad
+
+
+def test_phase1_trimesh_backend_recognizes_cone_fixture(test_data_dir, monkeypatch):
+    """Phase 1 backend should classify cone fixture as tapered cylinder()."""
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+    mesh = stl.mesh.Mesh.from_file(str(fixtures_dir / "primitive_cone.stl"))
+
+    monkeypatch.setattr(
+        recognition_module,
+        "_has_trimesh_manifold_dependencies",
+        lambda: True,
+    )
+
+    scad = recognition_module.detect_primitive(
+        mesh,
+        backend="trimesh_manifold",
+    )
+    assert scad is not None
+    assert "cylinder(" in scad
+    assert "r1=" in scad and "r2=" in scad
+
+
+def test_phase1_trimesh_backend_prefers_box_for_box_fixture(test_data_dir, monkeypatch):
+    """Box fixture should resolve to cube() instead of a cylinder tie-break."""
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+    mesh = stl.mesh.Mesh.from_file(str(fixtures_dir / "primitive_box_axis_aligned.stl"))
+
+    monkeypatch.setattr(
+        recognition_module,
+        "_has_trimesh_manifold_dependencies",
+        lambda: True,
+    )
+
+    scad = recognition_module.detect_primitive(mesh, backend="trimesh_manifold")
+    assert scad is not None
+    assert "cube(" in scad
+    assert "cylinder(" not in scad
+
+
+def test_phase1_trimesh_backend_multicomponent_union_for_disconnected_boxes(test_data_dir, monkeypatch):
+    """Disjoint multi-component fixture should emit union() with per-component primitives."""
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+    mesh = stl.mesh.Mesh.from_file(str(fixtures_dir / "composite_disconnected_dual_box.stl"))
+
+    monkeypatch.setattr(
+        recognition_module,
+        "_has_trimesh_manifold_dependencies",
+        lambda: True,
+    )
+
+    scad = recognition_module.detect_primitive(mesh, backend="trimesh_manifold")
+    assert scad is not None
+    assert "union()" in scad
+    assert scad.count("cube(") >= 2
+
+
+def test_phase1_trimesh_backend_fallback_for_subtraction_shell(test_data_dir, monkeypatch):
+    """Nested/overlapping component shells should fallback to polyhedron path."""
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+    mesh = stl.mesh.Mesh.from_file(str(fixtures_dir / "composite_subtraction_shell.stl"))
+
+    monkeypatch.setattr(
+        recognition_module,
+        "_has_trimesh_manifold_dependencies",
+        lambda: True,
+    )
+
+    scad = recognition_module.detect_primitive(mesh, backend="trimesh_manifold")
+    assert scad is None
+
+
+def test_phase1_trimesh_backend_fallback_for_stanford_bunny(test_data_dir, monkeypatch):
+    """Non-primitive organic mesh should fallback (no primitive candidate)."""
+    mesh = stl.mesh.Mesh.from_file(str(test_data_dir / "Stanford_Bunny_sample.stl"))
+
+    monkeypatch.setattr(
+        recognition_module,
+        "_has_trimesh_manifold_dependencies",
+        lambda: True,
+    )
+
+    scad = recognition_module.detect_primitive(mesh, backend="trimesh_manifold")
+    assert scad is None
+
+
+def test_phase1_converter_fallback_emits_polyhedron_for_subtraction_shell(test_data_dir, test_output_dir):
+    """Converter should keep safe polyhedron fallback when backend cannot safely reconstruct."""
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+
+    input_file = fixtures_dir / "composite_subtraction_shell.stl"
+    output_file = test_output_dir / "subtraction_shell_parametric.scad"
+    stl2scad(
+        str(input_file),
+        str(output_file),
+        parametric=True,
+        recognition_backend="trimesh_manifold",
+    )
+
+    content = output_file.read_text()
+    assert "polyhedron(" in content
+    assert "union()" not in content

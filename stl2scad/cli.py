@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from stl2scad.core.converter import ConversionStats, STLValidationError, stl2scad
+from stl2scad.core.recognition import SUPPORTED_RECOGNITION_BACKENDS
 from stl2scad.core.verification import (
     generate_comparison_visualization,
     generate_verification_report_html,
@@ -37,6 +38,17 @@ def _non_negative_float(value: str) -> float:
         parsed = float(value)
     except ValueError as exc:
         raise argparse.ArgumentTypeError(f"Expected a float, got '{value}'") from exc
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("Value must be non-negative")
+    return parsed
+
+
+def _non_negative_int(value: str) -> int:
+    """argparse type validator for non-negative integers."""
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"Expected an integer, got '{value}'") from exc
     if parsed < 0:
         raise argparse.ArgumentTypeError("Value must be non-negative")
     return parsed
@@ -72,6 +84,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--parametric",
         action="store_true",
         help="Try to detect and write primitives instead of a flat polyhedron",
+    )
+    convert_parser.add_argument(
+        "--recognition-backend",
+        choices=list(SUPPORTED_RECOGNITION_BACKENDS),
+        default="native",
+        help="Recognition backend for parametric mode (default: native)",
     )
     convert_parser.set_defaults(handler=convert_command)
 
@@ -119,6 +137,18 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Try to detect and write primitives instead of a flat polyhedron during verification conversion",
     )
+    verify_parser.add_argument(
+        "--recognition-backend",
+        choices=list(SUPPORTED_RECOGNITION_BACKENDS),
+        default="native",
+        help="Recognition backend for parametric conversion (default: native)",
+    )
+    verify_parser.add_argument(
+        "--sample-seed",
+        type=_non_negative_int,
+        default=None,
+        help="Seed for deterministic sampling-based verification metrics",
+    )
     verify_parser.set_defaults(handler=verify_command)
 
     batch_parser = subparsers.add_parser(
@@ -154,6 +184,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--parametric",
         action="store_true",
         help="Try to detect and write primitives instead of a flat polyhedron during batch conversion",
+    )
+    batch_parser.add_argument(
+        "--recognition-backend",
+        choices=list(SUPPORTED_RECOGNITION_BACKENDS),
+        default="native",
+        help="Recognition backend for parametric conversion (default: native)",
+    )
+    batch_parser.add_argument(
+        "--sample-seed",
+        type=_non_negative_int,
+        default=None,
+        help="Seed for deterministic sampling-based verification metrics",
     )
     batch_parser.set_defaults(handler=batch_command)
 
@@ -256,8 +298,16 @@ def convert_command(args: argparse.Namespace) -> int:
             print("Debug mode enabled")
         if args.parametric:
             print("Parametric primitive recognition enabled")
+            print(f"Recognition backend: {args.recognition_backend}")
 
-        stats = stl2scad(args.input_file, args.output_file, args.tolerance, args.debug, getattr(args, 'parametric', False))
+        stats = stl2scad(
+            args.input_file,
+            args.output_file,
+            args.tolerance,
+            args.debug,
+            getattr(args, 'parametric', False),
+            recognition_backend=getattr(args, "recognition_backend", "native"),
+        )
         print_stats(stats)
         return 0
 
@@ -302,19 +352,32 @@ def verify_command(args: argparse.Namespace) -> int:
             print("Will generate temporary SCAD file")
             temp_dir_obj = tempfile.TemporaryDirectory()
             scad_file_to_use = str(Path(temp_dir_obj.name) / f"{Path(args.input_file).stem}.scad")
-            stl2scad(args.input_file, scad_file_to_use, parametric=getattr(args, 'parametric', False))
+            stl2scad(
+                args.input_file,
+                scad_file_to_use,
+                parametric=getattr(args, 'parametric', False),
+                recognition_backend=getattr(args, "recognition_backend", "native"),
+            )
 
         print("Tolerance settings:")
         print(f"  Volume: {tolerance['volume']}%")
         print(f"  Surface area: {tolerance['surface_area']}%")
         print(f"  Bounding box: {tolerance['bounding_box']}%")
+        if args.sample_seed is not None:
+            print(f"  Sample seed: {args.sample_seed}")
 
         if visualize:
             print("Visualization enabled")
         if args.html_report:
             print("HTML report enabled")
 
-        result = verify_conversion(args.input_file, scad_file_to_use, tolerance, debug=False)
+        result = verify_conversion(
+            args.input_file,
+            scad_file_to_use,
+            tolerance,
+            debug=False,
+            sample_seed=args.sample_seed,
+        )
         print_verification_result(result)
 
         report_dir = Path(args.output_file).parent if args.output_file else Path(args.input_file).parent
@@ -387,6 +450,8 @@ def batch_command(args: argparse.Namespace) -> int:
         print(f"  Volume: {tolerance['volume']}%")
         print(f"  Surface area: {tolerance['surface_area']}%")
         print(f"  Bounding box: {tolerance['bounding_box']}%")
+        if args.sample_seed is not None:
+            print(f"  Sample seed: {args.sample_seed}")
 
         if args.html_report:
             print("HTML reports will be generated")
@@ -402,8 +467,19 @@ def batch_command(args: argparse.Namespace) -> int:
             print(f"Output: {scad_file}")
 
             try:
-                stl2scad(str(stl_file), str(scad_file), parametric=getattr(args, 'parametric', False))
-                result = verify_conversion(stl_file, scad_file, tolerance, debug=False)
+                stl2scad(
+                    str(stl_file),
+                    str(scad_file),
+                    parametric=getattr(args, 'parametric', False),
+                    recognition_backend=getattr(args, "recognition_backend", "native"),
+                )
+                result = verify_conversion(
+                    stl_file,
+                    scad_file,
+                    tolerance,
+                    debug=False,
+                    sample_seed=args.sample_seed,
+                )
                 result.save_report(report_file)
 
                 if args.html_report:

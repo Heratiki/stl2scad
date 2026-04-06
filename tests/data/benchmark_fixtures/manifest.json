@@ -1,0 +1,284 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-04-06T18:17:10.440512+00:00",
+  "required_phase0_fixture_names": [
+    "primitive_box_axis_aligned",
+    "primitive_cylinder_axis_aligned",
+    "primitive_cylinder_rotated",
+    "primitive_sphere",
+    "primitive_cone",
+    "composite_union_l_shape",
+    "composite_subtraction_shell",
+    "composite_disconnected_dual_box",
+    "perf_sphere_low",
+    "perf_sphere_medium",
+    "perf_sphere_high"
+  ],
+  "fixtures": [
+    {
+      "name": "primitive_box_axis_aligned",
+      "file": "primitive_box_axis_aligned.stl",
+      "category": "primitive",
+      "primitive_family": "box",
+      "description": "Axis-aligned rectangular box.",
+      "tags": [
+        "phase0",
+        "primitive",
+        "box"
+      ],
+      "triangles": 12,
+      "bounding_box": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "min_z": 0.0,
+        "max_x": 20.0,
+        "max_y": 12.0,
+        "max_z": 8.0,
+        "width": 20.0,
+        "height": 12.0,
+        "depth": 8.0
+      }
+    },
+    {
+      "name": "primitive_cylinder_axis_aligned",
+      "file": "primitive_cylinder_axis_aligned.stl",
+      "category": "primitive",
+      "primitive_family": "cylinder",
+      "description": "Axis-aligned cylinder.",
+      "tags": [
+        "phase0",
+        "primitive",
+        "cylinder"
+      ],
+      "triangles": 256,
+      "bounding_box": {
+        "min_x": -6.0,
+        "min_y": -6.0,
+        "min_z": 0.0,
+        "max_x": 6.0,
+        "max_y": 6.0,
+        "max_z": 20.0,
+        "width": 12.0,
+        "height": 12.0,
+        "depth": 20.0
+      }
+    },
+    {
+      "name": "primitive_cylinder_rotated",
+      "file": "primitive_cylinder_rotated.stl",
+      "category": "primitive",
+      "primitive_family": "cylinder",
+      "description": "Rotated cylinder (non-axis-aligned).",
+      "tags": [
+        "phase0",
+        "primitive",
+        "cylinder",
+        "rotated"
+      ],
+      "triangles": 256,
+      "bounding_box": {
+        "min_x": 2.757676839828491,
+        "min_y": -12.865225791931152,
+        "min_z": -1.8307427167892456,
+        "max_x": 17.937885284423828,
+        "max_y": 4.414738178253174,
+        "max_z": 18.668190002441406,
+        "width": 15.180208444595337,
+        "height": 17.279963970184326,
+        "depth": 20.498932719230652
+      }
+    },
+    {
+      "name": "primitive_sphere",
+      "file": "primitive_sphere.stl",
+      "category": "primitive",
+      "primitive_family": "sphere",
+      "description": "UV sphere primitive for sphere candidate fitting.",
+      "tags": [
+        "phase0",
+        "primitive",
+        "sphere"
+      ],
+      "triangles": 2208,
+      "bounding_box": {
+        "min_x": -8.0,
+        "min_y": -8.0,
+        "min_z": -8.0,
+        "max_x": 8.0,
+        "max_y": 8.0,
+        "max_z": 8.0,
+        "width": 16.0,
+        "height": 16.0,
+        "depth": 16.0
+      }
+    },
+    {
+      "name": "primitive_cone",
+      "file": "primitive_cone.stl",
+      "category": "primitive",
+      "primitive_family": "cone",
+      "description": "Cone primitive (tip + base).",
+      "tags": [
+        "phase0",
+        "primitive",
+        "cone"
+      ],
+      "triangles": 128,
+      "bounding_box": {
+        "min_x": -6.0,
+        "min_y": -6.0,
+        "min_z": 0.0,
+        "max_x": 6.0,
+        "max_y": 6.0,
+        "max_z": 18.0,
+        "width": 12.0,
+        "height": 12.0,
+        "depth": 18.0
+      }
+    },
+    {
+      "name": "composite_union_l_shape",
+      "file": "composite_union_l_shape.stl",
+      "category": "composite",
+      "primitive_family": "union_like",
+      "description": "Union-like L-shape composed from voxel CSG.",
+      "tags": [
+        "phase0",
+        "composite",
+        "union_like"
+      ],
+      "triangles": 448,
+      "bounding_box": {
+        "min_x": -4.0,
+        "min_y": -4.0,
+        "min_z": -2.0,
+        "max_x": 4.0,
+        "max_y": 4.0,
+        "max_z": 2.0,
+        "width": 8.0,
+        "height": 8.0,
+        "depth": 4.0
+      }
+    },
+    {
+      "name": "composite_subtraction_shell",
+      "file": "composite_subtraction_shell.stl",
+      "category": "composite",
+      "primitive_family": "subtraction_like",
+      "description": "Subtraction-like shell: outer box minus inner cavity.",
+      "tags": [
+        "phase0",
+        "composite",
+        "subtraction_like"
+      ],
+      "triangles": 2160,
+      "bounding_box": {
+        "min_x": -6.0,
+        "min_y": -6.0,
+        "min_z": -6.0,
+        "max_x": 6.0,
+        "max_y": 6.0,
+        "max_z": 6.0,
+        "width": 12.0,
+        "height": 12.0,
+        "depth": 12.0
+      }
+    },
+    {
+      "name": "composite_disconnected_dual_box",
+      "file": "composite_disconnected_dual_box.stl",
+      "category": "composite",
+      "primitive_family": "multi_component",
+      "description": "Disconnected dual-box multi-component mesh.",
+      "tags": [
+        "phase0",
+        "composite",
+        "multi_component"
+      ],
+      "triangles": 384,
+      "bounding_box": {
+        "min_x": -5.5,
+        "min_y": -2.0,
+        "min_z": -2.0,
+        "max_x": 5.5,
+        "max_y": 2.0,
+        "max_z": 2.0,
+        "width": 11.0,
+        "height": 4.0,
+        "depth": 4.0
+      }
+    },
+    {
+      "name": "perf_sphere_low",
+      "file": "perf/perf_sphere_low.stl",
+      "category": "performance",
+      "primitive_family": "sphere",
+      "description": "Low complexity sphere fixture for perf baseline.",
+      "tags": [
+        "phase0",
+        "performance",
+        "size_low"
+      ],
+      "triangles": 224,
+      "bounding_box": {
+        "min_x": -10.0,
+        "min_y": -10.0,
+        "min_z": -10.0,
+        "max_x": 10.0,
+        "max_y": 10.0,
+        "max_z": 10.0,
+        "width": 20.0,
+        "height": 20.0,
+        "depth": 20.0
+      }
+    },
+    {
+      "name": "perf_sphere_medium",
+      "file": "perf/perf_sphere_medium.stl",
+      "category": "performance",
+      "primitive_family": "sphere",
+      "description": "Medium complexity sphere fixture for perf baseline.",
+      "tags": [
+        "phase0",
+        "performance",
+        "size_medium"
+      ],
+      "triangles": 2208,
+      "bounding_box": {
+        "min_x": -10.0,
+        "min_y": -10.0,
+        "min_z": -10.0,
+        "max_x": 10.0,
+        "max_y": 10.0,
+        "max_z": 10.0,
+        "width": 20.0,
+        "height": 20.0,
+        "depth": 20.0
+      }
+    },
+    {
+      "name": "perf_sphere_high",
+      "file": "perf/perf_sphere_high.stl",
+      "category": "performance",
+      "primitive_family": "sphere",
+      "description": "High complexity sphere fixture for perf baseline.",
+      "tags": [
+        "phase0",
+        "performance",
+        "size_high"
+      ],
+      "triangles": 6240,
+      "bounding_box": {
+        "min_x": -10.0,
+        "min_y": -10.0,
+        "min_z": -10.0,
+        "max_x": 10.0,
+        "max_y": 10.0,
+        "max_z": 10.0,
+        "width": 20.0,
+        "height": 20.0,
+        "depth": 20.0
+      }
+    }
+  ]
+}

@@ -68,7 +68,8 @@ def run_openscad(description: str, args: List[str], log_file: str, openscad_path
         return False
 
 from . import config
-from .recognition import detect_primitive
+from .cgal_backend import detect_primitive_with_cgal
+from .recognition import detect_primitive, normalize_recognition_backend
 
 def get_openscad_path() -> Optional[str]:
     """Get OpenSCAD executable path and verify version requirements.
@@ -336,7 +337,29 @@ def extract_metadata(mesh: stl.mesh.Mesh) -> Dict[str, str]:
     return metadata
 
 
-def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: bool = False, parametric: bool = False) -> ConversionStats:
+def _infer_primitive_type_from_scad(scad_code: str) -> Optional[str]:
+    text = scad_code.lower()
+    if "sphere(" in text:
+        return "sphere"
+    if "cylinder(" in text and "r1=" in text and "r2=" in text:
+        return "cone"
+    if "cylinder(" in text:
+        return "cylinder"
+    if "cube(" in text:
+        return "box"
+    if "union()" in text:
+        return "composite_union"
+    return None
+
+
+def stl2scad(
+    input_file: str,
+    output_file: str,
+    tolerance: float = 1e-6,
+    debug: bool = False,
+    parametric: bool = False,
+    recognition_backend: str = "native",
+) -> ConversionStats:
     """
     Convert STL to SCAD with improved handling and optimization.
 
@@ -346,6 +369,7 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
         tolerance: Vertex deduplication tolerance
         debug: Enable debug mode (renders comparison previews)
         parametric: Try to detect and write primitives instead of a flat polyhedron
+        recognition_backend: Primitive recognition backend id (`native`, `trimesh_manifold`, `cgal`)
 
     Returns:
         ConversionStats: Object with conversion statistics
@@ -405,6 +429,42 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
     # Optimize SCAD output
     final_points, final_faces = optimize_scad(unique_points, faces)
 
+    selected_backend = "native"
+    if parametric:
+        selected_backend = normalize_recognition_backend(recognition_backend)
+        metadata['recognition_backend_requested'] = selected_backend
+
+    primitive_scad = None
+    primitive_type: Optional[str] = None
+    backend_used: Optional[str] = None
+    if parametric:
+        if selected_backend == "cgal":
+            cgal_result = detect_primitive_with_cgal(stl_mesh)
+            if cgal_result and cgal_result.detected and cgal_result.scad:
+                primitive_scad = cgal_result.scad.strip() + "\n"
+                backend_used = "cgal"
+                primitive_type = cgal_result.primitive_type
+                if cgal_result.confidence is not None:
+                    metadata["recognition_confidence"] = f"{cgal_result.confidence:.6f}"
+                if cgal_result.diagnostics is not None:
+                    metadata["recognition_diagnostics"] = json.dumps(cgal_result.diagnostics)
+            else:
+                primitive_scad = detect_primitive(stl_mesh, backend=selected_backend)
+                if primitive_scad:
+                    backend_used = "trimesh_manifold_fallback"
+                    primitive_type = _infer_primitive_type_from_scad(primitive_scad)
+        else:
+            primitive_scad = detect_primitive(stl_mesh, backend=selected_backend)
+            if primitive_scad:
+                backend_used = selected_backend
+                primitive_type = _infer_primitive_type_from_scad(primitive_scad)
+
+    if primitive_scad:
+        if backend_used:
+            metadata["recognition_backend_used"] = backend_used
+        if primitive_type:
+            metadata["recognized_primitive_type"] = primitive_type
+
     # Write SCAD file with metadata as comments
     with open(output_file, "w") as f:
         # Write metadata as comments with proper formatting
@@ -417,10 +477,6 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
             f.write(f"// {key}: {clean_value}\n")
         f.write("//\n\n")
 
-        primitive_scad = None
-        if parametric:
-            primitive_scad = detect_primitive(stl_mesh)
-            
         if primitive_scad:
             f.write(primitive_scad)
         else:

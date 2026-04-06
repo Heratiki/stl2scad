@@ -32,6 +32,16 @@ def test_verify_parser_rejects_negative_tolerances():
         assert exc.code == 2
 
 
+def test_verify_parser_rejects_negative_sample_seed():
+    """Sample seed must be non-negative when provided."""
+    parser = cli.build_parser()
+    try:
+        parser.parse_args(["verify", "in.stl", "--sample-seed", "-1"])
+        assert False, "Expected argparse to reject negative sample seed"
+    except SystemExit as exc:
+        assert exc.code == 2
+
+
 def test_verify_parser_html_flag():
     """Verify command should parse html-report and visualize flags independently."""
     parser = cli.build_parser()
@@ -59,7 +69,14 @@ def test_convert_command_execution(mock_stl2scad, test_output_dir):
     exit_code = cli.main(["convert", "dummy.stl", out_file, "--tolerance", "0.5", "--debug"])
     
     assert exit_code == 0
-    mock_stl2scad.assert_called_once_with("dummy.stl", out_file, 0.5, True, False)
+    mock_stl2scad.assert_called_once_with(
+        "dummy.stl",
+        out_file,
+        0.5,
+        True,
+        False,
+        recognition_backend="native",
+    )
 
 
 @patch("stl2scad.cli.verify_conversion")
@@ -79,6 +96,7 @@ def test_verify_command_execution(mock_stl2scad, mock_verify, test_output_dir):
     args, kwargs = mock_verify.call_args
     assert args[0] == "dummy.stl"
     assert args[2]["volume"] == 1.5
+    assert kwargs["sample_seed"] is None
 
 
 @patch("stl2scad.cli.verify_conversion")

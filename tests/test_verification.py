@@ -250,3 +250,43 @@ def test_phase2_metrics(test_data_dir, test_output_dir):
     
     # Normals should match perfectly on identical meshes
     assert normal_dev < 1.0, "Normals should perfectly match for identical geometries"
+
+
+def test_compare_metrics_deterministic_with_sample_seed(test_output_dir):
+    """Sampling-based metrics should be reproducible when sample_seed is provided."""
+    cube_a_file = test_output_dir / "cube_seed_a.stl"
+    cube_b_file = test_output_dir / "cube_seed_b.stl"
+    create_cube_stl(cube_a_file)
+    create_cube_stl(cube_b_file)
+
+    mesh_a = stl.mesh.Mesh.from_file(str(cube_a_file))
+    mesh_b = stl.mesh.Mesh.from_file(str(cube_b_file))
+    mesh_b.translate(np.array([0.05, 0.02, 0.01]))
+
+    def _bbox(m):
+        min_coords = [float(x) for x in m.min_]
+        max_coords = [float(x) for x in m.max_]
+        return {
+            'width': max_coords[0] - min_coords[0],
+            'height': max_coords[1] - min_coords[1],
+            'depth': max_coords[2] - min_coords[2],
+        }
+
+    stl_metrics = {'bounding_box': _bbox(mesh_a), 'mesh': mesh_a}
+    scad_metrics = {'bounding_box': _bbox(mesh_b), 'mesh': mesh_b}
+
+    result_1 = compare_metrics(stl_metrics, scad_metrics, sample_seed=12345)
+    result_2 = compare_metrics(stl_metrics, scad_metrics, sample_seed=12345)
+    result_3 = compare_metrics(stl_metrics, scad_metrics, sample_seed=54321)
+
+    assert result_1['hausdorff_distance']['value'] == pytest.approx(
+        result_2['hausdorff_distance']['value'], abs=1e-12
+    )
+    assert result_1['normal_deviation']['value'] == pytest.approx(
+        result_2['normal_deviation']['value'], abs=1e-12
+    )
+
+    # Different seeds should generally produce different sampled approximations.
+    assert abs(
+        result_1['hausdorff_distance']['value'] - result_3['hausdorff_distance']['value']
+    ) > 1e-9

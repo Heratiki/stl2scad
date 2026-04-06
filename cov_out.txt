@@ -1,0 +1,52 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.3, pytest-9.0.1, pluggy-1.6.0 -- C:\Users\herat\AppData\Local\Programs\Python\Python312\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\herat\source\stl2scad\tests
+configfile: pytest.ini
+plugins: anyio-4.9.0, cov-7.0.0
+collecting ... collected 4 items
+
+tests\test_cli.py::test_main_without_args_returns_usage_error usage: python -m stl2scad [-h] {convert,verify,batch} ...
+
+Convert STL files to OpenSCAD and verify conversion accuracy.
+
+positional arguments:
+  {convert,verify,batch}
+    convert             Convert an STL file to OpenSCAD format
+    verify              Verify conversion accuracy for STL and SCAD models
+    batch               Batch convert and verify STL files in a directory
+
+options:
+  -h, --help            show this help message and exit
+PASSED
+tests\test_cli.py::test_convert_parser_rejects_non_positive_tolerance PASSED
+tests\test_cli.py::test_verify_parser_rejects_negative_tolerances PASSED
+tests\test_cli.py::test_verify_parser_html_flag PASSED
+
+============================== warnings summary ===============================
+stl2scad\core\converter.py:5
+  C:\Users\herat\source\stl2scad\stl2scad\core\converter.py:5: UserWarning: The NumPy module was reloaded (imported a second time). This can in some cases result in small but subtle issues and is discouraged.
+    import numpy as np
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============================== tests coverage ================================
+_______________ coverage: platform win32, python 3.12.3-final-0 _______________
+
+Name                                          Stmts   Miss Branch BrPart  Cover   Missing
+-----------------------------------------------------------------------------------------
+stl2scad\__init__.py                              3      0      0      0   100%
+stl2scad\__main__.py                             17     17      4      0     0%   5-27
+stl2scad\cli.py                                 248    190     54      4    21%   27-28, 31, 38-39, 42, 150, 164-174, 184-224, 237-262, 275-339, 352-442, 462-471, 475
+stl2scad\core\__init__.py                         0      0      0      0   100%
+stl2scad\core\config.py                          78     45     10      0    38%   74-80, 92-112, 124-129, 141-142, 154, 166, 179-190, 203-205
+stl2scad\core\converter.py                      369    340     96      0     6%   31-68, 78-185, 218-241, 263-280, 294-308, 320-335, 352-435, 454-703
+stl2scad\core\verification\__init__.py            4      0      0      0   100%
+stl2scad\core\verification\metrics.py           143    124     26      0    11%   31, 44-47, 61-67, 92-133, 147-164, 176-194, 211-254, 268-348, 364-376
+stl2scad\core\verification\verification.py      137    111     66      0    13%   48-93, 107-118, 127-128, 152-175, 197-320, 341-371
+stl2scad\core\verification\visualization.py     133    121     58      0     6%   18-19, 24-32, 60-245, 262-528, 533, 538, 543-549
+stl2scad\gui\__init__.py                          2      2      0      0     0%   5-7
+stl2scad\gui\main_window.py                     257    257     26      0     0%   5-450
+-----------------------------------------------------------------------------------------
+TOTAL                                          1391   1207    340      4    11%
+Coverage HTML written to dir htmlcov
+======================== 4 passed, 1 warning in 0.61s =========================

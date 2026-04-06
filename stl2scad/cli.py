@@ -68,6 +68,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enable debug mode (renders SCAD diagnostic artifacts)",
     )
+    convert_parser.add_argument(
+        "--parametric",
+        action="store_true",
+        help="Try to detect and write primitives instead of a flat polyhedron",
+    )
     convert_parser.set_defaults(handler=convert_command)
 
     verify_parser = subparsers.add_parser(
@@ -109,6 +114,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Generate HTML report with visualizations",
     )
+    verify_parser.add_argument(
+        "--parametric",
+        action="store_true",
+        help="Try to detect and write primitives instead of a flat polyhedron during verification conversion",
+    )
     verify_parser.set_defaults(handler=verify_command)
 
     batch_parser = subparsers.add_parser(
@@ -139,6 +149,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--html-report",
         action="store_true",
         help="Generate HTML reports (and visualizations) for each processed file",
+    )
+    batch_parser.add_argument(
+        "--parametric",
+        action="store_true",
+        help="Try to detect and write primitives instead of a flat polyhedron during batch conversion",
     )
     batch_parser.set_defaults(handler=batch_command)
 
@@ -239,8 +254,10 @@ def convert_command(args: argparse.Namespace) -> int:
         print(f"Using tolerance: {args.tolerance}")
         if args.debug:
             print("Debug mode enabled")
+        if args.parametric:
+            print("Parametric primitive recognition enabled")
 
-        stats = stl2scad(args.input_file, args.output_file, args.tolerance, args.debug)
+        stats = stl2scad(args.input_file, args.output_file, args.tolerance, args.debug, getattr(args, 'parametric', False))
         print_stats(stats)
         return 0
 
@@ -285,7 +302,7 @@ def verify_command(args: argparse.Namespace) -> int:
             print("Will generate temporary SCAD file")
             temp_dir_obj = tempfile.TemporaryDirectory()
             scad_file_to_use = str(Path(temp_dir_obj.name) / f"{Path(args.input_file).stem}.scad")
-            stl2scad(args.input_file, scad_file_to_use)
+            stl2scad(args.input_file, scad_file_to_use, parametric=getattr(args, 'parametric', False))
 
         print("Tolerance settings:")
         print(f"  Volume: {tolerance['volume']}%")
@@ -385,7 +402,7 @@ def batch_command(args: argparse.Namespace) -> int:
             print(f"Output: {scad_file}")
 
             try:
-                stl2scad(str(stl_file), str(scad_file))
+                stl2scad(str(stl_file), str(scad_file), parametric=getattr(args, 'parametric', False))
                 result = verify_conversion(stl_file, scad_file, tolerance, debug=False)
                 result.save_report(report_file)
 

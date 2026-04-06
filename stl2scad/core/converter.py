@@ -68,6 +68,7 @@ def run_openscad(description: str, args: List[str], log_file: str, openscad_path
         return False
 
 from . import config
+from .recognition import detect_primitive
 
 def get_openscad_path() -> Optional[str]:
     """Get OpenSCAD executable path and verify version requirements.
@@ -335,7 +336,7 @@ def extract_metadata(mesh: stl.mesh.Mesh) -> Dict[str, str]:
     return metadata
 
 
-def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: bool = False) -> ConversionStats:
+def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: bool = False, parametric: bool = False) -> ConversionStats:
     """
     Convert STL to SCAD with improved handling and optimization.
 
@@ -344,6 +345,7 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
         output_file: Path to output SCAD file
         tolerance: Vertex deduplication tolerance
         debug: Enable debug mode (renders comparison previews)
+        parametric: Try to detect and write primitives instead of a flat polyhedron
 
     Returns:
         ConversionStats: Object with conversion statistics
@@ -415,19 +417,26 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
             f.write(f"// {key}: {clean_value}\n")
         f.write("//\n\n")
 
-        # Write the polyhedron
-        f.write("polyhedron(\n")
-        f.write("  points=[\n")
-        for vertex in final_points:
-            f.write(f"    [{vertex[0]:.6f}, {vertex[1]:.6f}, {vertex[2]:.6f}],\n")
-        f.write("  ],\n")
+        primitive_scad = None
+        if parametric:
+            primitive_scad = detect_primitive(stl_mesh)
+            
+        if primitive_scad:
+            f.write(primitive_scad)
+        else:
+            # Write the polyhedron
+            f.write("polyhedron(\n")
+            f.write("  points=[\n")
+            for vertex in final_points:
+                f.write(f"    [{vertex[0]:.6f}, {vertex[1]:.6f}, {vertex[2]:.6f}],\n")
+            f.write("  ],\n")
 
-        f.write("  faces=[\n")
-        for face in final_faces:
-            f.write(f"    [{face[0]}, {face[1]}, {face[2]}],\n")
-        f.write("  ],\n")
-        f.write("  convexity=10\n")  # Improved rendering
-        f.write(");\n")
+            f.write("  faces=[\n")
+            for face in final_faces:
+                f.write(f"    [{face[0]}, {face[1]}, {face[2]}],\n")
+            f.write("  ],\n")
+            f.write("  convexity=10\n")  # Improved rendering
+            f.write(");\n")
 
     stats = ConversionStats(
         original_vertices=original_vertex_count,

@@ -151,3 +151,18 @@ def test_invalid_tolerance_raises(sample_stl_file, test_output_dir):
     output_file = test_output_dir / "invalid_tolerance.scad"
     with pytest.raises(ValueError, match="Tolerance must be positive"):
         stl2scad(str(sample_stl_file), str(output_file), tolerance=0)
+
+def test_parametric_cube_recognition(sample_stl_file, test_output_dir):
+    """Test that a pure cube STL is recognized and exported as a parametric cube()."""
+    output_file = test_output_dir / "parametric_cube.scad"
+    # Convert with parametric enabled
+    stl2scad(str(sample_stl_file), str(output_file), parametric=True)
+    
+    assert output_file.exists(), "Output SCAD file not created"
+    content = output_file.read_text()
+    
+    # It should contain cube() and translate() and NOT polyhedron()
+    assert "cube([" in content, "Missing parametric cube() call"
+    assert "translate([" in content, "Missing translate() call for position"
+    assert "polyhedron" not in content, "Should not emit polyhedron for a basic cube"
+

@@ -59,7 +59,7 @@ def test_convert_command_execution(mock_stl2scad, test_output_dir):
     exit_code = cli.main(["convert", "dummy.stl", out_file, "--tolerance", "0.5", "--debug"])
     
     assert exit_code == 0
-    mock_stl2scad.assert_called_once_with("dummy.stl", out_file, 0.5, True)
+    mock_stl2scad.assert_called_once_with("dummy.stl", out_file, 0.5, True, False)
 
 
 @patch("stl2scad.cli.verify_conversion")

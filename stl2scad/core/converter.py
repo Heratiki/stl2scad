@@ -204,12 +204,13 @@ class STLValidationError(Exception):
     """Raised when STL file validation fails."""
     pass
 
-def validate_stl(mesh: stl.mesh.Mesh) -> None:
+def validate_stl(mesh: stl.mesh.Mesh, tolerance: float = 1e-6) -> None:
     """
     Validate STL mesh integrity.
 
     Args:
         mesh: The STL mesh to validate
+        tolerance: Grid cell size for vertex snapping
 
     Raises:
         STLValidationError: If validation fails
@@ -217,13 +218,14 @@ def validate_stl(mesh: stl.mesh.Mesh) -> None:
     if len(mesh.points) == 0:
         raise STLValidationError("Empty STL file")
 
-    # Check for non-manifold edges
-    # TODO: This builds edge keys as tuples of float tuples which is fragile
-    #       for coordinates that differ by floating-point rounding.  Replace
-    #       with a rounded/integer-keyed approach consistent with
-    #       find_unique_vertices, or use a proper mesh library (e.g. trimesh).
-    edges: Dict[Tuple[Tuple[float, float, float], Tuple[float, float, float]], List[int]] = {}
-    for i, face in enumerate(mesh.vectors):
+    # Check for non-manifold edges using integer grids to avoid float fragility
+    scale = 1.0 / tolerance
+    quantized_vectors = np.round(mesh.vectors * scale).astype(np.int64)
+
+    edges: Dict[Tuple[Tuple[int, int, int], Tuple[int, int, int]], List[int]] = {}
+    for i, face in enumerate(quantized_vectors):
+        if len(set(tuple(p) for p in face)) < 3:
+            continue
         for j in range(3):
             edge = tuple(sorted([
                 tuple(face[j]),
@@ -458,7 +460,7 @@ def stl2scad(input_file: str, output_file: str, tolerance: float = 1e-6, debug: 
 
     try:
         stl_mesh = stl.mesh.Mesh.from_file(input_file)
-        validate_stl(stl_mesh)
+        validate_stl(stl_mesh, tolerance)
     except Exception as e:
         logging.error('Failed to load or validate STL: %s', str(e))
         raise

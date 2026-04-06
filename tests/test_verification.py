@@ -126,23 +126,15 @@ def test_visualization_generation(sample_stl_file, test_output_dir):
         log("Continuing test despite visualization failure")
 
 
+@pytest.mark.timeout(300)
 def test_batch_verification(test_data_dir, test_output_dir):
     """Test batch verification of multiple STL files."""
     log = setup_logging()
     log("\nTesting batch verification")
     
-    # Only use STL files small enough to complete in a reasonable time.
-    # The O(n log n) deduplication handles large files efficiently, but the
-    # verification step (calculate_scad_metrics) runs OpenSCAD and is slow for
-    # complex geometry.  Files over 200 KB are excluded from this unit test;
-    # a dedicated integration/performance test should cover them separately.
-    # TODO: remove the size cap once calculate_scad_metrics is fully implemented
-    #       and the OpenSCAD render pipeline is reliable (see metrics.py TODO).
-    MAX_BYTES = 200 * 1024  # 200 KB
-    stl_files = [
-        f for f in test_data_dir.glob("*.stl")
-        if f.stat().st_size <= MAX_BYTES
-    ]
+    # Process all STL files for thorough batch verification.
+    # OpenSCAD metrics computation is fully implemented and handles failures reliably.
+    stl_files = list(test_data_dir.glob("*.stl"))
 
     # If no STL files found, create a simple one
     if not stl_files:

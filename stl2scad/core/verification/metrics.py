@@ -231,12 +231,11 @@ def calculate_scad_metrics(scad_file: Union[str, Path], timeout: int = 120) -> D
         )
 
         if not success or not temp_stl.exists():
-            return {
-                'volume': None,
-                'surface_area': None,
-                'bounding_box': None,
-                'mesh': None
-            }
+            error_msg = "OpenSCAD rendering failed."
+            if log_file.exists():
+                with open(log_file, "r", encoding="utf-8") as lf:
+                    error_msg += " Log output:\n" + lf.read()
+            raise RuntimeError(f"Failed to calculate SCAD metrics: {error_msg}")
 
         try:
             rendered_mesh = stl.mesh.Mesh.from_file(str(temp_stl))
@@ -251,13 +250,8 @@ def calculate_scad_metrics(scad_file: Union[str, Path], timeout: int = 120) -> D
                 'bounding_box': bounding_box,
                 'mesh': rendered_mesh
             }
-        except Exception:
-            return {
-                'volume': None,
-                'surface_area': None,
-                'bounding_box': None,
-                'mesh': None
-            }
+        except Exception as e:
+            raise RuntimeError(f"Failed to calculate SCAD metrics after rendering: {str(e)}")
 
 
 def compare_metrics(stl_metrics: Dict[str, Any], scad_metrics: Dict[str, Any]) -> Dict[str, Any]:

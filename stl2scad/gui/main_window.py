@@ -528,11 +528,15 @@ class MainWindow(QMainWindow):
         overlay.setGeometry(0, 0, 600, 38)
         overlay.raise_()
 
-        # Reposition overlay when parent resizes
-        parent.resizeEvent = lambda e, o=overlay: (
-            o.setGeometry(0, 0, e.size().width(), 38),
-            o.raise_(),
-        )
+        # Reposition overlay when parent resizes.
+        # Must return None — lambdas with tuple expressions return a tuple,
+        # which causes sipBadCatcherResult() in PyQt5.
+        def _resize(e, o=overlay, p=parent):
+            QMainWindow.resizeEvent(self, e)
+            o.setGeometry(0, 0, e.size().width(), 38)
+            o.raise_()
+
+        parent.resizeEvent = _resize
 
     def _build_sidebar(self):
         """Build the left sidebar with workflow steps."""

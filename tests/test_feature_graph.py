@@ -57,6 +57,8 @@ def test_feature_graph_extracts_repeated_through_holes(test_output_dir):
     assert all(3.5 < hole["diameter"] < 4.5 for hole in holes)
     assert len(patterns) == 1
     assert patterns[0]["hole_count"] == 2
+    assert patterns[0]["pattern_count"] == 2
+    assert abs(patterns[0]["pattern_spacing"] - 6.0) < 1e-5
 
 
 def test_feature_graph_scad_preview_emits_plate_with_holes(test_output_dir):
@@ -69,7 +71,11 @@ def test_feature_graph_scad_preview_emits_plate_with_holes(test_output_dir):
     assert scad is not None
     assert "difference()" in scad
     assert "cube(plate_size)" in scad
-    assert scad.count("cylinder(") == 2
+    assert "module hole_cutout" in scad
+    assert "hole_pattern_0_count = 2;" in scad
+    assert "hole_pattern_0_step = [6.000000" in scad
+    assert "for (i = [0 : hole_pattern_0_count - 1])" in scad
+    assert scad.count("cylinder(") == 1
 
 
 def test_feature_graph_scad_preview_declines_without_plate(test_data_dir):

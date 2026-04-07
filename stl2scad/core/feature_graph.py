@@ -137,6 +137,8 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
     size = [float(value) for value in plate["size"]]
     thickness_axis_index = int(np.argmin(size))
     thickness_axis = ("x", "y", "z")[thickness_axis_index]
+    supported_patterns = _supported_hole_patterns(graph, thickness_axis)
+    linear_pattern_names: dict[int, str] = {}
 
     lines = [
         "// Feature graph SCAD preview",
@@ -147,7 +149,29 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         f"plate_size = {_scad_vector(size)};",
     ]
     if holes:
-        lines.append(f"hole_diameter = {float(holes[0]['diameter']):.6f};")
+        for pattern_index, pattern in enumerate(supported_patterns):
+            if pattern.get("type") != "linear_hole_pattern" or not _has_linear_pattern_fields(pattern):
+                continue
+            pattern_name = f"hole_pattern_{len(linear_pattern_names)}"
+            linear_pattern_names[pattern_index] = pattern_name
+            origin = [float(value) for value in pattern["pattern_origin"]]
+            step = [float(value) for value in pattern["pattern_step"]]
+            lines.extend(
+                [
+                    f"{pattern_name}_count = {int(pattern['pattern_count'])};",
+                    f"{pattern_name}_origin = {_scad_vector(origin)};",
+                    f"{pattern_name}_step = {_scad_vector(step)};",
+                    f"{pattern_name}_diameter = {float(pattern['diameter']):.6f};",
+                ]
+            )
+        lines.extend(
+            [
+                "",
+                "module hole_cutout(center, diameter) {",
+                *_hole_cutout_module_body(size[thickness_axis_index] + 0.2, thickness_axis),
+                "}",
+            ]
+        )
     lines.extend(
         [
             "",
@@ -156,13 +180,32 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         ]
     )
 
+    emitted_hole_keys: set[tuple[float, float, float]] = set()
+    for pattern_index, pattern in enumerate(supported_patterns):
+        diameter = float(pattern["diameter"])
+        centers = [[float(value) for value in center] for center in pattern["centers"]]
+        pattern_name = linear_pattern_names.get(pattern_index)
+        if pattern_name is not None:
+            lines.append(f"  for (i = [0 : {pattern_name}_count - 1]) {{")
+            lines.append(
+                f"    hole_cutout({_scad_named_linear_point_expression(pattern_name, 'i')}, {pattern_name}_diameter);"
+            )
+            lines.append("  }")
+        else:
+            center_list = "[" + ", ".join(_scad_vector(center) for center in centers) + "]"
+            lines.append(f"  for (hole_center = {center_list}) {{")
+            lines.append(f"    hole_cutout(hole_center, {diameter:.6f});")
+            lines.append("  }")
+        emitted_hole_keys.update(_hole_key(center) for center in centers)
+
     for hole in holes:
         if hole.get("axis") != thickness_axis:
             continue
         center = [float(value) for value in hole["center"]]
+        if _hole_key(center) in emitted_hole_keys:
+            continue
         diameter = float(hole["diameter"])
-        depth = max(float(hole["depth"]), size[thickness_axis_index]) + 0.2
-        lines.extend(_hole_cutout_scad(center, diameter, depth, thickness_axis))
+        lines.append(f"  hole_cutout({_scad_vector(center)}, {diameter:.6f});")
 
     lines.append("}")
     lines.append("")
@@ -276,31 +319,61 @@ def _scad_vector(values: list[float]) -> str:
     return "[" + ", ".join(f"{value:.6f}" for value in values) + "]"
 
 
-def _hole_cutout_scad(
-    center: list[float],
-    diameter: float,
+def _scad_named_linear_point_expression(pattern_name: str, index_name: str) -> str:
+    parts = [
+        f"{pattern_name}_origin[{axis}] + {index_name} * {pattern_name}_step[{axis}]"
+        for axis in range(3)
+    ]
+    return "[" + ", ".join(parts) + "]"
+
+
+def _supported_hole_patterns(
+    graph: dict[str, Any],
+    axis: str,
+) -> list[dict[str, Any]]:
+    return [
+        feature
+        for feature in graph.get("features", [])
+        if feature.get("type") in {"linear_hole_pattern", "grid_hole_pattern"}
+        and feature.get("axis") == axis
+        and float(feature.get("confidence", 0.0)) >= 0.70
+    ]
+
+
+def _has_linear_pattern_fields(pattern: dict[str, Any]) -> bool:
+    return (
+        isinstance(pattern.get("pattern_origin"), list)
+        and isinstance(pattern.get("pattern_step"), list)
+        and "pattern_count" in pattern
+    )
+
+
+def _hole_key(center: list[float]) -> tuple[float, float, float]:
+    return tuple(round(float(value), 4) for value in center)
+
+
+def _hole_cutout_module_body(
     depth: float,
     axis: str,
 ) -> list[str]:
-    translate = center.copy()
     if axis == "z":
-        translate[2] -= depth * 0.5
-        primitive = f"cylinder(h={depth:.6f}, d={diameter:.6f}, $fn=64);"
+        return [
+            f"  translate([center[0], center[1], center[2] - {depth * 0.5:.6f}])",
+            f"    cylinder(h={depth:.6f}, d=diameter, $fn=64);",
+        ]
     elif axis == "x":
-        translate[0] -= depth * 0.5
-        primitive = (
-            "rotate(a=90, v=[0, 1, 0]) "
-            f"cylinder(h={depth:.6f}, d={diameter:.6f}, $fn=64);"
-        )
+        return [
+            f"  translate([center[0] - {depth * 0.5:.6f}, center[1], center[2]])",
+            "    rotate(a=90, v=[0, 1, 0])",
+            f"      cylinder(h={depth:.6f}, d=diameter, $fn=64);",
+        ]
     elif axis == "y":
-        translate[1] -= depth * 0.5
-        primitive = (
-            "rotate(a=90, v=[1, 0, 0]) "
-            f"cylinder(h={depth:.6f}, d={diameter:.6f}, $fn=64);"
-        )
-    else:
-        return []
-    return [f"  translate({_scad_vector(translate)}) {primitive}"]
+        return [
+            f"  translate([center[0], center[1] - {depth * 0.5:.6f}, center[2]])",
+            "    rotate(a=90, v=[1, 0, 0])",
+            f"      cylinder(h={depth:.6f}, d=diameter, $fn=64);",
+        ]
+    return ["  // unsupported hole axis"]
 
 
 def _extract_axis_aligned_through_holes(
@@ -417,18 +490,50 @@ def _extract_repeated_hole_patterns(features: list[dict[str, Any]]) -> list[dict
             for axis_index in varying_axes
         ]
         pattern_type = "grid_hole_pattern" if min(unique_counts) >= 2 else "linear_hole_pattern"
-        patterns.append(
-            {
-                "type": pattern_type,
-                "confidence": float(min(float(hole["confidence"]) for hole in group)),
-                "axis": axis,
-                "hole_count": int(len(group)),
-                "diameter": float(diameter_key / 1000.0),
-                "centers": [[float(value) for value in hole["center"]] for hole in group],
-                "note": "Candidate repeated hole pattern for future SCAD loop emission.",
-            }
-        )
+        pattern = {
+            "type": pattern_type,
+            "confidence": float(min(float(hole["confidence"]) for hole in group)),
+            "axis": axis,
+            "hole_count": int(len(group)),
+            "diameter": float(diameter_key / 1000.0),
+            "centers": [[float(value) for value in hole["center"]] for hole in group],
+            "note": "Candidate repeated hole pattern for future SCAD loop emission.",
+        }
+        if pattern_type == "linear_hole_pattern":
+            pattern.update(_linear_hole_pattern_metadata(centers, varying_axes))
+        patterns.append(pattern)
     return patterns
+
+
+def _linear_hole_pattern_metadata(
+    centers: np.ndarray,
+    varying_axes: list[int],
+) -> dict[str, Any]:
+    if len(centers) < 2:
+        return {}
+
+    axis_spans = np.ptp(centers[:, varying_axes], axis=0)
+    active_axis = varying_axes[int(np.argmax(axis_spans))]
+    ordered_centers = centers[np.argsort(centers[:, active_axis])]
+    count = len(ordered_centers)
+    step = (ordered_centers[-1] - ordered_centers[0]) / float(count - 1)
+    spacing = float(np.linalg.norm(step))
+    if spacing <= 1e-9:
+        return {}
+
+    expected = ordered_centers[0] + np.arange(count, dtype=np.float64)[:, None] * step
+    regularity_error = float(np.max(np.linalg.norm(ordered_centers - expected, axis=1)) / spacing)
+    if regularity_error > 0.05:
+        return {}
+
+    return {
+        "pattern_origin": [float(value) for value in ordered_centers[0]],
+        "pattern_step": [float(value) for value in step],
+        "pattern_count": int(count),
+        "pattern_spacing": spacing,
+        "pattern_axis": ("x", "y", "z")[active_axis],
+        "regularity_error": regularity_error,
+    }
 
 
 def _connected_face_components(

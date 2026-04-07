@@ -439,7 +439,7 @@ def stl2scad(
     backend_used: Optional[str] = None
     if parametric:
         if selected_backend == "cgal":
-            cgal_result = detect_primitive_with_cgal(stl_mesh)
+            cgal_result = detect_primitive_with_cgal(stl_mesh, tolerance=tolerance)
             if cgal_result and cgal_result.detected and cgal_result.scad:
                 primitive_scad = cgal_result.scad.strip() + "\n"
                 backend_used = "cgal"
@@ -449,7 +449,7 @@ def stl2scad(
                 if cgal_result.diagnostics is not None:
                     metadata["recognition_diagnostics"] = json.dumps(cgal_result.diagnostics)
             else:
-                primitive_scad = detect_primitive(stl_mesh, backend=selected_backend)
+                primitive_scad = detect_primitive(stl_mesh, backend="trimesh_manifold")
                 if primitive_scad:
                     backend_used = "trimesh_manifold_fallback"
                     primitive_type = _infer_primitive_type_from_scad(primitive_scad)

@@ -101,6 +101,36 @@ def test_cgal_helper_capabilities_end_to_end():
     assert "sphere" in capabilities.supported_primitives
 
 
+def test_cgal_capabilities_reports_python_bindings_without_helper(monkeypatch):
+    monkeypatch.setattr(cgal_backend, "resolve_cgal_helper_path", lambda *_args: None)
+    monkeypatch.setattr(cgal_backend, "has_cgal_python_bindings", lambda: True)
+
+    capabilities = cgal_backend.get_cgal_backend_capabilities()
+    assert capabilities is not None
+    assert capabilities.cgal_bindings_available is True
+    assert "cgal_python_bindings" in capabilities.engines
+    assert "sphere" in capabilities.supported_primitives
+
+
+def test_cgal_python_bindings_detect_sphere_when_available(test_data_dir):
+    if not cgal_backend.has_cgal_python_bindings():
+        return
+
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+
+    result = cgal_backend.detect_primitive_with_cgal(
+        stl.mesh.Mesh.from_file(str(fixtures_dir / "primitive_sphere.stl")),
+        helper_path="not-needed-for-python-bindings",
+    )
+    assert result is not None
+    assert result.detected is True
+    assert result.primitive_type == "sphere"
+    assert result.scad is not None and "sphere(" in result.scad
+    assert result.diagnostics is not None
+    assert result.diagnostics["engine"] == "cgal_python_bindings"
+
+
 def test_recognition_cgal_fallbacks_to_trimesh_when_no_cgal_detection(monkeypatch):
     mesh = _simple_mesh()
 
@@ -133,9 +163,16 @@ def test_cgal_helper_prototype_end_to_end(test_data_dir):
     assert result.primitive_type == "sphere"
     assert result.confidence is not None
     assert result.diagnostics is not None
-    assert result.diagnostics["engine"] == "geometric_region_fallback"
-    assert result.diagnostics["component_count"] == 1
-    assert result.diagnostics["assigned_component_count"] == 1
+    assert result.diagnostics["engine"] in {
+        "cgal_python_bindings",
+        "geometric_region_fallback",
+    }
+    if result.diagnostics["engine"] == "cgal_python_bindings":
+        assert result.diagnostics["sample_point_count"] > 0
+        assert result.diagnostics["shapes"][0]["coverage"] >= 0.85
+    else:
+        assert result.diagnostics["component_count"] == 1
+        assert result.diagnostics["assigned_component_count"] == 1
 
 
 def test_converter_cgal_backend_uses_helper_and_emits_metadata(test_data_dir, test_output_dir, monkeypatch):

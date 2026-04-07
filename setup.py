@@ -39,6 +39,9 @@ setup(
         "parametric_phase1": [
             "trimesh>=4.0.0",
         ],
+        "parametric_phase2": [
+            "cgal>=6.0.1",
+        ],
     },
     entry_points={
         "console_scripts": [

@@ -74,11 +74,17 @@ pip install -e .[parametric_phase1]
 For Phase 2 CGAL-helper experiments (`--recognition-backend cgal`):
 
 ```bash
+pip install -e .[parametric_phase2]
+
 # Point to your helper executable/script (example on Windows)
 set STL2SCAD_CGAL_HELPER=C:\path\to\stl2scad-cgal-helper.exe
 # or prototype script:
 # set STL2SCAD_CGAL_HELPER=C:\path\to\stl2scad\scripts\stl2scad-cgal-helper.py
 ```
+
+The direct Python binding path currently accepts high-coverage sphere detections
+and falls back for shapes where the SWIG wrapper does not expose enough extent
+data for safe SCAD emission.
 
 ## CLI Usage
 

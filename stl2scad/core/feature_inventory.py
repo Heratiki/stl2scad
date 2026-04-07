@@ -1,0 +1,398 @@
+"""
+Feature-level STL inventory for parametric reconstruction planning.
+
+This module intentionally does not generate SCAD. It summarizes broad geometry
+signals from arbitrary STL files so reconstruction work can be guided by real
+user models instead of only primitive fixtures.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+from typing import Any, Iterable, Optional, Sequence
+
+import numpy as np
+from stl.mesh import Mesh
+
+
+STL_SUFFIXES = {".stl"}
+_AXES = {
+    "+x": np.array([1.0, 0.0, 0.0], dtype=np.float64),
+    "-x": np.array([-1.0, 0.0, 0.0], dtype=np.float64),
+    "+y": np.array([0.0, 1.0, 0.0], dtype=np.float64),
+    "-y": np.array([0.0, -1.0, 0.0], dtype=np.float64),
+    "+z": np.array([0.0, 0.0, 1.0], dtype=np.float64),
+    "-z": np.array([0.0, 0.0, -1.0], dtype=np.float64),
+}
+
+
+@dataclass(frozen=True)
+class InventoryConfig:
+    recursive: bool = True
+    max_files: Optional[int] = None
+    symmetry_tolerance: float = 1e-4
+    normal_axis_threshold: float = 0.96
+    spacing_tolerance: float = 1e-4
+
+
+def analyze_stl_folder(
+    input_dir: Path | str,
+    output_json: Path | str,
+    config: InventoryConfig = InventoryConfig(),
+) -> dict[str, Any]:
+    """
+    Analyze STL files in a folder and write a JSON inventory report.
+    """
+    input_path = Path(input_dir)
+    if not input_path.exists():
+        raise FileNotFoundError(f"Input directory not found: {input_path}")
+    if not input_path.is_dir():
+        raise NotADirectoryError(f"Input path is not a directory: {input_path}")
+
+    files = list(_iter_stl_files(input_path, recursive=config.recursive))
+    if config.max_files is not None:
+        files = files[: config.max_files]
+
+    results = [analyze_stl_file(path, root_dir=input_path, config=config) for path in files]
+    report = {
+        "schema_version": 1,
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "input_dir": str(input_path),
+        "config": {
+            "recursive": config.recursive,
+            "max_files": config.max_files,
+            "symmetry_tolerance": config.symmetry_tolerance,
+            "normal_axis_threshold": config.normal_axis_threshold,
+            "spacing_tolerance": config.spacing_tolerance,
+        },
+        "summary": _summarize_results(results),
+        "files": results,
+    }
+
+    output_path = Path(output_json)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as handle:
+        json.dump(report, handle, indent=2)
+    return report
+
+
+def analyze_stl_file(
+    stl_file: Path | str,
+    root_dir: Optional[Path | str] = None,
+    config: InventoryConfig = InventoryConfig(),
+) -> dict[str, Any]:
+    """
+    Analyze one STL file and return geometry/feature signals.
+    """
+    path = Path(stl_file)
+    payload: dict[str, Any] = {
+        "file": _relative_or_absolute(path, root_dir),
+        "status": "ok",
+    }
+    try:
+        mesh = Mesh.from_file(str(path))
+        vectors = np.asarray(mesh.vectors, dtype=np.float64)
+        points = vectors.reshape(-1, 3)
+        unique_points = _unique_points(points, tolerance=config.symmetry_tolerance)
+        normals = _normalized_normals(np.asarray(mesh.normals, dtype=np.float64))
+        face_areas = _triangle_areas(vectors)
+        bbox = _bbox(unique_points)
+        volume, _cog, _inertia = mesh.get_mass_properties()
+        surface_area = float(np.sum(face_areas))
+    except Exception as exc:
+        payload["status"] = "error"
+        payload["error"] = str(exc)
+        return payload
+
+    payload.update(
+        {
+            "triangles": int(len(vectors)),
+            "unique_vertices": int(len(unique_points)),
+            "bounding_box": bbox,
+            "volume": float(volume),
+            "surface_area": surface_area,
+            "normal_axis_profile": _normal_axis_profile(
+                normals,
+                face_areas,
+                threshold=config.normal_axis_threshold,
+            ),
+            "symmetry": _symmetry_scores(unique_points, bbox, config.symmetry_tolerance),
+            "coordinate_spacing": _coordinate_spacing_signals(
+                unique_points,
+                tolerance=config.spacing_tolerance,
+            ),
+        }
+    )
+    payload["classification"] = _classify_inventory(payload)
+    payload["candidate_features"] = _candidate_features(payload)
+    return payload
+
+
+def _iter_stl_files(input_dir: Path, recursive: bool) -> Iterable[Path]:
+    pattern = "**/*" if recursive else "*"
+    return sorted(
+        path
+        for path in input_dir.glob(pattern)
+        if path.is_file() and path.suffix.lower() in STL_SUFFIXES
+    )
+
+
+def _relative_or_absolute(path: Path, root_dir: Optional[Path | str]) -> str:
+    if root_dir is None:
+        return str(path)
+    try:
+        return str(path.relative_to(Path(root_dir)))
+    except ValueError:
+        return str(path)
+
+
+def _unique_points(points: np.ndarray, tolerance: float) -> np.ndarray:
+    if len(points) == 0:
+        return np.zeros((0, 3), dtype=np.float64)
+    scale = 1.0 / max(float(tolerance), 1e-12)
+    quantized = np.round(points * scale).astype(np.int64)
+    _unique_quantized, first_indices = np.unique(quantized, axis=0, return_index=True)
+    return points[np.sort(first_indices)]
+
+
+def _normalized_normals(normals: np.ndarray) -> np.ndarray:
+    lengths = np.linalg.norm(normals, axis=1)
+    safe = lengths > 1e-12
+    normalized = np.zeros_like(normals, dtype=np.float64)
+    normalized[safe] = normals[safe] / lengths[safe, None]
+    return normalized
+
+
+def _triangle_areas(vectors: np.ndarray) -> np.ndarray:
+    if len(vectors) == 0:
+        return np.zeros(0, dtype=np.float64)
+    edges_a = vectors[:, 1] - vectors[:, 0]
+    edges_b = vectors[:, 2] - vectors[:, 0]
+    return 0.5 * np.linalg.norm(np.cross(edges_a, edges_b), axis=1)
+
+
+def _bbox(points: np.ndarray) -> dict[str, float]:
+    if len(points) == 0:
+        return {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "min_z": 0.0,
+            "max_x": 0.0,
+            "max_y": 0.0,
+            "max_z": 0.0,
+            "width": 0.0,
+            "height": 0.0,
+            "depth": 0.0,
+            "diagonal": 0.0,
+        }
+    min_coords = points.min(axis=0)
+    max_coords = points.max(axis=0)
+    dims = max_coords - min_coords
+    return {
+        "min_x": float(min_coords[0]),
+        "min_y": float(min_coords[1]),
+        "min_z": float(min_coords[2]),
+        "max_x": float(max_coords[0]),
+        "max_y": float(max_coords[1]),
+        "max_z": float(max_coords[2]),
+        "width": float(dims[0]),
+        "height": float(dims[1]),
+        "depth": float(dims[2]),
+        "diagonal": float(np.linalg.norm(dims)),
+    }
+
+
+def _normal_axis_profile(
+    normals: np.ndarray,
+    face_areas: np.ndarray,
+    threshold: float,
+) -> dict[str, Any]:
+    total_area = float(np.sum(face_areas))
+    if total_area <= 1e-12 or len(normals) == 0:
+        return {"axis_area_ratio": 0.0, "clusters": {}}
+
+    clusters: dict[str, Any] = {}
+    axis_area = 0.0
+    for label, axis in _AXES.items():
+        mask = normals @ axis >= threshold
+        area = float(np.sum(face_areas[mask]))
+        axis_area += area
+        clusters[label] = {
+            "face_count": int(np.count_nonzero(mask)),
+            "area": area,
+            "area_ratio": float(area / total_area),
+        }
+
+    return {
+        "axis_area_ratio": float(min(axis_area / total_area, 1.0)),
+        "clusters": clusters,
+    }
+
+
+def _symmetry_scores(
+    points: np.ndarray,
+    bbox: dict[str, float],
+    tolerance: float,
+) -> dict[str, float]:
+    if len(points) == 0:
+        return {"x": 0.0, "y": 0.0, "z": 0.0}
+
+    scale = 1.0 / max(float(tolerance), bbox.get("diagonal", 0.0) * 1e-5, 1e-9)
+    quantized = {tuple(row) for row in np.round(points * scale).astype(np.int64)}
+    centers = np.array(
+        [
+            (bbox["min_x"] + bbox["max_x"]) * 0.5,
+            (bbox["min_y"] + bbox["max_y"]) * 0.5,
+            (bbox["min_z"] + bbox["max_z"]) * 0.5,
+        ],
+        dtype=np.float64,
+    )
+
+    scores: dict[str, float] = {}
+    for axis_index, axis_name in enumerate(("x", "y", "z")):
+        mirrored = points.copy()
+        mirrored[:, axis_index] = 2.0 * centers[axis_index] - mirrored[:, axis_index]
+        mirrored_quantized = np.round(mirrored * scale).astype(np.int64)
+        matches = sum(tuple(row) in quantized for row in mirrored_quantized)
+        scores[axis_name] = float(matches / max(len(points), 1))
+    return scores
+
+
+def _coordinate_spacing_signals(
+    points: np.ndarray,
+    tolerance: float,
+) -> dict[str, Any]:
+    signals: dict[str, Any] = {}
+    for axis_index, axis_name in enumerate(("x", "y", "z")):
+        values = np.unique(np.round(points[:, axis_index] / tolerance) * tolerance)
+        diffs = np.diff(np.sort(values))
+        diffs = diffs[diffs > tolerance * 2.0]
+        if len(diffs) == 0:
+            signals[axis_name] = {"level_count": int(len(values)), "regular": False}
+            continue
+        median = float(np.median(diffs))
+        regularity = float(np.mean(np.abs(diffs - median) <= max(tolerance * 10.0, median * 0.03)))
+        plausible_parametric_levels = 3 <= len(values) <= 256
+        signals[axis_name] = {
+            "level_count": int(len(values)),
+            "median_spacing": median,
+            "regularity": regularity,
+            "regular": bool(
+                plausible_parametric_levels and len(diffs) >= 2 and regularity >= 0.8
+            ),
+        }
+    return signals
+
+
+def _classify_inventory(payload: dict[str, Any]) -> dict[str, Any]:
+    bbox = payload["bounding_box"]
+    normal_profile = payload["normal_axis_profile"]
+    axis_ratio = float(normal_profile["axis_area_ratio"])
+    triangle_count = int(payload["triangles"])
+    symmetry = payload["symmetry"]
+    regular_axes = [
+        axis
+        for axis, data in payload["coordinate_spacing"].items()
+        if bool(data.get("regular"))
+    ]
+
+    mechanical_score = 0.0
+    mechanical_score += min(axis_ratio, 1.0) * 0.45
+    mechanical_score += min(sum(symmetry.values()) / 3.0, 1.0) * 0.25
+    mechanical_score += min(len(regular_axes) / 3.0, 1.0) * 0.20
+    if triangle_count < 10000:
+        mechanical_score += 0.10
+
+    organic_score = 0.0
+    organic_score += max(0.0, 1.0 - axis_ratio) * 0.55
+    if triangle_count > 10000:
+        organic_score += 0.25
+    if max(symmetry.values(), default=0.0) < 0.5:
+        organic_score += 0.20
+
+    nonzero_dims = sum(
+        1
+        for dim in ("width", "height", "depth")
+        if float(bbox.get(dim, 0.0)) > 1e-9
+    )
+    primary = "mechanical_candidate" if mechanical_score >= organic_score else "organic_candidate"
+    if nonzero_dims < 3:
+        primary = "degenerate_or_flat_candidate"
+
+    return {
+        "primary": primary,
+        "mechanical_score": float(min(mechanical_score, 1.0)),
+        "organic_score": float(min(organic_score, 1.0)),
+        "regular_axes": regular_axes,
+    }
+
+
+def _candidate_features(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    features: list[dict[str, Any]] = []
+    normal_profile = payload["normal_axis_profile"]
+    if normal_profile["axis_area_ratio"] >= 0.55:
+        features.append(
+            {
+                "type": "dominant_axis_aligned_planes",
+                "confidence": float(normal_profile["axis_area_ratio"]),
+                "note": "Potential plates, boxes, slots, tabs, or orthogonal cutouts.",
+            }
+        )
+
+    symmetry = payload["symmetry"]
+    for axis, score in symmetry.items():
+        if score >= 0.85:
+            features.append(
+                {
+                    "type": "mirror_symmetry",
+                    "axis": axis,
+                    "confidence": float(score),
+                    "note": "Candidate for symmetric parametric module generation.",
+                }
+            )
+
+    for axis, data in payload["coordinate_spacing"].items():
+        if data.get("regular"):
+            features.append(
+                {
+                    "type": "regular_coordinate_spacing",
+                    "axis": axis,
+                    "confidence": float(data.get("regularity", 0.0)),
+                    "median_spacing": data.get("median_spacing"),
+                    "note": "Candidate repeated-grid or array dimension.",
+                }
+            )
+
+    if not features:
+        features.append(
+            {
+                "type": "freeform_or_unclassified",
+                "confidence": 0.0,
+                "note": "No strong generic editable feature signal found yet.",
+            }
+        )
+    return features
+
+
+def _summarize_results(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    ok = [result for result in results if result.get("status") == "ok"]
+    errors = [result for result in results if result.get("status") != "ok"]
+    classifications: dict[str, int] = {}
+    feature_counts: dict[str, int] = {}
+    for result in ok:
+        primary = result.get("classification", {}).get("primary", "unknown")
+        classifications[primary] = classifications.get(primary, 0) + 1
+        for feature in result.get("candidate_features", []):
+            feature_type = str(feature.get("type", "unknown"))
+            feature_counts[feature_type] = feature_counts.get(feature_type, 0) + 1
+
+    return {
+        "file_count": len(results),
+        "ok_count": len(ok),
+        "error_count": len(errors),
+        "classification_counts": classifications,
+        "candidate_feature_counts": feature_counts,
+    }

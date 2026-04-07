@@ -38,6 +38,16 @@ class CgalDetectionResult:
     diagnostics: Optional[dict[str, Any]] = None
 
 
+@dataclass
+class CgalBackendCapabilities:
+    helper_mode: Optional[str]
+    cgal_bindings_available: bool
+    operations: list[str]
+    supported_primitives: list[str]
+    engines: list[str]
+    raw: dict[str, Any]
+
+
 def has_cgal_python_bindings() -> bool:
     return _has_module("CGAL") or _has_module("cgal")
 
@@ -66,6 +76,62 @@ def resolve_cgal_helper_path(explicit_path: Optional[str] = None) -> Optional[st
 
 def is_cgal_backend_available() -> bool:
     return has_cgal_python_bindings() or (resolve_cgal_helper_path() is not None)
+
+
+def get_cgal_backend_capabilities(
+    helper_path: Optional[str] = None,
+    timeout_seconds: int = 20,
+) -> Optional[CgalBackendCapabilities]:
+    """
+    Query helper capabilities for diagnostics and release checks.
+
+    Returns None if no helper is available or the helper does not implement the
+    capabilities command.
+    """
+    resolved_helper = resolve_cgal_helper_path(helper_path)
+    if not resolved_helper:
+        return None
+
+    try:
+        command = _build_helper_command(resolved_helper)
+        command.extend(["capabilities", "--format", "json"])
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except Exception:
+        logging.debug("CGAL helper capability query failed.", exc_info=True)
+        return None
+
+    if result.returncode != 0:
+        logging.info(
+            "CGAL helper capability query returned non-zero exit code (%s): %s",
+            result.returncode,
+            (result.stderr or "").strip(),
+        )
+        return None
+
+    try:
+        data = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        logging.info("CGAL helper capability query produced non-JSON output.")
+        return None
+
+    return CgalBackendCapabilities(
+        helper_mode=(
+            data.get("helper_mode")
+            if isinstance(data.get("helper_mode"), str)
+            else None
+        ),
+        cgal_bindings_available=bool(data.get("cgal_bindings_available", False)),
+        operations=_string_list(data.get("operations")),
+        supported_primitives=_string_list(data.get("supported_primitives")),
+        engines=_string_list(data.get("engines")),
+        raw=data,
+    )
 
 
 def detect_primitive_with_cgal(
@@ -154,6 +220,12 @@ def detect_primitive_with_cgal(
 
 def _has_module(module_name: str) -> bool:
     return importlib.util.find_spec(module_name) is not None
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
 
 
 def _build_helper_command(helper_path: str) -> list[str]:

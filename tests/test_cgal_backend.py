@@ -86,6 +86,21 @@ def test_detect_primitive_with_cgal_handles_invalid_output(monkeypatch):
     assert result is None
 
 
+def test_cgal_helper_capabilities_end_to_end():
+    helper_path = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "stl2scad-cgal-helper.py"
+    ).resolve()
+
+    capabilities = cgal_backend.get_cgal_backend_capabilities(helper_path=str(helper_path))
+    assert capabilities is not None
+    assert capabilities.helper_mode == "prototype"
+    assert "detect_primitive" in capabilities.operations
+    assert "geometric_region_fallback" in capabilities.engines
+    assert "sphere" in capabilities.supported_primitives
+
+
 def test_recognition_cgal_fallbacks_to_trimesh_when_no_cgal_detection(monkeypatch):
     mesh = _simple_mesh()
 
@@ -116,6 +131,11 @@ def test_cgal_helper_prototype_end_to_end(test_data_dir):
     assert result.detected is True
     assert result.scad is not None and "sphere(" in result.scad
     assert result.primitive_type == "sphere"
+    assert result.confidence is not None
+    assert result.diagnostics is not None
+    assert result.diagnostics["engine"] == "geometric_region_fallback"
+    assert result.diagnostics["component_count"] == 1
+    assert result.diagnostics["assigned_component_count"] == 1
 
 
 def test_converter_cgal_backend_uses_helper_and_emits_metadata(test_data_dir, test_output_dir, monkeypatch):

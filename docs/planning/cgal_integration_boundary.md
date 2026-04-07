@@ -18,7 +18,7 @@ Use an **external helper executable** as the initial CGAL integration boundary, 
    - `stl2scad-cgal-helper.py`
 
 ## Request Protocol
-Command invocation:
+Primitive detection command invocation:
 
 ```text
 <helper> detect-primitive --format json
@@ -33,6 +33,26 @@ stdin JSON payload:
   "mesh": {
     "triangles": [[[x, y, z], [x, y, z], [x, y, z]], ...]
   }
+}
+```
+
+Capability command invocation:
+
+```text
+<helper> capabilities --format json
+```
+
+stdout JSON payload:
+
+```json
+{
+  "schema_version": 1,
+  "helper_mode": "prototype",
+  "cgal_bindings_available": false,
+  "cgal_modules": [],
+  "operations": ["detect_primitive"],
+  "supported_primitives": ["box", "sphere", "cylinder", "cone", "composite_union"],
+  "engines": ["geometric_region_fallback"]
 }
 ```
 
@@ -73,6 +93,7 @@ If no reliable primitive is found:
 1. Minimal helper prototype implemented (`scripts/stl2scad-cgal-helper.py`).
 2. End-to-end adapter/protocol tests added (`tests/test_cgal_backend.py`).
 3. Diagnostics now propagate into conversion metadata and verification JSON reports.
+4. Helper capability reporting now makes CGAL binding availability explicit.
 
 ## Remaining Work (Post-Phase 2)
 1. Replace prototype helper internals with true CGAL shape-detection implementation.

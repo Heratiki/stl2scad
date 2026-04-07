@@ -37,6 +37,14 @@ Example:
 python scripts/analyze_feature_inventory.py "C:\Users\herat\OneDrive\3D Files" --output artifacts/feature_inventory_onedrive.json --max-files 100
 ```
 
+`scripts/build_feature_graph.py` builds the first intermediate feature graph. It currently extracts conservative axis-aligned boundary plane pairs and high-confidence `box_like_solid` / `plate_like_solid` candidates.
+
+Example:
+
+```bash
+python scripts/build_feature_graph.py "C:\Users\herat\OneDrive\3D Files" --output artifacts/feature_graph_onedrive.json --max-files 100
+```
+
 ## Next Milestones
 1. Run the inventory against the real STL collection and review aggregate signals.
 2. Add targeted detectors for the most common candidate feature families.

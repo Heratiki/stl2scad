@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -44,7 +45,21 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional SCAD preview output path for a single STL input.",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=0,
+        help="Parallel workers for directory scans. Use 0 for auto, 1 for serial.",
+    )
     return parser
+
+
+def _resolve_workers(value: int) -> int:
+    if value < 0:
+        raise ValueError("--workers must be >= 0")
+    if value == 0:
+        return max(1, min(os.cpu_count() or 1, 32))
+    return value
 
 
 def main() -> int:
@@ -54,15 +69,18 @@ def main() -> int:
     input_path = Path(args.input_path)
     output_path = Path(args.output)
     if input_path.is_dir():
+        workers = _resolve_workers(args.workers)
         report = build_feature_graph_for_folder(
             input_path,
             output_path,
             recursive=not args.no_recursive,
             max_files=args.max_files,
+            workers=workers,
         )
         summary = report["summary"]
         print(f"Feature graph report written to: {output_path}")
         print(f"Files analyzed: {summary['file_count']}")
+        print(f"Workers: {workers}")
         print(f"Errors: {summary['error_count']}")
         print(f"Features: {summary['feature_counts']}")
         return 0

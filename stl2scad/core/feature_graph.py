@@ -7,6 +7,7 @@ feature candidates without committing to SCAD generation yet.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -71,6 +72,7 @@ def build_feature_graph_for_folder(
     output_json: Path | str,
     recursive: bool = True,
     max_files: Optional[int] = None,
+    workers: int = 1,
 ) -> dict[str, Any]:
     """
     Build feature graphs for STL files in a folder and write a JSON report.
@@ -86,25 +88,27 @@ def build_feature_graph_for_folder(
     if max_files is not None:
         files = files[:max_files]
 
-    graphs: list[dict[str, Any]] = []
-    for path in files:
-        try:
-            graphs.append(build_feature_graph_for_stl(path, root_dir=input_path))
-        except Exception as exc:
-            graphs.append(
-                {
-                    "schema_version": 1,
-                    "source_file": _relative_or_absolute(path, input_path),
-                    "status": "error",
-                    "error": str(exc),
-                    "features": [],
-                }
+    worker_count = max(1, int(workers))
+    if worker_count == 1 or len(files) <= 1:
+        graphs = [_build_feature_graph_for_folder_file(path, input_path) for path in files]
+    else:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            graphs = list(
+                executor.map(
+                    _build_feature_graph_for_folder_worker,
+                    [(path, input_path) for path in files],
+                )
             )
 
     report = {
         "schema_version": 1,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "input_dir": str(input_path),
+        "config": {
+            "recursive": recursive,
+            "max_files": max_files,
+            "workers": worker_count,
+        },
         "summary": _summarize_graphs(graphs),
         "graphs": graphs,
     }
@@ -113,6 +117,24 @@ def build_feature_graph_for_folder(
     with open(output_path, "w", encoding="utf-8") as handle:
         json.dump(report, handle, indent=2)
     return report
+
+
+def _build_feature_graph_for_folder_worker(args: tuple[Path, Path]) -> dict[str, Any]:
+    path, input_path = args
+    return _build_feature_graph_for_folder_file(path, input_path)
+
+
+def _build_feature_graph_for_folder_file(path: Path, input_path: Path) -> dict[str, Any]:
+    try:
+        return build_feature_graph_for_stl(path, root_dir=input_path)
+    except Exception as exc:
+        return {
+            "schema_version": 1,
+            "source_file": _relative_or_absolute(path, input_path),
+            "status": "error",
+            "error": str(exc),
+            "features": [],
+        }
 
 
 def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
@@ -133,6 +155,12 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         if feature.get("type") == "hole_like_cutout"
         and float(feature.get("confidence", 0.0)) >= 0.70
     ]
+    slots = [
+        feature
+        for feature in graph.get("features", [])
+        if feature.get("type") == "slot_like_cutout"
+        and float(feature.get("confidence", 0.0)) >= 0.70
+    ]
     origin = [float(value) for value in plate["origin"]]
     size = [float(value) for value in plate["size"]]
     thickness_axis_index = int(np.argmin(size))
@@ -149,7 +177,7 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         f"plate_origin = {_scad_vector(origin)};",
         f"plate_size = {_scad_vector(size)};",
     ]
-    if holes:
+    if holes or slots:
         for pattern_index, pattern in enumerate(supported_patterns):
             if pattern.get("type") == "linear_hole_pattern" and _has_linear_pattern_fields(pattern):
                 pattern_name = f"hole_pattern_{len(linear_pattern_names)}"
@@ -180,6 +208,16 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
                         f"{pattern_name}_diameter = {float(pattern['diameter']):.6f};",
                     ]
                 )
+        for slot_index, slot in enumerate(slots):
+            if slot.get("axis") != thickness_axis:
+                continue
+            lines.extend(
+                [
+                    f"slot_{slot_index}_start = {_scad_vector([float(value) for value in slot['start']])};",
+                    f"slot_{slot_index}_end = {_scad_vector([float(value) for value in slot['end']])};",
+                    f"slot_{slot_index}_width = {float(slot['width']):.6f};",
+                ]
+            )
         lines.extend(
             [
                 "",
@@ -188,6 +226,18 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
                 "}",
             ]
         )
+        if slots:
+            lines.extend(
+                [
+                    "",
+                    "module slot_cutout(start, end, width) {",
+                    "  hull() {",
+                    "    hole_cutout(start, width);",
+                    "    hole_cutout(end, width);",
+                    "  }",
+                    "}",
+                ]
+            )
     lines.extend(
         [
             "",
@@ -231,6 +281,11 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
             continue
         diameter = float(hole["diameter"])
         lines.append(f"  hole_cutout({_scad_vector(center)}, {diameter:.6f});")
+
+    for slot_index, slot in enumerate(slots):
+        if slot.get("axis") != thickness_axis:
+            continue
+        lines.append(f"  slot_cutout(slot_{slot_index}_start, slot_{slot_index}_end, slot_{slot_index}_width);")
 
     lines.append("}")
     lines.append("")
@@ -477,34 +532,74 @@ def _extract_axis_aligned_through_holes(
             continue
 
         fit = _fit_circle_2d(coords_2d)
-        if fit is None:
+        if fit is not None:
+            center_2d, radius, radial_error_ratio, angular_coverage = fit
+            if (
+                min_radius <= radius <= max_radius
+                and radial_error_ratio <= 0.08
+                and angular_coverage >= 0.70
+                and not _center_near_outer_boundary(center_2d, bbox, plane_axes, radius)
+            ):
+                center = [0.0, 0.0, 0.0]
+                center[plane_axes[0]] = float(center_2d[0])
+                center[plane_axes[1]] = float(center_2d[1])
+                center[thickness_axis_index] = (span_min + span_max) * 0.5
+                confidence = max(0.0, min(1.0, (1.0 - radial_error_ratio / 0.08) * angular_coverage))
+                features.append(
+                    {
+                        "type": "hole_like_cutout",
+                        "confidence": float(confidence),
+                        "axis": axis_labels[thickness_axis_index],
+                        "center": center,
+                        "diameter": float(radius * 2.0),
+                        "depth": float(height_span),
+                        "component_faces": int(len(face_indices)),
+                        "radial_error_ratio": float(radial_error_ratio),
+                        "angular_coverage": float(angular_coverage),
+                        "source_component_index": component_index,
+                        "note": "Candidate circular through-hole cutout in a plate-like solid.",
+                    }
+                )
+                continue
+
+        slot_fit = _fit_axis_aligned_slot_2d(coords_2d)
+        if slot_fit is None:
             continue
-        center_2d, radius, radial_error_ratio, angular_coverage = fit
+        center_2d, start_2d, end_2d, width, length, slot_error_ratio, slot_axis_index = slot_fit
+        radius = width * 0.5
         if radius < min_radius or radius > max_radius:
             continue
-        if radial_error_ratio > 0.08 or angular_coverage < 0.70:
-            continue
-        if _center_near_outer_boundary(center_2d, bbox, plane_axes, radius):
+        if _slot_near_outer_boundary(start_2d, end_2d, radius, bbox, plane_axes):
             continue
 
         center = [0.0, 0.0, 0.0]
+        start = [0.0, 0.0, 0.0]
+        end = [0.0, 0.0, 0.0]
         center[plane_axes[0]] = float(center_2d[0])
         center[plane_axes[1]] = float(center_2d[1])
-        center[thickness_axis_index] = (span_min + span_max) * 0.5
-        confidence = max(0.0, min(1.0, (1.0 - radial_error_ratio / 0.08) * angular_coverage))
+        start[plane_axes[0]] = float(start_2d[0])
+        start[plane_axes[1]] = float(start_2d[1])
+        end[plane_axes[0]] = float(end_2d[0])
+        end[plane_axes[1]] = float(end_2d[1])
+        for vector in (center, start, end):
+            vector[thickness_axis_index] = (span_min + span_max) * 0.5
+        confidence = max(0.0, min(1.0, 1.0 - slot_error_ratio / 0.12))
         features.append(
             {
-                "type": "hole_like_cutout",
+                "type": "slot_like_cutout",
                 "confidence": float(confidence),
                 "axis": axis_labels[thickness_axis_index],
                 "center": center,
-                "diameter": float(radius * 2.0),
+                "start": start,
+                "end": end,
+                "width": float(width),
+                "length": float(length),
                 "depth": float(height_span),
                 "component_faces": int(len(face_indices)),
-                "radial_error_ratio": float(radial_error_ratio),
-                "angular_coverage": float(angular_coverage),
+                "slot_error_ratio": float(slot_error_ratio),
+                "slot_axis": axis_labels[plane_axes[slot_axis_index]],
                 "source_component_index": component_index,
-                "note": "Candidate circular through-hole cutout in a plate-like solid.",
+                "note": "Candidate rounded slot through-cutout in a plate-like solid.",
             }
         )
     return features
@@ -714,6 +809,60 @@ def _fit_circle_2d(points: np.ndarray) -> Optional[tuple[np.ndarray, float, floa
     return center, radius, radial_error_ratio, angular_coverage
 
 
+def _fit_axis_aligned_slot_2d(
+    points: np.ndarray,
+) -> Optional[tuple[np.ndarray, np.ndarray, np.ndarray, float, float, float, int]]:
+    if len(points) < 16:
+        return None
+
+    mins = np.min(points, axis=0)
+    maxs = np.max(points, axis=0)
+    spans = maxs - mins
+    long_axis = int(np.argmax(spans))
+    short_axis = 1 - long_axis
+    length = float(spans[long_axis])
+    width = float(spans[short_axis])
+    if width <= 1e-9 or length / width < 1.40:
+        return None
+
+    radius = width * 0.5
+    center = (mins + maxs) * 0.5
+    straight_length = length - width
+    if straight_length <= radius * 0.25:
+        return None
+
+    start = center.copy()
+    end = center.copy()
+    start[long_axis] -= straight_length * 0.5
+    end[long_axis] += straight_length * 0.5
+
+    segment = end - start
+    segment_length_sq = float(np.dot(segment, segment))
+    if segment_length_sq <= 1e-12:
+        return None
+    projections = np.clip(((points - start) @ segment) / segment_length_sq, 0.0, 1.0)
+    closest = start + projections[:, None] * segment
+    distances = np.linalg.norm(points - closest, axis=1)
+    slot_error_ratio = float(np.percentile(np.abs(distances - radius), 95) / max(radius, 1e-9))
+    if slot_error_ratio > 0.12:
+        return None
+
+    # Require evidence for both caps and both straight sides to avoid treating noise as a slot.
+    long_coords = points[:, long_axis]
+    short_coords = points[:, short_axis]
+    cap_tolerance = radius * 0.25
+    side_tolerance = radius * 0.25
+    has_start_cap = bool(np.any(long_coords <= start[long_axis] + cap_tolerance))
+    has_end_cap = bool(np.any(long_coords >= end[long_axis] - cap_tolerance))
+    middle_mask = (long_coords >= start[long_axis]) & (long_coords <= end[long_axis])
+    has_negative_side = bool(np.any(middle_mask & (short_coords <= center[short_axis] - radius + side_tolerance)))
+    has_positive_side = bool(np.any(middle_mask & (short_coords >= center[short_axis] + radius - side_tolerance)))
+    if not (has_start_cap and has_end_cap and has_negative_side and has_positive_side):
+        return None
+
+    return center, start, end, width, length, slot_error_ratio, long_axis
+
+
 def _center_near_outer_boundary(
     center_2d: np.ndarray,
     bbox: dict[str, float],
@@ -727,6 +876,26 @@ def _center_near_outer_boundary(
         if value - radius <= min_coord + radius * 0.1:
             return True
         if value + radius >= max_coord - radius * 0.1:
+            return True
+    return False
+
+
+def _slot_near_outer_boundary(
+    start_2d: np.ndarray,
+    end_2d: np.ndarray,
+    radius: float,
+    bbox: dict[str, float],
+    plane_axes: list[int],
+) -> bool:
+    labels = ("x", "y", "z")
+    for local_axis, axis_index in enumerate(plane_axes):
+        min_coord = float(bbox[f"min_{labels[axis_index]}"])
+        max_coord = float(bbox[f"max_{labels[axis_index]}"])
+        feature_min = min(float(start_2d[local_axis]), float(end_2d[local_axis])) - radius
+        feature_max = max(float(start_2d[local_axis]), float(end_2d[local_axis])) + radius
+        if feature_min <= min_coord + radius * 0.1:
+            return True
+        if feature_max >= max_coord - radius * 0.1:
             return True
     return False
 

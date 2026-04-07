@@ -32,10 +32,11 @@ def test_analyze_stl_folder_writes_inventory_report(test_data_dir, test_output_d
     report = analyze_stl_folder(
         fixtures_dir,
         output_json,
-        config=InventoryConfig(recursive=True, max_files=3),
+        config=InventoryConfig(recursive=True, max_files=3, workers=2),
     )
 
     assert output_json.exists()
+    assert report["config"]["workers"] == 2
     assert report["summary"]["file_count"] == 3
     assert report["summary"]["ok_count"] == 3
     assert report["summary"]["candidate_feature_counts"]

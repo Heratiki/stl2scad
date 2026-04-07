@@ -5,6 +5,7 @@ Analyze arbitrary STL folders for feature-level reconstruction signals.
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import sys
 
@@ -36,12 +37,27 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Only analyze STL files directly in input_dir.",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=0,
+        help="Parallel workers for folder scans. Use 0 for auto, 1 for serial.",
+    )
     return parser
+
+
+def _resolve_workers(value: int) -> int:
+    if value < 0:
+        raise ValueError("--workers must be >= 0")
+    if value == 0:
+        return max(1, min(os.cpu_count() or 1, 32))
+    return value
 
 
 def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
+    workers = _resolve_workers(args.workers)
 
     report = analyze_stl_folder(
         input_dir=Path(args.input_dir),
@@ -49,12 +65,14 @@ def main() -> int:
         config=InventoryConfig(
             recursive=not args.no_recursive,
             max_files=args.max_files,
+            workers=workers,
         ),
     )
 
     summary = report["summary"]
     print(f"Feature inventory written to: {args.output}")
     print(f"Files analyzed: {summary['file_count']}")
+    print(f"Workers: {workers}")
     print(f"OK: {summary['ok_count']}")
     print(f"Errors: {summary['error_count']}")
     print(f"Classifications: {summary['classification_counts']}")

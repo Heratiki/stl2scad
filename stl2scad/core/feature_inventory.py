@@ -8,6 +8,7 @@ user models instead of only primitive fixtures.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
@@ -33,6 +34,7 @@ _AXES = {
 class InventoryConfig:
     recursive: bool = True
     max_files: Optional[int] = None
+    workers: int = 1
     symmetry_tolerance: float = 1e-4
     normal_axis_threshold: float = 0.96
     spacing_tolerance: float = 1e-4
@@ -56,7 +58,17 @@ def analyze_stl_folder(
     if config.max_files is not None:
         files = files[: config.max_files]
 
-    results = [analyze_stl_file(path, root_dir=input_path, config=config) for path in files]
+    worker_count = max(1, int(config.workers))
+    if worker_count == 1 or len(files) <= 1:
+        results = [analyze_stl_file(path, root_dir=input_path, config=config) for path in files]
+    else:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            results = list(
+                executor.map(
+                    _analyze_stl_file_worker,
+                    [(path, input_path, config) for path in files],
+                )
+            )
     report = {
         "schema_version": 1,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -64,6 +76,7 @@ def analyze_stl_folder(
         "config": {
             "recursive": config.recursive,
             "max_files": config.max_files,
+            "workers": worker_count,
             "symmetry_tolerance": config.symmetry_tolerance,
             "normal_axis_threshold": config.normal_axis_threshold,
             "spacing_tolerance": config.spacing_tolerance,
@@ -77,6 +90,11 @@ def analyze_stl_folder(
     with open(output_path, "w", encoding="utf-8") as handle:
         json.dump(report, handle, indent=2)
     return report
+
+
+def _analyze_stl_file_worker(args: tuple[Path, Path, InventoryConfig]) -> dict[str, Any]:
+    path, root_dir, config = args
+    return analyze_stl_file(path, root_dir=root_dir, config=config)
 
 
 def analyze_stl_file(

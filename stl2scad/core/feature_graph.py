@@ -139,6 +139,7 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
     thickness_axis = ("x", "y", "z")[thickness_axis_index]
     supported_patterns = _supported_hole_patterns(graph, thickness_axis)
     linear_pattern_names: dict[int, str] = {}
+    grid_pattern_names: dict[int, str] = {}
 
     lines = [
         "// Feature graph SCAD preview",
@@ -150,20 +151,35 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
     ]
     if holes:
         for pattern_index, pattern in enumerate(supported_patterns):
-            if pattern.get("type") != "linear_hole_pattern" or not _has_linear_pattern_fields(pattern):
-                continue
-            pattern_name = f"hole_pattern_{len(linear_pattern_names)}"
-            linear_pattern_names[pattern_index] = pattern_name
-            origin = [float(value) for value in pattern["pattern_origin"]]
-            step = [float(value) for value in pattern["pattern_step"]]
-            lines.extend(
-                [
-                    f"{pattern_name}_count = {int(pattern['pattern_count'])};",
-                    f"{pattern_name}_origin = {_scad_vector(origin)};",
-                    f"{pattern_name}_step = {_scad_vector(step)};",
-                    f"{pattern_name}_diameter = {float(pattern['diameter']):.6f};",
-                ]
-            )
+            if pattern.get("type") == "linear_hole_pattern" and _has_linear_pattern_fields(pattern):
+                pattern_name = f"hole_pattern_{len(linear_pattern_names)}"
+                linear_pattern_names[pattern_index] = pattern_name
+                origin = [float(value) for value in pattern["pattern_origin"]]
+                step = [float(value) for value in pattern["pattern_step"]]
+                lines.extend(
+                    [
+                        f"{pattern_name}_count = {int(pattern['pattern_count'])};",
+                        f"{pattern_name}_origin = {_scad_vector(origin)};",
+                        f"{pattern_name}_step = {_scad_vector(step)};",
+                        f"{pattern_name}_diameter = {float(pattern['diameter']):.6f};",
+                    ]
+                )
+            elif pattern.get("type") == "grid_hole_pattern" and _has_grid_pattern_fields(pattern):
+                pattern_name = f"hole_grid_{len(grid_pattern_names)}"
+                grid_pattern_names[pattern_index] = pattern_name
+                origin = [float(value) for value in pattern["grid_origin"]]
+                row_step = [float(value) for value in pattern["grid_row_step"]]
+                col_step = [float(value) for value in pattern["grid_col_step"]]
+                lines.extend(
+                    [
+                        f"{pattern_name}_rows = {int(pattern['grid_rows'])};",
+                        f"{pattern_name}_cols = {int(pattern['grid_cols'])};",
+                        f"{pattern_name}_origin = {_scad_vector(origin)};",
+                        f"{pattern_name}_row_step = {_scad_vector(row_step)};",
+                        f"{pattern_name}_col_step = {_scad_vector(col_step)};",
+                        f"{pattern_name}_diameter = {float(pattern['diameter']):.6f};",
+                    ]
+                )
         lines.extend(
             [
                 "",
@@ -190,6 +206,15 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
             lines.append(
                 f"    hole_cutout({_scad_named_linear_point_expression(pattern_name, 'i')}, {pattern_name}_diameter);"
             )
+            lines.append("  }")
+        elif pattern_index in grid_pattern_names:
+            pattern_name = grid_pattern_names[pattern_index]
+            lines.append(f"  for (row = [0 : {pattern_name}_rows - 1]) {{")
+            lines.append(f"    for (col = [0 : {pattern_name}_cols - 1]) {{")
+            lines.append(
+                f"      hole_cutout({_scad_named_grid_point_expression(pattern_name)}, {pattern_name}_diameter);"
+            )
+            lines.append("    }")
             lines.append("  }")
         else:
             center_list = "[" + ", ".join(_scad_vector(center) for center in centers) + "]"
@@ -327,6 +352,17 @@ def _scad_named_linear_point_expression(pattern_name: str, index_name: str) -> s
     return "[" + ", ".join(parts) + "]"
 
 
+def _scad_named_grid_point_expression(pattern_name: str) -> str:
+    parts = [
+        (
+            f"{pattern_name}_origin[{axis}] + row * {pattern_name}_row_step[{axis}] "
+            f"+ col * {pattern_name}_col_step[{axis}]"
+        )
+        for axis in range(3)
+    ]
+    return "[" + ", ".join(parts) + "]"
+
+
 def _supported_hole_patterns(
     graph: dict[str, Any],
     axis: str,
@@ -345,6 +381,16 @@ def _has_linear_pattern_fields(pattern: dict[str, Any]) -> bool:
         isinstance(pattern.get("pattern_origin"), list)
         and isinstance(pattern.get("pattern_step"), list)
         and "pattern_count" in pattern
+    )
+
+
+def _has_grid_pattern_fields(pattern: dict[str, Any]) -> bool:
+    return (
+        isinstance(pattern.get("grid_origin"), list)
+        and isinstance(pattern.get("grid_row_step"), list)
+        and isinstance(pattern.get("grid_col_step"), list)
+        and "grid_rows" in pattern
+        and "grid_cols" in pattern
     )
 
 
@@ -501,6 +547,8 @@ def _extract_repeated_hole_patterns(features: list[dict[str, Any]]) -> list[dict
         }
         if pattern_type == "linear_hole_pattern":
             pattern.update(_linear_hole_pattern_metadata(centers, varying_axes))
+        else:
+            pattern.update(_grid_hole_pattern_metadata(centers, axis, varying_axes))
         patterns.append(pattern)
     return patterns
 
@@ -532,6 +580,74 @@ def _linear_hole_pattern_metadata(
         "pattern_count": int(count),
         "pattern_spacing": spacing,
         "pattern_axis": ("x", "y", "z")[active_axis],
+        "regularity_error": regularity_error,
+    }
+
+
+def _grid_hole_pattern_metadata(
+    centers: np.ndarray,
+    axis: str,
+    varying_axes: list[int],
+) -> dict[str, Any]:
+    if len(centers) < 4 or len(varying_axes) != 2:
+        return {}
+
+    rounded = np.round(centers[:, varying_axes], 4)
+    row_values = np.sort(np.unique(rounded[:, 1]))
+    col_values = np.sort(np.unique(rounded[:, 0]))
+    rows = len(row_values)
+    cols = len(col_values)
+    if rows < 2 or cols < 2 or rows * cols != len(centers):
+        return {}
+
+    axis_index = {"x": 0, "y": 1, "z": 2}[axis]
+    center_by_key: dict[tuple[float, float], np.ndarray] = {}
+    for center in centers:
+        key = (
+            round(float(center[varying_axes[0]]), 4),
+            round(float(center[varying_axes[1]]), 4),
+        )
+        center_by_key[key] = center
+
+    ordered_centers: list[np.ndarray] = []
+    for row_value in row_values:
+        for col_value in col_values:
+            center = center_by_key.get((float(col_value), float(row_value)))
+            if center is None:
+                return {}
+            ordered_centers.append(center)
+
+    origin = np.array(ordered_centers[0], dtype=np.float64)
+    row_step = np.zeros(3, dtype=np.float64)
+    col_step = np.zeros(3, dtype=np.float64)
+    row_step[varying_axes[1]] = float(row_values[1] - row_values[0])
+    col_step[varying_axes[0]] = float(col_values[1] - col_values[0])
+    origin[axis_index] = float(np.mean(centers[:, axis_index]))
+
+    expected: list[np.ndarray] = []
+    for row_index in range(rows):
+        for col_index in range(cols):
+            expected.append(origin + row_index * row_step + col_index * col_step)
+    expected_array = np.asarray(expected, dtype=np.float64)
+    ordered_array = np.asarray(ordered_centers, dtype=np.float64)
+    min_spacing = max(
+        min(abs(float(row_step[varying_axes[1]])), abs(float(col_step[varying_axes[0]]))),
+        1e-9,
+    )
+    regularity_error = float(np.max(np.linalg.norm(ordered_array - expected_array, axis=1)) / min_spacing)
+    if regularity_error > 0.05:
+        return {}
+
+    return {
+        "grid_origin": [float(value) for value in origin],
+        "grid_row_step": [float(value) for value in row_step],
+        "grid_col_step": [float(value) for value in col_step],
+        "grid_rows": int(rows),
+        "grid_cols": int(cols),
+        "grid_row_spacing": abs(float(row_step[varying_axes[1]])),
+        "grid_col_spacing": abs(float(col_step[varying_axes[0]])),
+        "grid_row_axis": ("x", "y", "z")[varying_axes[1]],
+        "grid_col_axis": ("x", "y", "z")[varying_axes[0]],
         "regularity_error": regularity_error,
     }
 

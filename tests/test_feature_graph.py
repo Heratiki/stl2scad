@@ -61,6 +61,35 @@ def test_feature_graph_extracts_repeated_through_holes(test_output_dir):
     assert abs(patterns[0]["pattern_spacing"] - 6.0) < 1e-5
 
 
+def test_feature_graph_extracts_grid_through_holes(test_output_dir):
+    stl_file = test_output_dir / "plate_with_grid_holes.stl"
+    _create_plate_with_holes(
+        stl_file,
+        centers=[
+            (-6.0, -3.0),
+            (0.0, -3.0),
+            (6.0, -3.0),
+            (-6.0, 3.0),
+            (0.0, 3.0),
+            (6.0, 3.0),
+        ],
+        radius=1.0,
+        plate_size=(20.0, 12.0, 2.0),
+    )
+
+    graph = build_feature_graph_for_stl(stl_file)
+    patterns = [
+        feature for feature in graph["features"] if feature["type"] == "grid_hole_pattern"
+    ]
+
+    assert len(patterns) == 1
+    assert patterns[0]["hole_count"] == 6
+    assert patterns[0]["grid_rows"] == 2
+    assert patterns[0]["grid_cols"] == 3
+    assert abs(patterns[0]["grid_row_spacing"] - 6.0) < 1e-5
+    assert abs(patterns[0]["grid_col_spacing"] - 6.0) < 1e-5
+
+
 def test_feature_graph_scad_preview_emits_plate_with_holes(test_output_dir):
     stl_file = test_output_dir / "plate_with_two_holes_preview.stl"
     _create_plate_with_holes(stl_file)
@@ -78,6 +107,35 @@ def test_feature_graph_scad_preview_emits_plate_with_holes(test_output_dir):
     assert scad.count("cylinder(") == 1
 
 
+def test_feature_graph_scad_preview_emits_grid_hole_loop(test_output_dir):
+    stl_file = test_output_dir / "plate_with_grid_holes_preview.stl"
+    _create_plate_with_holes(
+        stl_file,
+        centers=[
+            (-6.0, -3.0),
+            (0.0, -3.0),
+            (6.0, -3.0),
+            (-6.0, 3.0),
+            (0.0, 3.0),
+            (6.0, 3.0),
+        ],
+        radius=1.0,
+        plate_size=(20.0, 12.0, 2.0),
+    )
+
+    graph = build_feature_graph_for_stl(stl_file)
+    scad = emit_feature_graph_scad_preview(graph)
+
+    assert scad is not None
+    assert "hole_grid_0_rows = 2;" in scad
+    assert "hole_grid_0_cols = 3;" in scad
+    assert "hole_grid_0_row_step = [0.000000, 6.000000" in scad
+    assert "hole_grid_0_col_step = [6.000000, 0.000000" in scad
+    assert "for (row = [0 : hole_grid_0_rows - 1])" in scad
+    assert "for (col = [0 : hole_grid_0_cols - 1])" in scad
+    assert scad.count("cylinder(") == 1
+
+
 def test_feature_graph_scad_preview_declines_without_plate(test_data_dir):
     fixtures_dir = test_data_dir / "benchmark_fixtures"
     ensure_benchmark_fixtures(fixtures_dir)
@@ -87,16 +145,27 @@ def test_feature_graph_scad_preview_declines_without_plate(test_data_dir):
     assert emit_feature_graph_scad_preview(graph) is None
 
 
-def _create_plate_with_holes(output_file, segments=32):
+def _create_plate_with_holes(
+    output_file,
+    segments=32,
+    centers=None,
+    radius=2.0,
+    plate_size=(20.0, 10.0, 2.0),
+):
+    if centers is None:
+        centers = [(-3.0, 0.0), (3.0, 0.0)]
+    half_width = plate_size[0] * 0.5
+    half_depth = plate_size[1] * 0.5
+    thickness = plate_size[2]
     vertices = [
-        [-10.0, -5.0, 0.0],
-        [10.0, -5.0, 0.0],
-        [10.0, 5.0, 0.0],
-        [-10.0, 5.0, 0.0],
-        [-10.0, -5.0, 2.0],
-        [10.0, -5.0, 2.0],
-        [10.0, 5.0, 2.0],
-        [-10.0, 5.0, 2.0],
+        [-half_width, -half_depth, 0.0],
+        [half_width, -half_depth, 0.0],
+        [half_width, half_depth, 0.0],
+        [-half_width, half_depth, 0.0],
+        [-half_width, -half_depth, thickness],
+        [half_width, -half_depth, thickness],
+        [half_width, half_depth, thickness],
+        [-half_width, half_depth, thickness],
     ]
     faces = [
         [0, 2, 1],
@@ -113,14 +182,14 @@ def _create_plate_with_holes(output_file, segments=32):
         [3, 4, 7],
     ]
 
-    for center_x in (-3.0, 3.0):
+    for center_x, center_y in centers:
         base_index = len(vertices)
         for idx in range(segments):
             theta = 2.0 * np.pi * idx / segments
-            x = center_x + 2.0 * np.cos(theta)
-            y = 2.0 * np.sin(theta)
+            x = center_x + radius * np.cos(theta)
+            y = center_y + radius * np.sin(theta)
             vertices.append([x, y, 0.0])
-            vertices.append([x, y, 2.0])
+            vertices.append([x, y, thickness])
         for idx in range(segments):
             next_idx = (idx + 1) % segments
             b0 = base_index + 2 * idx

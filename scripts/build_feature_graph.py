@@ -5,6 +5,7 @@ Build intermediate feature graphs for STL files.
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import sys
 
@@ -12,7 +13,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from stl2scad.core.feature_graph import build_feature_graph_for_folder, build_feature_graph_for_stl
+from stl2scad.core.feature_graph import (
+    build_feature_graph_for_folder,
+    build_feature_graph_for_stl,
+    emit_feature_graph_scad_preview,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -33,6 +38,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--no-recursive",
         action="store_true",
         help="Only analyze STL files directly in input_path when it is a directory.",
+    )
+    parser.add_argument(
+        "--scad-preview",
+        default=None,
+        help="Optional SCAD preview output path for a single STL input.",
     )
     return parser
 
@@ -59,9 +69,18 @@ def main() -> int:
 
     graph = build_feature_graph_for_stl(input_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(__import__("json").dumps(graph, indent=2), encoding="utf-8")
+    output_path.write_text(json.dumps(graph, indent=2), encoding="utf-8")
     print(f"Feature graph written to: {output_path}")
     print(f"Features: {len(graph['features'])}")
+    if args.scad_preview:
+        scad = emit_feature_graph_scad_preview(graph)
+        if scad is None:
+            print("SCAD preview not emitted: no high-confidence supported feature combination.")
+        else:
+            scad_path = Path(args.scad_preview)
+            scad_path.parent.mkdir(parents=True, exist_ok=True)
+            scad_path.write_text(scad, encoding="utf-8")
+            print(f"SCAD preview written to: {scad_path}")
     return 0
 
 

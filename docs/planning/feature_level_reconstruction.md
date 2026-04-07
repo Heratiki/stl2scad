@@ -37,7 +37,7 @@ Example:
 python scripts/analyze_feature_inventory.py "C:\Users\herat\OneDrive\3D Files" --output artifacts/feature_inventory_onedrive.json --max-files 100
 ```
 
-`scripts/build_feature_graph.py` builds the first intermediate feature graph. It currently extracts conservative axis-aligned boundary plane pairs and high-confidence `box_like_solid` / `plate_like_solid` candidates.
+`scripts/build_feature_graph.py` builds the first intermediate feature graph. It currently extracts conservative axis-aligned boundary plane pairs, high-confidence `box_like_solid` / `plate_like_solid` candidates, circular `hole_like_cutout` candidates in plate-like solids, and simple repeated-hole pattern nodes (`linear_hole_pattern` / `grid_hole_pattern`).
 
 Example:
 
@@ -45,9 +45,16 @@ Example:
 python scripts/build_feature_graph.py "C:\Users\herat\OneDrive\3D Files" --output artifacts/feature_graph_onedrive.json --max-files 100
 ```
 
+For a single STL with a high-confidence plate/hole graph, the script can also write an experimental SCAD preview:
+
+```bash
+python scripts/build_feature_graph.py input.stl --output artifacts/input_feature_graph.json --scad-preview artifacts/input_feature_preview.scad
+```
+
 ## Next Milestones
 1. Run the inventory against the real STL collection and review aggregate signals.
-2. Add targeted detectors for the most common candidate feature families.
-3. Generate an intermediate feature graph before SCAD emission.
-4. Emit feature-based SCAD templates only when confidence is high; otherwise fall back.
-5. Add optional user-assisted labeling for ambiguous features.
+2. Tighten hole/slot detectors against real files and add confidence thresholds for SCAD emission readiness.
+3. Add targeted detectors for the most common candidate feature families.
+4. Generate an intermediate feature graph before SCAD emission.
+5. Emit feature-based SCAD templates only when confidence is high; otherwise fall back.
+6. Add optional user-assisted labeling for ambiguous features.

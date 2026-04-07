@@ -42,6 +42,17 @@ def build_feature_graph_for_stl(
         normal_axis_threshold=normal_axis_threshold,
         boundary_tolerance_ratio=boundary_tolerance_ratio,
     )
+    features.extend(
+        _extract_axis_aligned_through_holes(
+            vectors,
+            normals,
+            face_areas,
+            bbox,
+            features,
+            normal_axis_threshold=normal_axis_threshold,
+        )
+    )
+    features.extend(_extract_repeated_hole_patterns(features))
 
     return {
         "schema_version": 1,
@@ -102,6 +113,60 @@ def build_feature_graph_for_folder(
     with open(output_path, "w", encoding="utf-8") as handle:
         json.dump(report, handle, indent=2)
     return report
+
+
+def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
+    """
+    Emit conservative SCAD preview for supported feature graph patterns.
+
+    Currently supported:
+    - one plate_like_solid
+    - optional hole_like_cutout features along the plate thickness axis
+    """
+    plate = _best_feature(graph, "plate_like_solid")
+    if plate is None or float(plate.get("confidence", 0.0)) < 0.70:
+        return None
+
+    holes = [
+        feature
+        for feature in graph.get("features", [])
+        if feature.get("type") == "hole_like_cutout"
+        and float(feature.get("confidence", 0.0)) >= 0.70
+    ]
+    origin = [float(value) for value in plate["origin"]]
+    size = [float(value) for value in plate["size"]]
+    thickness_axis_index = int(np.argmin(size))
+    thickness_axis = ("x", "y", "z")[thickness_axis_index]
+
+    lines = [
+        "// Feature graph SCAD preview",
+        f"// source_file: {graph.get('source_file', '')}",
+        "// generated from conservative plate/hole feature candidates",
+        "",
+        f"plate_origin = {_scad_vector(origin)};",
+        f"plate_size = {_scad_vector(size)};",
+    ]
+    if holes:
+        lines.append(f"hole_diameter = {float(holes[0]['diameter']):.6f};")
+    lines.extend(
+        [
+            "",
+            "difference() {",
+            "  translate(plate_origin) cube(plate_size);",
+        ]
+    )
+
+    for hole in holes:
+        if hole.get("axis") != thickness_axis:
+            continue
+        center = [float(value) for value in hole["center"]]
+        diameter = float(hole["diameter"])
+        depth = max(float(hole["depth"]), size[thickness_axis_index]) + 0.2
+        lines.extend(_hole_cutout_scad(center, diameter, depth, thickness_axis))
+
+    lines.append("}")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _extract_axis_aligned_box_features(
@@ -194,6 +259,255 @@ def _extract_axis_aligned_box_features(
             }
         )
     return features
+
+
+def _best_feature(graph: dict[str, Any], feature_type: str) -> Optional[dict[str, Any]]:
+    candidates = [
+        feature
+        for feature in graph.get("features", [])
+        if feature.get("type") == feature_type
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda feature: float(feature.get("confidence", 0.0)))
+
+
+def _scad_vector(values: list[float]) -> str:
+    return "[" + ", ".join(f"{value:.6f}" for value in values) + "]"
+
+
+def _hole_cutout_scad(
+    center: list[float],
+    diameter: float,
+    depth: float,
+    axis: str,
+) -> list[str]:
+    translate = center.copy()
+    if axis == "z":
+        translate[2] -= depth * 0.5
+        primitive = f"cylinder(h={depth:.6f}, d={diameter:.6f}, $fn=64);"
+    elif axis == "x":
+        translate[0] -= depth * 0.5
+        primitive = (
+            "rotate(a=90, v=[0, 1, 0]) "
+            f"cylinder(h={depth:.6f}, d={diameter:.6f}, $fn=64);"
+        )
+    elif axis == "y":
+        translate[1] -= depth * 0.5
+        primitive = (
+            "rotate(a=90, v=[1, 0, 0]) "
+            f"cylinder(h={depth:.6f}, d={diameter:.6f}, $fn=64);"
+        )
+    else:
+        return []
+    return [f"  translate({_scad_vector(translate)}) {primitive}"]
+
+
+def _extract_axis_aligned_through_holes(
+    vectors: np.ndarray,
+    normals: np.ndarray,
+    face_areas: np.ndarray,
+    bbox: dict[str, float],
+    existing_features: list[dict[str, Any]],
+    normal_axis_threshold: float,
+) -> list[dict[str, Any]]:
+    plate_features = [
+        feature
+        for feature in existing_features
+        if feature.get("type") == "plate_like_solid"
+    ]
+    if not plate_features:
+        return []
+
+    plate = plate_features[0]
+    size = [float(value) for value in plate["size"]]
+    thickness_axis_index = int(np.argmin(size))
+    thickness = size[thickness_axis_index]
+    if thickness <= 1e-9:
+        return []
+
+    axis_labels = ("x", "y", "z")
+    plane_axes = [index for index in range(3) if index != thickness_axis_index]
+    axis_vector = np.zeros(3, dtype=np.float64)
+    axis_vector[thickness_axis_index] = 1.0
+
+    face_centers = np.mean(vectors, axis=1)
+    # Cylindrical through-hole walls are roughly perpendicular to plate thickness.
+    sidewall_mask = np.abs(normals @ axis_vector) <= (1.0 - normal_axis_threshold)
+    span_min = float(bbox[f"min_{axis_labels[thickness_axis_index]}"])
+    span_max = float(bbox[f"max_{axis_labels[thickness_axis_index]}"])
+    interior_mask = (face_centers[:, thickness_axis_index] > span_min + thickness * 0.05) & (
+        face_centers[:, thickness_axis_index] < span_max - thickness * 0.05
+    )
+    candidate_faces = np.where(sidewall_mask | interior_mask)[0]
+    if len(candidate_faces) == 0:
+        return []
+
+    components = _connected_face_components(vectors, candidate_faces)
+    features: list[dict[str, Any]] = []
+    min_radius = max(min(size[axis] for axis in plane_axes) * 0.005, 0.05)
+    max_radius = max(size[axis] for axis in plane_axes) * 0.45
+    for component_index, face_indices in enumerate(components):
+        if len(face_indices) < 8:
+            continue
+        component_vertices = vectors[face_indices].reshape(-1, 3)
+        coords_2d = component_vertices[:, plane_axes]
+        height_values = component_vertices[:, thickness_axis_index]
+        height_span = float(np.max(height_values) - np.min(height_values))
+        if height_span < thickness * 0.65:
+            continue
+
+        fit = _fit_circle_2d(coords_2d)
+        if fit is None:
+            continue
+        center_2d, radius, radial_error_ratio, angular_coverage = fit
+        if radius < min_radius or radius > max_radius:
+            continue
+        if radial_error_ratio > 0.08 or angular_coverage < 0.70:
+            continue
+        if _center_near_outer_boundary(center_2d, bbox, plane_axes, radius):
+            continue
+
+        center = [0.0, 0.0, 0.0]
+        center[plane_axes[0]] = float(center_2d[0])
+        center[plane_axes[1]] = float(center_2d[1])
+        center[thickness_axis_index] = (span_min + span_max) * 0.5
+        confidence = max(0.0, min(1.0, (1.0 - radial_error_ratio / 0.08) * angular_coverage))
+        features.append(
+            {
+                "type": "hole_like_cutout",
+                "confidence": float(confidence),
+                "axis": axis_labels[thickness_axis_index],
+                "center": center,
+                "diameter": float(radius * 2.0),
+                "depth": float(height_span),
+                "component_faces": int(len(face_indices)),
+                "radial_error_ratio": float(radial_error_ratio),
+                "angular_coverage": float(angular_coverage),
+                "source_component_index": component_index,
+                "note": "Candidate circular through-hole cutout in a plate-like solid.",
+            }
+        )
+    return features
+
+
+def _extract_repeated_hole_patterns(features: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    holes = [feature for feature in features if feature.get("type") == "hole_like_cutout"]
+    patterns: list[dict[str, Any]] = []
+    if len(holes) < 2:
+        return patterns
+
+    groups: dict[tuple[str, int], list[dict[str, Any]]] = {}
+    for hole in holes:
+        diameter = float(hole["diameter"])
+        key = (str(hole["axis"]), int(round(diameter * 1000.0)))
+        groups.setdefault(key, []).append(hole)
+
+    for (axis, diameter_key), group in groups.items():
+        if len(group) < 2:
+            continue
+        centers = np.asarray([hole["center"] for hole in group], dtype=np.float64)
+        varying_axes = [
+            index
+            for index in range(3)
+            if index != {"x": 0, "y": 1, "z": 2}[axis]
+        ]
+        unique_counts = [
+            len(np.unique(np.round(centers[:, axis_index], 4)))
+            for axis_index in varying_axes
+        ]
+        pattern_type = "grid_hole_pattern" if min(unique_counts) >= 2 else "linear_hole_pattern"
+        patterns.append(
+            {
+                "type": pattern_type,
+                "confidence": float(min(float(hole["confidence"]) for hole in group)),
+                "axis": axis,
+                "hole_count": int(len(group)),
+                "diameter": float(diameter_key / 1000.0),
+                "centers": [[float(value) for value in hole["center"]] for hole in group],
+                "note": "Candidate repeated hole pattern for future SCAD loop emission.",
+            }
+        )
+    return patterns
+
+
+def _connected_face_components(
+    vectors: np.ndarray,
+    face_indices: np.ndarray,
+    tolerance: float = 1e-5,
+) -> list[np.ndarray]:
+    if len(face_indices) == 0:
+        return []
+
+    scale = 1.0 / tolerance
+    vertex_to_faces: dict[tuple[int, int, int], list[int]] = {}
+    for local_index, face_index in enumerate(face_indices):
+        for vertex in vectors[face_index]:
+            key = tuple(np.round(vertex * scale).astype(np.int64))
+            vertex_to_faces.setdefault(key, []).append(local_index)
+
+    adjacency: list[set[int]] = [set() for _ in face_indices]
+    for local_faces in vertex_to_faces.values():
+        for local_index in local_faces:
+            adjacency[local_index].update(local_faces)
+
+    seen: set[int] = set()
+    components: list[np.ndarray] = []
+    for start in range(len(face_indices)):
+        if start in seen:
+            continue
+        stack = [start]
+        component: list[int] = []
+        seen.add(start)
+        while stack:
+            current = stack.pop()
+            component.append(int(face_indices[current]))
+            for neighbor in adjacency[current]:
+                if neighbor not in seen:
+                    seen.add(neighbor)
+                    stack.append(neighbor)
+        components.append(np.asarray(component, dtype=np.int64))
+    return components
+
+
+def _fit_circle_2d(points: np.ndarray) -> Optional[tuple[np.ndarray, float, float, float]]:
+    if len(points) < 8:
+        return None
+    matrix = np.column_stack((2.0 * points, np.ones(len(points))))
+    vector = np.sum(points * points, axis=1)
+    try:
+        solution, *_ = np.linalg.lstsq(matrix, vector, rcond=None)
+    except np.linalg.LinAlgError:
+        return None
+
+    center = solution[:2]
+    radius_sq = float(np.dot(center, center) + solution[2])
+    if radius_sq <= 1e-12:
+        return None
+    radius = float(np.sqrt(radius_sq))
+    distances = np.linalg.norm(points - center, axis=1)
+    radial_error_ratio = float(np.percentile(np.abs(distances - radius), 95) / max(radius, 1e-9))
+    angles = np.arctan2(points[:, 1] - center[1], points[:, 0] - center[0])
+    bins = np.unique(np.floor(((angles + np.pi) / (2.0 * np.pi)) * 24.0).astype(int))
+    angular_coverage = float(min(len(bins), 24) / 24.0)
+    return center, radius, radial_error_ratio, angular_coverage
+
+
+def _center_near_outer_boundary(
+    center_2d: np.ndarray,
+    bbox: dict[str, float],
+    plane_axes: list[int],
+    radius: float,
+) -> bool:
+    labels = ("x", "y", "z")
+    for value, axis_index in zip(center_2d, plane_axes):
+        min_coord = float(bbox[f"min_{labels[axis_index]}"])
+        max_coord = float(bbox[f"max_{labels[axis_index]}"])
+        if value - radius <= min_coord + radius * 0.1:
+            return True
+        if value + radius >= max_coord - radius * 0.1:
+            return True
+    return False
 
 
 def _relative_or_absolute(path: Path, root_dir: Optional[Path | str]) -> str:

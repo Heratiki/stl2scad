@@ -93,7 +93,9 @@ def main() -> int:
     if args.scad_preview:
         scad = emit_feature_graph_scad_preview(graph)
         if scad is None:
-            print("SCAD preview not emitted: no high-confidence supported feature combination.")
+            print(
+                "SCAD preview not emitted: no high-confidence supported feature combination."
+            )
         else:
             scad_path = Path(args.scad_preview)
             scad_path.parent.mkdir(parents=True, exist_ok=True)

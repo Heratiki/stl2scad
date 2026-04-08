@@ -311,8 +311,12 @@ def _detect_primitive_with_cgal_python_bindings(
         logging.debug("CGAL Python shape detection failed.", exc_info=True)
         return None
 
-    parsed = [_parse_cgal_shape_description(str(shape), len(points)) for shape in shapes]
-    parsed = [shape for shape in parsed if shape is not None]
+    parsed = [
+        _parse_cgal_shape_description(str(shape), len(points)) for shape in shapes
+    ]
+    parsed_shapes: list[dict[str, Any]] = [
+        shape for shape in parsed if shape is not None
+    ]
     diagnostics: dict[str, Any] = {
         "engine": "cgal_python_bindings",
         "cgal_bindings_available": True,
@@ -320,14 +324,14 @@ def _detect_primitive_with_cgal_python_bindings(
         "sample_point_count": int(len(points)),
         "epsilon": float(epsilon),
         "cluster_epsilon": float(cluster_epsilon),
-        "shapes": parsed,
+        "shapes": parsed_shapes,
     }
-    if not parsed:
+    if not parsed_shapes:
         diagnostics["reason"] = "no_shapes_detected"
         return CgalDetectionResult(detected=False, diagnostics=diagnostics)
 
-    parsed.sort(key=lambda item: float(item["coverage"]), reverse=True)
-    best = parsed[0]
+    parsed_shapes.sort(key=lambda item: float(item["coverage"]), reverse=True)
+    best = parsed_shapes[0]
     if best["primitive_type"] not in {"sphere", "cylinder"}:
         diagnostics["reason"] = "unsupported_best_shape"
         return CgalDetectionResult(

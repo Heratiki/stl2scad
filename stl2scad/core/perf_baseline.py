@@ -42,9 +42,7 @@ def run_conversion_perf_baseline(
     manifest = ensure_benchmark_fixtures(fixtures_path)
     selected_fixtures = _select_fixtures(manifest, categories)
     if not selected_fixtures:
-        raise ValueError(
-            f"No fixtures matched categories: {', '.join(categories)}"
-        )
+        raise ValueError(f"No fixtures matched categories: {', '.join(categories)}")
 
     process = psutil.Process(os.getpid())
     results: List[Dict[str, Any]] = []
@@ -132,7 +130,9 @@ def _benchmark_one(
             )
             elapsed = time.perf_counter() - started
             elapsed_seconds.append(elapsed)
-            output_sizes.append(output_path.stat().st_size if output_path.exists() else 0)
+            output_sizes.append(
+                output_path.stat().st_size if output_path.exists() else 0
+            )
 
         rss_now = int(process.memory_info().rss)
         if rss_now > rss_max:
@@ -169,5 +169,7 @@ def _summarize_results(results: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     if poly_means:
         summary["polyhedron_elapsed_mean_seconds"] = float(statistics.mean(poly_means))
     if parametric_means:
-        summary["parametric_elapsed_mean_seconds"] = float(statistics.mean(parametric_means))
+        summary["parametric_elapsed_mean_seconds"] = float(
+            statistics.mean(parametric_means)
+        )
     return summary

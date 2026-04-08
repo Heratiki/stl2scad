@@ -12,45 +12,53 @@ from pathlib import Path
 
 from stl2scad.core.converter import stl2scad, get_openscad_path
 
+
 def test_debug_features(test_output_dir, verbose=True, log_file="test_run.log"):
     """Test the debug features of the STL to SCAD converter."""
+
     def log(msg, level="INFO"):
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_msg = f"[{timestamp}] {level}: {msg}"
         if verbose:
             print(log_msg, flush=True)
-        with open(log_file, 'a') as f:
+        with open(log_file, "a") as f:
             f.write(f"{log_msg}\n")
 
     # Clear previous log
-    with open(log_file, 'w') as f:
+    with open(log_file, "w") as f:
         f.write("=== Starting Test ===\n")
-    
+
     log("\n=== Testing STL2SCAD Debug Features ===")
-    
+
     def check_openscad_processes():
         """Check for running OpenSCAD processes"""
-        openscad_procs = [p for p in psutil.process_iter(['name'])
-                         if p.info['name'] and 'openscad' in p.info['name'].lower()]
+        openscad_procs = [
+            p
+            for p in psutil.process_iter(["name"])
+            if p.info["name"] and "openscad" in p.info["name"].lower()
+        ]
         if openscad_procs:
             log(f"Found {len(openscad_procs)} OpenSCAD processes running", "WARNING")
             for proc in openscad_procs:
                 log(f"OpenSCAD process: PID={proc.pid}", "WARNING")
             return True
         return False
-    
+
     # Check for OpenSCAD processes at start
     if check_openscad_processes():
-        log("Warning: OpenSCAD processes found at start, they may interfere with testing", "WARNING")
-    
+        log(
+            "Warning: OpenSCAD processes found at start, they may interfere with testing",
+            "WARNING",
+        )
+
     # Test file paths — resolve relative to this file so the test works
     # regardless of the working directory pytest is invoked from.
     input_file = str(Path(__file__).parent / "data" / "Cube_3d_printing_sample.stl")
     output_file = str(test_output_dir / "test_output.scad")
-    
+
     log(f"Input STL: {input_file}")
     log(f"Output SCAD: {output_file}")
-    
+
     try:
         # First verify OpenSCAD installation
         log("\nVerifying OpenSCAD installation...")
@@ -61,11 +69,11 @@ def test_debug_features(test_output_dir, verbose=True, log_file="test_run.log"):
             log(f"Error getting OpenSCAD path: {str(e)}")
             log(f"Exception type: {type(e)}")
             raise
-        
+
         # Run conversion with debug enabled
         log("\nRunning conversion with debug mode...")
         stats = stl2scad(input_file, output_file, debug=True)
-        
+
         # Print conversion statistics
         log("\nConversion Statistics:")
         log(f"Original vertices: {stats.original_vertices}")
@@ -74,17 +82,17 @@ def test_debug_features(test_output_dir, verbose=True, log_file="test_run.log"):
         log("\nMetadata:")
         for key, value in stats.metadata.items():
             log(f"{key}: {value}")
-            
+
         # Verify debug files exist
         debug_dir = os.path.dirname(output_file)
         debug_base = os.path.splitext(output_file)[0]
         debug_files = {
-            'scad': f"{debug_base}_debug.scad",
-            'json': f"{debug_base}_analysis.json",
-            'echo': f"{debug_base}_debug.echo",
-            'png': f"{debug_base}_preview.png"
+            "scad": f"{debug_base}_debug.scad",
+            "json": f"{debug_base}_analysis.json",
+            "echo": f"{debug_base}_debug.echo",
+            "png": f"{debug_base}_preview.png",
         }
-        
+
         log("\nChecking debug files:")
         all_files_exist = True
         for name, path in debug_files.items():
@@ -97,7 +105,7 @@ def test_debug_features(test_output_dir, verbose=True, log_file="test_run.log"):
             elif size == 0:
                 all_files_exist = False
                 log(f"Warning: {name} file is empty at {path}")
-        
+
         assert all_files_exist, "Some debug files are missing or empty"
         log("\nTest completed successfully - all debug files generated!")
 
@@ -105,6 +113,7 @@ def test_debug_features(test_output_dir, verbose=True, log_file="test_run.log"):
         print(f"\nError during testing: {str(e)}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
         raise
+
 
 if __name__ == "__main__":
     test_debug_features()

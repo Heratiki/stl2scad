@@ -4,10 +4,11 @@ Main entry point for the STL to OpenSCAD converter.
 
 import sys
 
+
 def main():
     """Launch either CLI or GUI mode based on arguments."""
     # If no arguments or --gui flag, launch GUI
-    if len(sys.argv) == 1 or sys.argv[1] == '--gui':
+    if len(sys.argv) == 1 or sys.argv[1] == "--gui":
         try:
             from PyQt5 import QtWidgets
             from PyQt5.QtCore import Qt
@@ -38,7 +39,9 @@ def main():
     else:
         # CLI mode
         from stl2scad.cli import main as cli_main
+
         sys.exit(cli_main())
+
 
 if __name__ == "__main__":
     main()

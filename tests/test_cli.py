@@ -53,6 +53,7 @@ def test_verify_parser_html_flag():
 
 from unittest.mock import patch, MagicMock
 
+
 @patch("stl2scad.cli.stl2scad")
 def test_convert_command_execution(mock_stl2scad, test_output_dir):
     """Test convert command successfully invokes core logic."""
@@ -66,8 +67,10 @@ def test_convert_command_execution(mock_stl2scad, test_output_dir):
 
     out_file = str(test_output_dir / "out.scad")
     # Execute via main
-    exit_code = cli.main(["convert", "dummy.stl", out_file, "--tolerance", "0.5", "--debug"])
-    
+    exit_code = cli.main(
+        ["convert", "dummy.stl", out_file, "--tolerance", "0.5", "--debug"]
+    )
+
     assert exit_code == 0
     mock_stl2scad.assert_called_once_with(
         "dummy.stl",
@@ -88,10 +91,10 @@ def test_verify_command_execution(mock_stl2scad, mock_verify, test_output_dir):
     mock_result.comparison = {}
     mock_result.tolerance = {"volume": 1.0, "surface_area": 2.0, "bounding_box": 0.5}
     mock_verify.return_value = mock_result
-    
+
     exit_code = cli.main(["verify", "dummy.stl", "--volume-tol", "1.5"])
     assert exit_code == 0
-    
+
     # Check that verify was called with correct constructed tolerance
     args, kwargs = mock_verify.call_args
     assert args[0] == "dummy.stl"
@@ -101,13 +104,17 @@ def test_verify_command_execution(mock_stl2scad, mock_verify, test_output_dir):
 
 @patch("stl2scad.cli.verify_conversion")
 @patch("stl2scad.cli.stl2scad")
-def test_batch_command_execution(mock_stl2scad, mock_verify, test_data_dir, test_output_dir):
+def test_batch_command_execution(
+    mock_stl2scad, mock_verify, test_data_dir, test_output_dir
+):
     """Test batch command processes directory globs correctly."""
     mock_result = MagicMock()
     mock_result.passed = True
     mock_verify.return_value = mock_result
 
-    exit_code = cli.main(["batch", str(test_data_dir), str(test_output_dir), "--bbox-tol", "2.0"])
+    exit_code = cli.main(
+        ["batch", str(test_data_dir), str(test_output_dir), "--bbox-tol", "2.0"]
+    )
     assert exit_code == 0
     # Should have executed for at least the sample stl in data dir
     assert mock_stl2scad.call_count > 0

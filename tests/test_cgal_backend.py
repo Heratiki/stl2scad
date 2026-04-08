@@ -57,10 +57,14 @@ def test_detect_primitive_with_cgal_parses_success(monkeypatch):
             stderr="",
         )
 
-    monkeypatch.setattr(cgal_backend, "resolve_cgal_helper_path", lambda _: "fake-helper")
+    monkeypatch.setattr(
+        cgal_backend, "resolve_cgal_helper_path", lambda _: "fake-helper"
+    )
     monkeypatch.setattr(subprocess, "run", _fake_run)
 
-    result = cgal_backend.detect_primitive_with_cgal(_simple_mesh(), helper_path="ignored")
+    result = cgal_backend.detect_primitive_with_cgal(
+        _simple_mesh(), helper_path="ignored"
+    )
     assert result is not None
     assert result.detected is True
     assert result.scad == "sphere(r=2);"
@@ -79,21 +83,25 @@ def test_detect_primitive_with_cgal_handles_invalid_output(monkeypatch):
             stderr="",
         )
 
-    monkeypatch.setattr(cgal_backend, "resolve_cgal_helper_path", lambda _: "fake-helper")
+    monkeypatch.setattr(
+        cgal_backend, "resolve_cgal_helper_path", lambda _: "fake-helper"
+    )
     monkeypatch.setattr(subprocess, "run", _fake_run)
 
-    result = cgal_backend.detect_primitive_with_cgal(_simple_mesh(), helper_path="ignored")
+    result = cgal_backend.detect_primitive_with_cgal(
+        _simple_mesh(), helper_path="ignored"
+    )
     assert result is None
 
 
 def test_cgal_helper_capabilities_end_to_end():
     helper_path = (
-        Path(__file__).resolve().parents[1]
-        / "scripts"
-        / "stl2scad-cgal-helper.py"
+        Path(__file__).resolve().parents[1] / "scripts" / "stl2scad-cgal-helper.py"
     ).resolve()
 
-    capabilities = cgal_backend.get_cgal_backend_capabilities(helper_path=str(helper_path))
+    capabilities = cgal_backend.get_cgal_backend_capabilities(
+        helper_path=str(helper_path)
+    )
     assert capabilities is not None
     assert capabilities.helper_mode == "prototype"
     assert "detect_primitive" in capabilities.operations
@@ -135,8 +143,12 @@ def test_recognition_cgal_fallbacks_to_trimesh_when_no_cgal_detection(monkeypatc
     mesh = _simple_mesh()
 
     monkeypatch.setattr(recognition_module, "_has_cgal_dependencies", lambda: True)
-    monkeypatch.setattr(recognition_module, "_has_trimesh_manifold_dependencies", lambda: True)
-    monkeypatch.setattr(recognition_module, "detect_primitive_with_cgal", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        recognition_module, "_has_trimesh_manifold_dependencies", lambda: True
+    )
+    monkeypatch.setattr(
+        recognition_module, "detect_primitive_with_cgal", lambda *args, **kwargs: None
+    )
     monkeypatch.setattr(
         recognition_module,
         "_detect_primitive_trimesh_manifold",
@@ -151,7 +163,9 @@ def test_recognition_cgal_fallbacks_to_trimesh_when_no_cgal_detection(monkeypatc
 def test_cgal_helper_prototype_end_to_end(test_data_dir):
     fixtures_dir = test_data_dir / "benchmark_fixtures"
     ensure_benchmark_fixtures(fixtures_dir)
-    helper_path = (Path(__file__).resolve().parents[1] / "scripts" / "stl2scad-cgal-helper.py").resolve()
+    helper_path = (
+        Path(__file__).resolve().parents[1] / "scripts" / "stl2scad-cgal-helper.py"
+    ).resolve()
 
     result = cgal_backend.detect_primitive_with_cgal(
         stl.mesh.Mesh.from_file(str(fixtures_dir / "primitive_sphere.stl")),
@@ -175,10 +189,14 @@ def test_cgal_helper_prototype_end_to_end(test_data_dir):
         assert result.diagnostics["assigned_component_count"] == 1
 
 
-def test_converter_cgal_backend_uses_helper_and_emits_metadata(test_data_dir, test_output_dir, monkeypatch):
+def test_converter_cgal_backend_uses_helper_and_emits_metadata(
+    test_data_dir, test_output_dir, monkeypatch
+):
     fixtures_dir = test_data_dir / "benchmark_fixtures"
     ensure_benchmark_fixtures(fixtures_dir)
-    helper_path = (Path(__file__).resolve().parents[1] / "scripts" / "stl2scad-cgal-helper.py").resolve()
+    helper_path = (
+        Path(__file__).resolve().parents[1] / "scripts" / "stl2scad-cgal-helper.py"
+    ).resolve()
     monkeypatch.setenv(cgal_backend.CGAL_HELPER_ENV_VAR, str(helper_path))
 
     output_scad = test_output_dir / "cgal_helper_output.scad"
@@ -196,7 +214,9 @@ def test_converter_cgal_backend_uses_helper_and_emits_metadata(test_data_dir, te
     assert "recognized_primitive_type: sphere" in content
 
 
-def test_verify_existing_conversion_report_includes_conversion_metadata(test_output_dir, monkeypatch):
+def test_verify_existing_conversion_report_includes_conversion_metadata(
+    test_output_dir, monkeypatch
+):
     stl_file = test_output_dir / "dummy.stl"
     stl_file.write_text("unused")
     scad_file = test_output_dir / "dummy.scad"
@@ -220,12 +240,18 @@ def test_verify_existing_conversion_report_includes_conversion_metadata(test_out
     monkeypatch.setattr(
         verification_module,
         "get_stl_metrics",
-        lambda *_args, **_kwargs: {"mesh": object(), "bounding_box": {"width": 1.0, "height": 1.0, "depth": 1.0}},
+        lambda *_args, **_kwargs: {
+            "mesh": object(),
+            "bounding_box": {"width": 1.0, "height": 1.0, "depth": 1.0},
+        },
     )
     monkeypatch.setattr(
         verification_module,
         "calculate_scad_metrics",
-        lambda *_args, **_kwargs: {"mesh": object(), "bounding_box": {"width": 1.0, "height": 1.0, "depth": 1.0}},
+        lambda *_args, **_kwargs: {
+            "mesh": object(),
+            "bounding_box": {"width": 1.0, "height": 1.0, "depth": 1.0},
+        },
     )
     monkeypatch.setattr(
         verification_module,

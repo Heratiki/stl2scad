@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 
 import numpy as np
+import pytest
 import stl
 
 from stl2scad.core import cgal_backend
@@ -26,6 +27,35 @@ def _simple_mesh() -> stl.mesh.Mesh:
         ]
     )
     return mesh
+
+
+def _sample_cylinder_points(
+    center: np.ndarray,
+    axis: np.ndarray,
+    radius: float,
+    height: float,
+) -> np.ndarray:
+    axis = axis / np.linalg.norm(axis)
+    if abs(float(np.dot(axis, np.array([1.0, 0.0, 0.0])))) < 0.9:
+        basis_seed = np.array([1.0, 0.0, 0.0])
+    else:
+        basis_seed = np.array([0.0, 1.0, 0.0])
+    basis_u = np.cross(axis, basis_seed)
+    basis_u = basis_u / np.linalg.norm(basis_u)
+    basis_v = np.cross(axis, basis_u)
+
+    half_height = height * 0.5
+    points = []
+    for z in (-half_height, -half_height * 0.33, half_height * 0.33, half_height):
+        for angle in np.linspace(0.0, 2.0 * np.pi, 16, endpoint=False):
+            ring = (
+                center
+                + axis * z
+                + basis_u * (radius * np.cos(angle))
+                + basis_v * (radius * np.sin(angle))
+            )
+            points.append(ring)
+    return np.asarray(points, dtype=np.float64)
 
 
 def test_resolve_cgal_helper_path_from_env(monkeypatch, test_output_dir):
@@ -118,6 +148,44 @@ def test_cgal_capabilities_reports_python_bindings_without_helper(monkeypatch):
     assert capabilities.cgal_bindings_available is True
     assert "cgal_python_bindings" in capabilities.engines
     assert "sphere" in capabilities.supported_primitives
+    assert "cylinder" in capabilities.supported_primitives
+
+
+def test_cgal_cylinder_geometry_is_enriched_from_sample_points():
+    center = np.array([1.5, -2.0, 0.75], dtype=np.float64)
+    axis = np.array([0.0, 1.0, 1.0], dtype=np.float64)
+    axis = axis / np.linalg.norm(axis)
+    points = _sample_cylinder_points(center, axis, radius=2.0, height=6.0)
+
+    shape = {
+        "primitive_type": "cylinder",
+        "center": tuple(center),
+        "axis": tuple(axis),
+        "radius": 2.0,
+        "coverage": 0.95,
+    }
+    enriched = cgal_backend._enrich_shape_geometry_from_points(shape, points)
+
+    assert enriched is not None
+    assert enriched["primitive_type"] == "cylinder"
+    assert enriched["height"] == pytest.approx(6.0, rel=0.05)
+    assert np.asarray(enriched["finite_center"]) == pytest.approx(center, rel=1e-6)
+
+
+def test_shape_description_to_scad_emits_oriented_cylinder():
+    shape = {
+        "primitive_type": "cylinder",
+        "axis": (0.0, 1.0, 0.0),
+        "radius": 2.0,
+        "height": 6.0,
+        "finite_center": (1.0, 2.0, 3.0),
+    }
+
+    scad = cgal_backend._shape_description_to_scad(shape)
+    assert scad is not None
+    assert "cylinder(h=6.000000, r=2.000000, center=true, $fn=96);" in scad
+    assert "translate([1.000000, 2.000000, 3.000000])" in scad
+    assert "rotate(" in scad
 
 
 def test_cgal_python_bindings_detect_sphere_when_available(test_data_dir):

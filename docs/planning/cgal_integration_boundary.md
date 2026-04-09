@@ -86,7 +86,7 @@ If no reliable primitive is found:
 
 ## Current Behavior in `stl2scad`
 1. `--recognition-backend cgal` attempts direct CGAL Python binding detection first when `CGAL.CGAL_Shape_detection` is importable.
-2. Direct Python binding detection currently accepts high-coverage sphere output only; partial/unsupported shapes decline.
+2. Direct Python binding detection currently accepts high-coverage sphere and cylinder output; partial/unsupported shapes decline.
 3. If direct Python bindings decline or are unavailable, the backend attempts CGAL helper detection.
 4. If CGAL helper declines or fails, current implementation falls back to `trimesh_manifold` backend when available.
 5. If neither yields a confident primitive, converter falls back to polyhedron output.

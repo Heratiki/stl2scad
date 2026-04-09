@@ -107,18 +107,18 @@ def get_cgal_backend_capabilities(
                 helper_mode=None,
                 cgal_bindings_available=True,
                 operations=["detect_primitive"],
-                supported_primitives=["sphere"],
+                supported_primitives=["sphere", "cylinder"],
                 engines=["cgal_python_bindings"],
                 raw={
                     "schema_version": 1,
                     "helper_mode": None,
                     "cgal_bindings_available": True,
                     "operations": ["detect_primitive"],
-                    "supported_primitives": ["sphere"],
+                    "supported_primitives": ["sphere", "cylinder"],
                     "engines": ["cgal_python_bindings"],
                     "notes": (
                         "Direct Python binding path accepts high-coverage "
-                        "sphere detections; other shapes fall back."
+                        "sphere and cylinder detections; other shapes fall back."
                     ),
                 },
             )
@@ -312,7 +312,11 @@ def _detect_primitive_with_cgal_python_bindings(
         return None
 
     parsed = [
-        _parse_cgal_shape_description(str(shape), len(points)) for shape in shapes
+        _enrich_shape_geometry_from_points(
+            _parse_cgal_shape_description(str(shape), len(points)),
+            points,
+        )
+        for shape in shapes
     ]
     parsed_shapes: list[dict[str, Any]] = [
         shape for shape in parsed if shape is not None
@@ -430,15 +434,66 @@ def _shape_description_to_scad(shape: dict[str, Any]) -> Optional[str]:
         )
 
     if primitive_type == "cylinder":
-        center = shape["center"]
         axis = shape["axis"]
         radius = shape["radius"]
-        # CGAL's shape description does not include finite extent in this SWIG
-        # wrapper, so direct cylinder SCAD is only safe after extent support.
-        _ = center, axis, radius
-        return None
+        center = shape.get("finite_center")
+        height = shape.get("height")
+        if center is None or height is None:
+            return None
+        if float(height) <= 1e-6:
+            return None
+        primitive = f"cylinder(h={float(height):.6f}, r={float(radius):.6f}, center=true, $fn=96);"
+        return _wrap_oriented_primitive(np.asarray(center, dtype=np.float64), axis, primitive)
 
     return None
+
+
+def _enrich_shape_geometry_from_points(
+    shape: Optional[dict[str, Any]],
+    points: np.ndarray,
+) -> Optional[dict[str, Any]]:
+    if shape is None:
+        return None
+    if shape.get("primitive_type") != "cylinder":
+        return shape
+
+    center = np.asarray(shape.get("center"), dtype=np.float64)
+    axis = np.asarray(shape.get("axis"), dtype=np.float64)
+    radius = float(shape.get("radius", 0.0))
+
+    if center.shape != (3,) or axis.shape != (3,) or radius <= 1e-6:
+        return shape
+
+    axis_norm = float(np.linalg.norm(axis))
+    if axis_norm <= 1e-12:
+        return shape
+    axis = axis / axis_norm
+
+    relative = points - center
+    t_values = relative @ axis
+    if len(t_values) == 0:
+        return shape
+
+    if len(t_values) >= 50:
+        t_min = float(np.percentile(t_values, 2.0))
+        t_max = float(np.percentile(t_values, 98.0))
+    else:
+        t_min = float(np.min(t_values))
+        t_max = float(np.max(t_values))
+
+    height = t_max - t_min
+    if height <= 1e-6:
+        return shape
+
+    finite_center = center + axis * ((t_min + t_max) * 0.5)
+    enriched = dict(shape)
+    enriched["axis"] = _normalize_tuple(tuple(float(value) for value in axis))
+    enriched["finite_center"] = tuple(float(value) for value in finite_center)
+    enriched["height"] = float(height)
+    enriched["axis_min"] = t_min
+    enriched["axis_max"] = t_max
+    enriched["estimated_from_sample_points"] = True
+    return enriched
 
 
 def _float_tuple(values: Any) -> tuple[float, ...]:
@@ -450,6 +505,46 @@ def _normalize_tuple(values: tuple[float, ...]) -> tuple[float, ...]:
     if norm <= 1e-12:
         return (0.0, 0.0, 1.0)
     return tuple(value / norm for value in values)
+
+
+def _wrap_oriented_primitive(
+    center: np.ndarray,
+    axis: tuple[float, ...] | np.ndarray,
+    primitive_scad: str,
+) -> str:
+    axis_vec = np.asarray(axis, dtype=np.float64)
+    axis_norm = np.linalg.norm(axis_vec)
+    if axis_norm <= 1e-12:
+        axis_vec = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+    else:
+        axis_vec = axis_vec / axis_norm
+
+    z_axis = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+    dot = float(np.clip(np.dot(z_axis, axis_vec), -1.0, 1.0))
+
+    if dot > 1.0 - 1e-9:
+        transform_body = primitive_scad
+    else:
+        if dot < -1.0 + 1e-9:
+            rot_axis = np.array([1.0, 0.0, 0.0], dtype=np.float64)
+            angle_deg = 180.0
+        else:
+            rot_axis = np.cross(z_axis, axis_vec)
+            rot_axis = rot_axis / max(float(np.linalg.norm(rot_axis)), 1e-12)
+            angle_deg = math.degrees(math.acos(dot))
+        transform_body = (
+            f"rotate(a={angle_deg:.6f}, v=[{rot_axis[0]:.6f}, {rot_axis[1]:.6f}, {rot_axis[2]:.6f}]) "
+            "{ "
+            f"{primitive_scad}"
+            " }"
+        )
+
+    return (
+        f"translate([{center[0]:.6f}, {center[1]:.6f}, {center[2]:.6f}]) "
+        "{ "
+        f"{transform_body}"
+        " }"
+    )
 
 
 def _has_module(module_name: str) -> bool:

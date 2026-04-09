@@ -39,7 +39,7 @@ Parametric recognition is currently early-stage:
   - conservative disjoint multi-component union assembly
 - Phase 2 backend (`cgal`, optional helper):
   - helper-executable JSON boundary and adapter path
-  - `cgal` backend attempts helper detection first, then falls back to `trimesh_manifold` when available
+  - `cgal` backend attempts direct Python-binding detection first, then helper detection, then falls back to `trimesh_manifold` when available
   - backend/primitive/diagnostics metadata is emitted in SCAD headers and propagated into verification JSON reports
   - release checklist tracked in `docs/planning/phase2_release_checklist.md`
 - Not yet implemented: true CGAL shape-detection internals in helper, robust confidence tuning, and full boolean-aware reconstruction
@@ -82,9 +82,9 @@ set STL2SCAD_CGAL_HELPER=C:\path\to\stl2scad-cgal-helper.exe
 # set STL2SCAD_CGAL_HELPER=C:\path\to\stl2scad\scripts\stl2scad-cgal-helper.py
 ```
 
-The direct Python binding path currently accepts high-coverage sphere detections
-and falls back for shapes where the SWIG wrapper does not expose enough extent
-data for safe SCAD emission.
+The direct Python binding path currently accepts high-coverage sphere and
+cylinder detections and falls back for shapes where the SWIG wrapper does not
+expose enough extent data for safe SCAD emission.
 
 ## CLI Usage
 

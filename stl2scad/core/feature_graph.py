@@ -90,7 +90,9 @@ def build_feature_graph_for_folder(
 
     worker_count = max(1, int(workers))
     if worker_count == 1 or len(files) <= 1:
-        graphs = [_build_feature_graph_for_folder_file(path, input_path) for path in files]
+        graphs = [
+            _build_feature_graph_for_folder_file(path, input_path) for path in files
+        ]
     else:
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
             graphs = list(
@@ -124,7 +126,9 @@ def _build_feature_graph_for_folder_worker(args: tuple[Path, Path]) -> dict[str,
     return _build_feature_graph_for_folder_file(path, input_path)
 
 
-def _build_feature_graph_for_folder_file(path: Path, input_path: Path) -> dict[str, Any]:
+def _build_feature_graph_for_folder_file(
+    path: Path, input_path: Path
+) -> dict[str, Any]:
     try:
         return build_feature_graph_for_stl(path, root_dir=input_path)
     except Exception as exc:
@@ -179,7 +183,9 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
     ]
     if holes or slots:
         for pattern_index, pattern in enumerate(supported_patterns):
-            if pattern.get("type") == "linear_hole_pattern" and _has_linear_pattern_fields(pattern):
+            if pattern.get(
+                "type"
+            ) == "linear_hole_pattern" and _has_linear_pattern_fields(pattern):
                 pattern_name = f"hole_pattern_{len(linear_pattern_names)}"
                 linear_pattern_names[pattern_index] = pattern_name
                 origin = [float(value) for value in pattern["pattern_origin"]]
@@ -192,7 +198,9 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
                         f"{pattern_name}_diameter = {float(pattern['diameter']):.6f};",
                     ]
                 )
-            elif pattern.get("type") == "grid_hole_pattern" and _has_grid_pattern_fields(pattern):
+            elif pattern.get(
+                "type"
+            ) == "grid_hole_pattern" and _has_grid_pattern_fields(pattern):
                 pattern_name = f"hole_grid_{len(grid_pattern_names)}"
                 grid_pattern_names[pattern_index] = pattern_name
                 origin = [float(value) for value in pattern["grid_origin"]]
@@ -222,7 +230,9 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
             [
                 "",
                 "module hole_cutout(center, diameter) {",
-                *_hole_cutout_module_body(size[thickness_axis_index] + 0.2, thickness_axis),
+                *_hole_cutout_module_body(
+                    size[thickness_axis_index] + 0.2, thickness_axis
+                ),
                 "}",
             ]
         )
@@ -250,24 +260,26 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
     for pattern_index, pattern in enumerate(supported_patterns):
         diameter = float(pattern["diameter"])
         centers = [[float(value) for value in center] for center in pattern["centers"]]
-        pattern_name = linear_pattern_names.get(pattern_index)
-        if pattern_name is not None:
-            lines.append(f"  for (i = [0 : {pattern_name}_count - 1]) {{")
+        linear_name: Optional[str] = linear_pattern_names.get(pattern_index)
+        if linear_name is not None:
+            lines.append(f"  for (i = [0 : {linear_name}_count - 1]) {{")
             lines.append(
-                f"    hole_cutout({_scad_named_linear_point_expression(pattern_name, 'i')}, {pattern_name}_diameter);"
+                f"    hole_cutout({_scad_named_linear_point_expression(linear_name, 'i')}, {linear_name}_diameter);"
             )
             lines.append("  }")
         elif pattern_index in grid_pattern_names:
-            pattern_name = grid_pattern_names[pattern_index]
-            lines.append(f"  for (row = [0 : {pattern_name}_rows - 1]) {{")
-            lines.append(f"    for (col = [0 : {pattern_name}_cols - 1]) {{")
+            grid_name = grid_pattern_names[pattern_index]
+            lines.append(f"  for (row = [0 : {grid_name}_rows - 1]) {{")
+            lines.append(f"    for (col = [0 : {grid_name}_cols - 1]) {{")
             lines.append(
-                f"      hole_cutout({_scad_named_grid_point_expression(pattern_name)}, {pattern_name}_diameter);"
+                f"      hole_cutout({_scad_named_grid_point_expression(grid_name)}, {grid_name}_diameter);"
             )
             lines.append("    }")
             lines.append("  }")
         else:
-            center_list = "[" + ", ".join(_scad_vector(center) for center in centers) + "]"
+            center_list = (
+                "[" + ", ".join(_scad_vector(center) for center in centers) + "]"
+            )
             lines.append(f"  for (hole_center = {center_list}) {{")
             lines.append(f"    hole_cutout(hole_center, {diameter:.6f});")
             lines.append("  }")
@@ -285,7 +297,9 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
     for slot_index, slot in enumerate(slots):
         if slot.get("axis") != thickness_axis:
             continue
-        lines.append(f"  slot_cutout(slot_{slot_index}_start, slot_{slot_index}_end, slot_{slot_index}_width);")
+        lines.append(
+            f"  slot_cutout(slot_{slot_index}_start, slot_{slot_index}_end, slot_{slot_index}_width);"
+        )
 
     lines.append("}")
     lines.append("")
@@ -347,7 +361,9 @@ def _extract_axis_aligned_box_features(
         "height": float(bbox["depth"]),
     }
     nonzero_dims = [value for value in dimensions.values() if value > 1e-9]
-    thin_ratio = min(nonzero_dims) / max(nonzero_dims) if len(nonzero_dims) == 3 else 0.0
+    thin_ratio = (
+        min(nonzero_dims) / max(nonzero_dims) if len(nonzero_dims) == 3 else 0.0
+    )
     paired_axes = sum(1 for feature in plane_features if feature["paired"])
 
     features: list[dict[str, Any]] = plane_features
@@ -356,8 +372,16 @@ def _extract_axis_aligned_box_features(
             {
                 "type": "plate_like_solid",
                 "confidence": float(confidence),
-                "origin": [float(bbox["min_x"]), float(bbox["min_y"]), float(bbox["min_z"])],
-                "size": [dimensions["width"], dimensions["depth"], dimensions["height"]],
+                "origin": [
+                    float(bbox["min_x"]),
+                    float(bbox["min_y"]),
+                    float(bbox["min_z"]),
+                ],
+                "size": [
+                    dimensions["width"],
+                    dimensions["depth"],
+                    dimensions["height"],
+                ],
                 "parameters": {
                     "width": dimensions["width"],
                     "depth": dimensions["depth"],
@@ -371,8 +395,16 @@ def _extract_axis_aligned_box_features(
             {
                 "type": "box_like_solid",
                 "confidence": float(confidence),
-                "origin": [float(bbox["min_x"]), float(bbox["min_y"]), float(bbox["min_z"])],
-                "size": [dimensions["width"], dimensions["depth"], dimensions["height"]],
+                "origin": [
+                    float(bbox["min_x"]),
+                    float(bbox["min_y"]),
+                    float(bbox["min_z"]),
+                ],
+                "size": [
+                    dimensions["width"],
+                    dimensions["depth"],
+                    dimensions["height"],
+                ],
                 "parameters": {
                     "width": dimensions["width"],
                     "depth": dimensions["depth"],
@@ -450,7 +482,8 @@ def _has_grid_pattern_fields(pattern: dict[str, Any]) -> bool:
 
 
 def _hole_key(center: list[float]) -> tuple[float, float, float]:
-    return tuple(round(float(value), 4) for value in center)
+    rounded = [round(float(value), 4) for value in center]
+    return (rounded[0], rounded[1], rounded[2])
 
 
 def _hole_cutout_module_body(
@@ -510,9 +543,9 @@ def _extract_axis_aligned_through_holes(
     sidewall_mask = np.abs(normals @ axis_vector) <= (1.0 - normal_axis_threshold)
     span_min = float(bbox[f"min_{axis_labels[thickness_axis_index]}"])
     span_max = float(bbox[f"max_{axis_labels[thickness_axis_index]}"])
-    interior_mask = (face_centers[:, thickness_axis_index] > span_min + thickness * 0.05) & (
-        face_centers[:, thickness_axis_index] < span_max - thickness * 0.05
-    )
+    interior_mask = (
+        face_centers[:, thickness_axis_index] > span_min + thickness * 0.05
+    ) & (face_centers[:, thickness_axis_index] < span_max - thickness * 0.05)
     candidate_faces = np.where(sidewall_mask | interior_mask)[0]
     if len(candidate_faces) == 0:
         return []
@@ -544,7 +577,9 @@ def _extract_axis_aligned_through_holes(
                 center[plane_axes[0]] = float(center_2d[0])
                 center[plane_axes[1]] = float(center_2d[1])
                 center[thickness_axis_index] = (span_min + span_max) * 0.5
-                confidence = max(0.0, min(1.0, (1.0 - radial_error_ratio / 0.08) * angular_coverage))
+                confidence = max(
+                    0.0, min(1.0, (1.0 - radial_error_ratio / 0.08) * angular_coverage)
+                )
                 features.append(
                     {
                         "type": "hole_like_cutout",
@@ -565,7 +600,15 @@ def _extract_axis_aligned_through_holes(
         slot_fit = _fit_axis_aligned_slot_2d(coords_2d)
         if slot_fit is None:
             continue
-        center_2d, start_2d, end_2d, width, length, slot_error_ratio, slot_axis_index = slot_fit
+        (
+            center_2d,
+            start_2d,
+            end_2d,
+            width,
+            length,
+            slot_error_ratio,
+            slot_axis_index,
+        ) = slot_fit
         radius = width * 0.5
         if radius < min_radius or radius > max_radius:
             continue
@@ -605,8 +648,12 @@ def _extract_axis_aligned_through_holes(
     return features
 
 
-def _extract_repeated_hole_patterns(features: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    holes = [feature for feature in features if feature.get("type") == "hole_like_cutout"]
+def _extract_repeated_hole_patterns(
+    features: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    holes = [
+        feature for feature in features if feature.get("type") == "hole_like_cutout"
+    ]
     patterns: list[dict[str, Any]] = []
     if len(holes) < 2:
         return patterns
@@ -622,15 +669,15 @@ def _extract_repeated_hole_patterns(features: list[dict[str, Any]]) -> list[dict
             continue
         centers = np.asarray([hole["center"] for hole in group], dtype=np.float64)
         varying_axes = [
-            index
-            for index in range(3)
-            if index != {"x": 0, "y": 1, "z": 2}[axis]
+            index for index in range(3) if index != {"x": 0, "y": 1, "z": 2}[axis]
         ]
         unique_counts = [
             len(np.unique(np.round(centers[:, axis_index], 4)))
             for axis_index in varying_axes
         ]
-        pattern_type = "grid_hole_pattern" if min(unique_counts) >= 2 else "linear_hole_pattern"
+        pattern_type = (
+            "grid_hole_pattern" if min(unique_counts) >= 2 else "linear_hole_pattern"
+        )
         pattern = {
             "type": pattern_type,
             "confidence": float(min(float(hole["confidence"]) for hole in group)),
@@ -665,7 +712,9 @@ def _linear_hole_pattern_metadata(
         return {}
 
     expected = ordered_centers[0] + np.arange(count, dtype=np.float64)[:, None] * step
-    regularity_error = float(np.max(np.linalg.norm(ordered_centers - expected, axis=1)) / spacing)
+    regularity_error = float(
+        np.max(np.linalg.norm(ordered_centers - expected, axis=1)) / spacing
+    )
     if regularity_error > 0.05:
         return {}
 
@@ -726,10 +775,14 @@ def _grid_hole_pattern_metadata(
     expected_array = np.asarray(expected, dtype=np.float64)
     ordered_array = np.asarray(ordered_centers, dtype=np.float64)
     min_spacing = max(
-        min(abs(float(row_step[varying_axes[1]])), abs(float(col_step[varying_axes[0]]))),
+        min(
+            abs(float(row_step[varying_axes[1]])), abs(float(col_step[varying_axes[0]]))
+        ),
         1e-9,
     )
-    regularity_error = float(np.max(np.linalg.norm(ordered_array - expected_array, axis=1)) / min_spacing)
+    regularity_error = float(
+        np.max(np.linalg.norm(ordered_array - expected_array, axis=1)) / min_spacing
+    )
     if regularity_error > 0.05:
         return {}
 
@@ -786,7 +839,9 @@ def _connected_face_components(
     return components
 
 
-def _fit_circle_2d(points: np.ndarray) -> Optional[tuple[np.ndarray, float, float, float]]:
+def _fit_circle_2d(
+    points: np.ndarray,
+) -> Optional[tuple[np.ndarray, float, float, float]]:
     if len(points) < 8:
         return None
     matrix = np.column_stack((2.0 * points, np.ones(len(points))))
@@ -802,7 +857,9 @@ def _fit_circle_2d(points: np.ndarray) -> Optional[tuple[np.ndarray, float, floa
         return None
     radius = float(np.sqrt(radius_sq))
     distances = np.linalg.norm(points - center, axis=1)
-    radial_error_ratio = float(np.percentile(np.abs(distances - radius), 95) / max(radius, 1e-9))
+    radial_error_ratio = float(
+        np.percentile(np.abs(distances - radius), 95) / max(radius, 1e-9)
+    )
     angles = np.arctan2(points[:, 1] - center[1], points[:, 0] - center[0])
     bins = np.unique(np.floor(((angles + np.pi) / (2.0 * np.pi)) * 24.0).astype(int))
     angular_coverage = float(min(len(bins), 24) / 24.0)
@@ -843,7 +900,9 @@ def _fit_axis_aligned_slot_2d(
     projections = np.clip(((points - start) @ segment) / segment_length_sq, 0.0, 1.0)
     closest = start + projections[:, None] * segment
     distances = np.linalg.norm(points - closest, axis=1)
-    slot_error_ratio = float(np.percentile(np.abs(distances - radius), 95) / max(radius, 1e-9))
+    slot_error_ratio = float(
+        np.percentile(np.abs(distances - radius), 95) / max(radius, 1e-9)
+    )
     if slot_error_ratio > 0.12:
         return None
 
@@ -855,8 +914,16 @@ def _fit_axis_aligned_slot_2d(
     has_start_cap = bool(np.any(long_coords <= start[long_axis] + cap_tolerance))
     has_end_cap = bool(np.any(long_coords >= end[long_axis] - cap_tolerance))
     middle_mask = (long_coords >= start[long_axis]) & (long_coords <= end[long_axis])
-    has_negative_side = bool(np.any(middle_mask & (short_coords <= center[short_axis] - radius + side_tolerance)))
-    has_positive_side = bool(np.any(middle_mask & (short_coords >= center[short_axis] + radius - side_tolerance)))
+    has_negative_side = bool(
+        np.any(
+            middle_mask & (short_coords <= center[short_axis] - radius + side_tolerance)
+        )
+    )
+    has_positive_side = bool(
+        np.any(
+            middle_mask & (short_coords >= center[short_axis] + radius - side_tolerance)
+        )
+    )
     if not (has_start_cap and has_end_cap and has_negative_side and has_positive_side):
         return None
 
@@ -891,8 +958,12 @@ def _slot_near_outer_boundary(
     for local_axis, axis_index in enumerate(plane_axes):
         min_coord = float(bbox[f"min_{labels[axis_index]}"])
         max_coord = float(bbox[f"max_{labels[axis_index]}"])
-        feature_min = min(float(start_2d[local_axis]), float(end_2d[local_axis])) - radius
-        feature_max = max(float(start_2d[local_axis]), float(end_2d[local_axis])) + radius
+        feature_min = (
+            min(float(start_2d[local_axis]), float(end_2d[local_axis])) - radius
+        )
+        feature_max = (
+            max(float(start_2d[local_axis]), float(end_2d[local_axis])) + radius
+        )
         if feature_min <= min_coord + radius * 0.1:
             return True
         if feature_max >= max_coord - radius * 0.1:

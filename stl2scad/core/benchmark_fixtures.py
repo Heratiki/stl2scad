@@ -153,7 +153,9 @@ def _build_fixture_specs() -> List[FixtureSpec]:
             primitive_family="sphere",
             description="UV sphere primitive for sphere candidate fitting.",
             tags=("phase0", "primitive", "sphere"),
-            generator=lambda: _make_sphere(radius=8.0, lat_segments=24, lon_segments=48),
+            generator=lambda: _make_sphere(
+                radius=8.0, lat_segments=24, lon_segments=48
+            ),
         ),
         FixtureSpec(
             name="primitive_cone",
@@ -198,7 +200,9 @@ def _build_fixture_specs() -> List[FixtureSpec]:
             primitive_family="sphere",
             description="Low complexity sphere fixture for perf baseline.",
             tags=("phase0", "performance", "size_low"),
-            generator=lambda: _make_sphere(radius=10.0, lat_segments=8, lon_segments=16),
+            generator=lambda: _make_sphere(
+                radius=10.0, lat_segments=8, lon_segments=16
+            ),
         ),
         FixtureSpec(
             name="perf_sphere_medium",
@@ -207,7 +211,9 @@ def _build_fixture_specs() -> List[FixtureSpec]:
             primitive_family="sphere",
             description="Medium complexity sphere fixture for perf baseline.",
             tags=("phase0", "performance", "size_medium"),
-            generator=lambda: _make_sphere(radius=10.0, lat_segments=24, lon_segments=48),
+            generator=lambda: _make_sphere(
+                radius=10.0, lat_segments=24, lon_segments=48
+            ),
         ),
         FixtureSpec(
             name="perf_sphere_high",
@@ -216,7 +222,9 @@ def _build_fixture_specs() -> List[FixtureSpec]:
             primitive_family="sphere",
             description="High complexity sphere fixture for perf baseline.",
             tags=("phase0", "performance", "size_high"),
-            generator=lambda: _make_sphere(radius=10.0, lat_segments=40, lon_segments=80),
+            generator=lambda: _make_sphere(
+                radius=10.0, lat_segments=40, lon_segments=80
+            ),
         ),
     ]
 
@@ -247,12 +255,18 @@ def _make_box(
     )
     faces = np.array(
         [
-            [0, 2, 1], [0, 3, 2],  # bottom
-            [4, 5, 6], [4, 6, 7],  # top
-            [0, 1, 5], [0, 5, 4],  # front
-            [1, 2, 6], [1, 6, 5],  # right
-            [2, 3, 7], [2, 7, 6],  # back
-            [3, 0, 4], [3, 4, 7],  # left
+            [0, 2, 1],
+            [0, 3, 2],  # bottom
+            [4, 5, 6],
+            [4, 6, 7],  # top
+            [0, 1, 5],
+            [0, 5, 4],  # front
+            [1, 2, 6],
+            [1, 6, 5],  # right
+            [2, 3, 7],
+            [2, 7, 6],  # back
+            [3, 0, 4],
+            [3, 4, 7],  # left
         ],
         dtype=np.int32,
     )
@@ -268,8 +282,8 @@ def _make_cylinder(radius: float, height: float, segments: int) -> Mesh:
         theta = 2.0 * math.pi * (i / segments)
         x = radius * math.cos(theta)
         y = radius * math.sin(theta)
-        vertices.append([x, y, 0.0])      # bottom
-        vertices.append([x, y, height])   # top
+        vertices.append([x, y, 0.0])  # bottom
+        vertices.append([x, y, height])  # top
 
     center_bottom = len(vertices)
     vertices.append([0.0, 0.0, 0.0])
@@ -357,7 +371,13 @@ def _make_sphere(radius: float, lat_segments: int, lon_segments: int) -> Mesh:
     # Bottom cap
     last_ring = lat_segments - 1
     for lon_idx in range(lon_segments):
-        faces.append([bottom_index, ring_index(last_ring, lon_idx), ring_index(last_ring, lon_idx + 1)])
+        faces.append(
+            [
+                bottom_index,
+                ring_index(last_ring, lon_idx),
+                ring_index(last_ring, lon_idx + 1),
+            ]
+        )
 
     return _mesh_from_vertices_faces(np.asarray(vertices), np.asarray(faces))
 
@@ -407,10 +427,7 @@ def _box_cells(
     z1: int,
 ) -> Set[Tuple[int, int, int]]:
     return {
-        (x, y, z)
-        for x in range(x0, x1)
-        for y in range(y0, y1)
-        for z in range(z0, z1)
+        (x, y, z) for x in range(x0, x1) for y in range(y0, y1) for z in range(z0, z1)
     }
 
 
@@ -454,8 +471,7 @@ def _mesh_from_voxels(
             if (x + nx, y + ny, z + nz) in cells:
                 continue
             corner_indices = [
-                vertex_index((x + cx, y + cy, z + cz))
-                for (cx, cy, cz) in corners
+                vertex_index((x + cx, y + cy, z + cz)) for (cx, cy, cz) in corners
             ]
             faces.append([corner_indices[0], corner_indices[1], corner_indices[2]])
             faces.append([corner_indices[0], corner_indices[2], corner_indices[3]])

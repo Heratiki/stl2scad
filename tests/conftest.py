@@ -7,10 +7,12 @@ import shutil
 import tempfile
 from pathlib import Path
 
+
 @pytest.fixture
 def test_data_dir():
     """Return path to test data directory."""
     return Path(__file__).parent / "data"
+
 
 @pytest.fixture
 def test_output_dir():
@@ -21,10 +23,12 @@ def test_output_dir():
     yield temp_dir
     shutil.rmtree(temp_dir, ignore_errors=True)
 
+
 @pytest.fixture
 def sample_stl_file(test_data_dir):
     """Return path to sample STL file."""
     return test_data_dir / "Cube_3d_printing_sample.stl"
+
 
 @pytest.fixture
 def cleanup_output(test_output_dir):

@@ -15,16 +15,23 @@ from typing import Tuple, List, Dict, Optional, Union
 from dataclasses import dataclass
 from numpy.typing import NDArray
 
-def run_openscad(description: str, args: List[str], log_file: str, openscad_path: Optional[str] = None, timeout: int = 30) -> bool:
+
+def run_openscad(
+    description: str,
+    args: List[str],
+    log_file: str,
+    openscad_path: Optional[str] = None,
+    timeout: int = 30,
+) -> bool:
     """Execute OpenSCAD command with proper error handling and logging.
-    
+
     Args:
         description: Description of the command being executed
         args: List of command arguments
         log_file: Path to the log file
         openscad_path: Optional path to OpenSCAD executable
         timeout: Command timeout in seconds
-        
+
     Returns:
         bool: True if command executed successfully, False otherwise
     """
@@ -33,15 +40,17 @@ def run_openscad(description: str, args: List[str], log_file: str, openscad_path
     logging.debug(f"Log file path: {log_file}")
     logging.debug(f"Command timeout: {timeout} seconds")
     logging.debug(f"OpenSCAD path: {openscad_path or 'default'}")
-    
+
     try:
-        command = [(openscad_path or "openscad")] + args
+        command = [openscad_path or "openscad"] + args
         logging.info(f"Executing command: {' '.join(str(c) for c in command)}")
 
-        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=timeout
+        )
 
         # Always write output to log file so callers (e.g. version check) can read it
-        with open(log_file, 'w', encoding='utf-8') as f:
+        with open(log_file, "w", encoding="utf-8") as f:
             if result.stdout:
                 f.write(result.stdout)
             if result.stderr:
@@ -60,37 +69,44 @@ def run_openscad(description: str, args: List[str], log_file: str, openscad_path
         return True
 
     except subprocess.TimeoutExpired:
-        logging.error(f"Command timed out after {timeout} seconds. This may indicate that OpenSCAD is having trouble processing the file or the system is under heavy load.")
+        logging.error(
+            f"Command timed out after {timeout} seconds. This may indicate that OpenSCAD is having trouble processing the file or the system is under heavy load."
+        )
         return False
     except Exception as e:
         logging.error(f"Unexpected error executing OpenSCAD: {str(e)}")
         logging.debug("Stack trace:", exc_info=True)
         return False
 
+
 from . import config
 from .cgal_backend import detect_primitive_with_cgal
 from .recognition import detect_primitive, normalize_recognition_backend
 
+
 def get_openscad_path() -> Optional[str]:
     """Get OpenSCAD executable path and verify version requirements.
-    
+
     Returns:
         Optional[str]: Path to OpenSCAD executable if found and valid, None otherwise
     """
+
     def check_version(path: str) -> Tuple[bool, str]:
         """Check if OpenSCAD at path is nightly build with required version.
-        
+
         Args:
             path: Path to OpenSCAD executable
-            
+
         Returns:
             Tuple[bool, str]: (is_valid, message)
         """
         try:
             logging.info(f"Checking OpenSCAD version at: {path}")
-            args = ['--info']
+            args = ["--info"]
             # Use a temp file so the log doesn't litter the working directory
-            tmp_fd, log_file = tempfile.mkstemp(suffix='.log', prefix='openscad_version_')
+            tmp_fd, log_file = tempfile.mkstemp(
+                suffix=".log", prefix="openscad_version_"
+            )
             os.close(tmp_fd)
 
             try:
@@ -99,7 +115,7 @@ def get_openscad_path() -> Optional[str]:
                     return False, "Failed to run version check"
 
                 # Read version info from log
-                with open(log_file, 'r', encoding='utf-8') as f:
+                with open(log_file, "r", encoding="utf-8") as f:
                     info = f.read().strip()
             finally:
                 try:
@@ -107,36 +123,45 @@ def get_openscad_path() -> Optional[str]:
                 except OSError:
                     pass
             logging.debug(f"Raw OpenSCAD info: {info}")
-            
+
             # Clean up the info string
-            info = ' '.join(info.split())
+            info = " ".join(info.split())
             logging.debug(f"Cleaned version info: {info}")
-            
+
             # Extract version number
-            version_match = re.search(r'Version:\s*(\d{4}\.\d{2}\.\d{2})', info)
-            logging.debug(f"Version match: {version_match.group(1) if version_match else 'No match'}")
-            
+            version_match = re.search(r"Version:\s*(\d{4}\.\d{2}\.\d{2})", info)
+            logging.debug(
+                f"Version match: {version_match.group(1) if version_match else 'No match'}"
+            )
+
             # Check installation path
             logging.debug(f"Checking installation path: {path}")
             if sys.platform == "win32" and "OpenSCAD (Nightly)" not in path:
                 logging.error("OpenSCAD not installed in Nightly directory")
                 return False, "Not installed in OpenSCAD (Nightly) directory"
-            
+
             if not version_match:
                 logging.error("Could not determine OpenSCAD version from output")
                 return False, "Could not determine version"
-            
+
             version = version_match.group(1)
             required_version = config.get_required_version()
             logging.info(f"Detected OpenSCAD version: {version}")
             # Compare versions using tuples for proper semantic versioning
-            version_tuple = tuple(map(int, version.split('.')))
-            required_tuple = tuple(map(int, required_version.split('.')))
+            version_tuple = tuple(map(int, version.split(".")))
+            required_tuple = tuple(map(int, required_version.split(".")))
             if version_tuple < required_tuple:
-                logging.error(f"OpenSCAD version {version} is older than required {required_version}")
-                return False, f"Version {version} is older than required {required_version}"
-                
-            logging.info(f"OpenSCAD version check passed: {version} >= {required_version}")
+                logging.error(
+                    f"OpenSCAD version {version} is older than required {required_version}"
+                )
+                return (
+                    False,
+                    f"Version {version} is older than required {required_version}",
+                )
+
+            logging.info(
+                f"OpenSCAD version check passed: {version} >= {required_version}"
+            )
             return True, info
         except subprocess.CalledProcessError as e:
             logging.error(f"OpenSCAD command failed with return code {e.returncode}")
@@ -149,13 +174,17 @@ def get_openscad_path() -> Optional[str]:
             logging.error(f"Unexpected error checking OpenSCAD version: {str(e)}")
             logging.debug("Stack trace:", exc_info=True)
             return False, f"Error checking version: {str(e)}"
-    
+
     paths_config = config.get_openscad_paths()
     if sys.platform == "win32":
         base_path = paths_config["win32"]["base"]
-        exe_path = os.path.join(base_path, paths_config["win32"]["exe"])  # For GUI operations
-        com_path = os.path.join(base_path, paths_config["win32"]["com"])  # For command-line operations
-        
+        exe_path = os.path.join(
+            base_path, paths_config["win32"]["exe"]
+        )  # For GUI operations
+        com_path = os.path.join(
+            base_path, paths_config["win32"]["com"]
+        )  # For command-line operations
+
         if not (os.path.exists(exe_path) and os.path.exists(com_path)):
             raise FileNotFoundError(
                 "OpenSCAD (Nightly) not found. Please install OpenSCAD (Nightly) version "
@@ -163,7 +192,7 @@ def get_openscad_path() -> Optional[str]:
                 "https://openscad.org/downloads.html#snapshots. The regular OpenSCAD release does not "
                 "support the required debug features."
             )
-        
+
         # Verify version
         is_valid, message = check_version(com_path)
         if not is_valid:
@@ -172,39 +201,47 @@ def get_openscad_path() -> Optional[str]:
                 f"{config.get_required_version()} or later from "
                 "https://openscad.org/downloads.html#snapshots"
             )
-        
+
         return com_path  # Return the .com path for command-line operations
     else:
         # For non-Windows systems
-        platform_paths = paths_config.get(sys.platform, [])
+        platform_paths: list[str] = paths_config.get(sys.platform, [])  # type: ignore[assignment]
         for path in platform_paths:
             if os.path.exists(path):
                 is_valid, message = check_version(path)
                 if is_valid:
                     return path
-                print(f"Warning: Found OpenSCAD at {path} but {message}", file=sys.stderr)
-                
+                print(
+                    f"Warning: Found OpenSCAD at {path} but {message}", file=sys.stderr
+                )
+
         raise FileNotFoundError(
             "OpenSCAD (Nightly) not found. Please install OpenSCAD (Nightly) version "
             f"{config.get_required_version()} or later from "
             "https://openscad.org/downloads.html#snapshots"
         )
 
+
 # Configure logging for subprocesses (detailed format used in stl2scad function)
 # NOTE: Module-level logging config is removed to avoid interfering with pytest.
 # Logging is configured in the stl2scad() function when needed.
 
+
 @dataclass
 class ConversionStats:
     """Statistics about the conversion process."""
+
     original_vertices: int
     deduplicated_vertices: int
     faces: int
     metadata: Dict[str, str]
 
+
 class STLValidationError(Exception):
     """Raised when STL file validation fails."""
+
     pass
+
 
 def validate_stl(mesh: stl.mesh.Mesh, tolerance: float = 1e-6) -> None:
     """
@@ -229,10 +266,9 @@ def validate_stl(mesh: stl.mesh.Mesh, tolerance: float = 1e-6) -> None:
         if len(set(tuple(p) for p in face)) < 3:
             continue
         for j in range(3):
-            edge = tuple(sorted([
-                tuple(face[j]),
-                tuple(face[(j + 1) % 3])
-            ]))
+            edge: Tuple[Tuple[int, int, int], Tuple[int, int, int]] = tuple(  # type: ignore[assignment]
+                sorted([tuple(face[j]), tuple(face[(j + 1) % 3])])
+            )
             if edge in edges:
                 edges[edge].append(i)
             else:
@@ -242,7 +278,10 @@ def validate_stl(mesh: stl.mesh.Mesh, tolerance: float = 1e-6) -> None:
     if non_manifold:
         raise STLValidationError(f"Non-manifold edges found: {len(non_manifold)} edges")
 
-def find_unique_vertices(points: NDArray[np.float64], tolerance: float = 1e-6) -> Tuple[NDArray[np.float64], Dict[int, int]]:
+
+def find_unique_vertices(
+    points: NDArray[np.float64], tolerance: float = 1e-6
+) -> Tuple[NDArray[np.float64], Dict[int, int]]:
     """
     Deduplicate vertices within given tolerance using O(n log n) numpy sorting.
 
@@ -281,14 +320,17 @@ def find_unique_vertices(points: NDArray[np.float64], tolerance: float = 1e-6) -
 
     return unique_points, vertex_map
 
-def optimize_scad(points: NDArray[np.float64], faces: List[List[int]]) -> Tuple[NDArray[np.float64], List[List[int]]]:
+
+def optimize_scad(
+    points: NDArray[np.float64], faces: List[List[int]]
+) -> Tuple[NDArray[np.float64], List[List[int]]]:
     """
     Optimize SCAD output for better performance.
-    
+
     Args:
         points: Array of vertex coordinates
         faces: List of face vertex indices
-        
+
     Returns:
         Tuple[NDArray[np.float64], List[List[int]]]: Tuple of optimized points array and faces list
     """
@@ -296,44 +338,45 @@ def optimize_scad(points: NDArray[np.float64], faces: List[List[int]]) -> Tuple[
     used_vertices = set()
     for face in faces:
         used_vertices.update(face)
-    
+
     vertex_map: Dict[int, int] = {}
     new_points: List[NDArray[np.float64]] = []
     for i, vertex in enumerate(points):
         if i in used_vertices:
             vertex_map[i] = len(new_points)
             new_points.append(vertex)
-    
+
     # Remap faces to new vertex indices
     new_faces = [[vertex_map[v] for v in face] for face in faces]
-    
+
     return np.array(new_points), new_faces
+
 
 def extract_metadata(mesh: stl.mesh.Mesh) -> Dict[str, str]:
     """
     Extract metadata from STL file.
-    
+
     Args:
         mesh: The STL mesh to extract metadata from
-        
+
     Returns:
         Dict[str, str]: Dictionary of metadata
     """
     metadata: Dict[str, str] = {}
-    if hasattr(mesh, 'name') and mesh.name:
+    if hasattr(mesh, "name") and mesh.name:
         # Binary STL headers are 80 bytes padded with null bytes; strip them
         # along with whitespace so they don't end up embedded in SCAD comments
         # (a null byte in a comment causes OpenSCAD to report a parse error).
-        raw_name = mesh.name.decode('utf-8', errors='replace')
-        metadata['name'] = raw_name.replace('\x00', '').strip()
-    with np.errstate(all='ignore'):
+        raw_name = mesh.name.decode("utf-8", errors="replace")
+        metadata["name"] = raw_name.replace("\x00", "").strip()
+    with np.errstate(all="ignore"):
         volume = float(mesh.get_mass_properties()[0])
-    metadata['volume'] = str(volume) if np.isfinite(volume) else "unknown"
+    metadata["volume"] = str(volume) if np.isfinite(volume) else "unknown"
     # Format bbox as a clean string with proper numeric values
     bbox_min = [float(x) for x in mesh.min_]
     bbox_max = [float(x) for x in mesh.max_]
     bbox_str = f"[{bbox_min[0]:.1f}, {bbox_min[1]:.1f}, {bbox_min[2]:.1f}] to [{bbox_max[0]:.1f}, {bbox_max[1]:.1f}, {bbox_max[2]:.1f}]"
-    metadata['bbox'] = bbox_str
+    metadata["bbox"] = bbox_str
     return metadata
 
 
@@ -378,10 +421,10 @@ def stl2scad(
         STLValidationError: If STL validation fails
         FileNotFoundError: If OpenSCAD is not found or invalid version
     """
-    logging.debug('Starting STL to SCAD conversion')
-    logging.debug('Input file: %s', input_file)
-    logging.debug('Output file: %s', output_file)
-    logging.debug('Debug mode: %s', debug)
+    logging.debug("Starting STL to SCAD conversion")
+    logging.debug("Input file: %s", input_file)
+    logging.debug("Output file: %s", output_file)
+    logging.debug("Debug mode: %s", debug)
     if tolerance <= 0:
         raise ValueError("Tolerance must be positive")
 
@@ -389,7 +432,7 @@ def stl2scad(
         stl_mesh = stl.mesh.Mesh.from_file(input_file)
         validate_stl(stl_mesh, tolerance)
     except Exception as e:
-        logging.error('Failed to load or validate STL: %s', str(e))
+        logging.error("Failed to load or validate STL: %s", str(e))
         raise
 
     # Extract metadata before processing
@@ -399,7 +442,7 @@ def stl2scad(
     # Deduplicate vertices
     points = stl_mesh.points.reshape(-1, 3)
     unique_points, vertex_map = find_unique_vertices(points, tolerance)
-    
+
     # Create faces using mapped vertices and filter degenerate triangles that
     # collapse during vertex snapping.
     faces: List[List[int]] = []
@@ -408,7 +451,7 @@ def stl2scad(
         # OpenSCAD expects faces defined in clockwise order.
         # numpy-stl provides faces in counter-clockwise order.
         # Swap the 2nd and 3rd vertex to reverse the winding order.
-        face = [vertex_map[i], vertex_map[i+2], vertex_map[i+1]]
+        face = [vertex_map[i], vertex_map[i + 2], vertex_map[i + 1]]
         if len(set(face)) < 3:
             degenerate_faces_removed += 1
             continue
@@ -420,10 +463,10 @@ def stl2scad(
             "Try reducing the tolerance."
         )
     if degenerate_faces_removed:
-        metadata['degenerate_faces_removed'] = str(degenerate_faces_removed)
+        metadata["degenerate_faces_removed"] = str(degenerate_faces_removed)
         logging.warning(
             "Filtered %d degenerate face(s) after vertex deduplication.",
-            degenerate_faces_removed
+            degenerate_faces_removed,
         )
 
     # Optimize SCAD output
@@ -432,7 +475,7 @@ def stl2scad(
     selected_backend = "native"
     if parametric:
         selected_backend = normalize_recognition_backend(recognition_backend)
-        metadata['recognition_backend_requested'] = selected_backend
+        metadata["recognition_backend_requested"] = selected_backend
 
     primitive_scad = None
     primitive_type: Optional[str] = None
@@ -447,7 +490,9 @@ def stl2scad(
                 if cgal_result.confidence is not None:
                     metadata["recognition_confidence"] = f"{cgal_result.confidence:.6f}"
                 if cgal_result.diagnostics is not None:
-                    metadata["recognition_diagnostics"] = json.dumps(cgal_result.diagnostics)
+                    metadata["recognition_diagnostics"] = json.dumps(
+                        cgal_result.diagnostics
+                    )
             else:
                 primitive_scad = detect_primitive(stl_mesh, backend="trimesh_manifold")
                 if primitive_scad:
@@ -473,7 +518,7 @@ def stl2scad(
         for key, value in metadata.items():
             # Clean up the value string
             clean_value = str(value).strip()  # Remove leading/trailing whitespace
-            clean_value = ' '.join(clean_value.split())  # Normalize internal whitespace
+            clean_value = " ".join(clean_value.split())  # Normalize internal whitespace
             f.write(f"// {key}: {clean_value}\n")
         f.write("//\n\n")
 
@@ -498,7 +543,7 @@ def stl2scad(
         original_vertices=original_vertex_count,
         deduplicated_vertices=len(final_points),
         faces=len(final_faces),
-        metadata=metadata
+        metadata=metadata,
     )
 
     if debug:
@@ -512,10 +557,10 @@ def stl2scad(
             debug_dir = os.path.dirname(output_file)
             debug_base = os.path.splitext(os.path.basename(output_file))[0]
             debug_files = {
-                'scad': os.path.join(debug_dir, f"{debug_base}_debug.scad"),
-                'json': os.path.join(debug_dir, f"{debug_base}_analysis.json"),
-                'echo': os.path.join(debug_dir, f"{debug_base}_debug.echo"),
-                'png': os.path.join(debug_dir, f"{debug_base}_preview.png")
+                "scad": os.path.join(debug_dir, f"{debug_base}_debug.scad"),
+                "json": os.path.join(debug_dir, f"{debug_base}_analysis.json"),
+                "echo": os.path.join(debug_dir, f"{debug_base}_debug.echo"),
+                "png": os.path.join(debug_dir, f"{debug_base}_preview.png"),
             }
 
             # Clean up any existing debug files
@@ -529,13 +574,13 @@ def stl2scad(
                         logging.warning(f"Could not remove old {name} file: {e}")
 
             # Assign paths for easier reference
-            debug_scad = debug_files['scad']
-            debug_json = debug_files['json']
-            debug_echo = debug_files['echo']
-            debug_png = debug_files['png']
+            debug_scad = debug_files["scad"]
+            debug_json = debug_files["json"]
+            debug_echo = debug_files["echo"]
+            debug_png = debug_files["png"]
 
             # Generate debug SCAD file with proper path handling
-            with open(debug_scad, 'w') as f:
+            with open(debug_scad, "w") as f:
                 # Write file header with metadata
                 f.write("/*\n")
                 f.write(" * STL to SCAD Debug View\n")
@@ -543,7 +588,9 @@ def stl2scad(
                 f.write(" */\n\n")
 
                 # Import original STL with proper path handling
-                stl_path = os.path.abspath(input_file).replace("\\", "/")  # Convert to absolute path with forward slashes
+                stl_path = os.path.abspath(input_file).replace(
+                    "\\", "/"
+                )  # Convert to absolute path with forward slashes
                 f.write("// Original STL Model\n")
                 f.write(f'import("{stl_path}");\n\n')
 
@@ -554,51 +601,59 @@ def stl2scad(
                 f.write(f'    echo("Original vertices:", {original_vertex_count});\n')
                 f.write(f'    echo("Optimized vertices:", {len(final_points)});\n')
                 f.write(f'    echo("Faces:", {len(final_faces)});\n')
-                f.write(f'    echo("Reduction:", {100 * (1 - len(final_points)/original_vertex_count):.1f}, "%");\n')
+                f.write(
+                    f'    echo("Reduction:", {100 * (1 - len(final_points)/original_vertex_count):.1f}, "%");\n'
+                )
                 f.write("}\n")
                 f.write("debug_info();\n\n")
 
                 # Add converted SCAD model with offset
                 f.write("// Converted SCAD Model\n")
-                f.write("translate([100, 0, 0]) {\n")  # Increased offset for better visibility
+                f.write(
+                    "translate([100, 0, 0]) {\n"
+                )  # Increased offset for better visibility
                 with open(output_file) as orig:
                     f.write(orig.read().strip())  # Remove any trailing whitespace
                 f.write("\n}\n")  # Ensure proper closing brace
 
                 # Add version info
-                f.write('\necho(version=version());\n')
+                f.write("\necho(version=version());\n")
 
             # Run OpenSCAD with advanced debug options
             logging.info("Generating debug analysis...")
             logging.info(f"Using OpenSCAD at: {openscad_path}")
-            
+
             debug_base = os.path.splitext(debug_scad)[0]
             success = True
-            
+
             # Generate preview image using full render mode.
             # --preview=throwntogether requires an active OpenGL context and
             # fails when invoked via openscad.com; --render works headlessly.
             preview_args = [
                 "--render",
                 "--summary=all",
-                "--summary-file", debug_json,
+                "--summary-file",
+                debug_json,
                 "--autocenter",
                 "--viewall",
-                "-o", debug_png,
-                debug_scad
+                "-o",
+                debug_png,
+                debug_scad,
             ]
-            if not run_openscad("Preview image", preview_args, f"{debug_base}_preview.log", openscad_path):
+            if not run_openscad(
+                "Preview image",
+                preview_args,
+                f"{debug_base}_preview.log",
+                openscad_path,
+            ):
                 success = False
                 logging.warning("Preview image generation failed")
 
             # Generate echo output
-            echo_args = [
-                "--backend=Manifold",
-                "--render",
-                "-o", debug_echo,
-                debug_scad
-            ]
-            if not run_openscad("Debug output", echo_args, f"{debug_base}_echo.log", openscad_path):
+            echo_args = ["--backend=Manifold", "--render", "-o", debug_echo, debug_scad]
+            if not run_openscad(
+                "Debug output", echo_args, f"{debug_base}_echo.log", openscad_path
+            ):
                 success = False
                 logging.warning("Debug output generation failed")
 
@@ -609,17 +664,21 @@ def stl2scad(
                 legacy_analysis_args = [
                     "--render",
                     "--quiet",
-                    "--export-format", "json",
-                    "-o", debug_json,
-                    debug_scad
+                    "--export-format",
+                    "json",
+                    "-o",
+                    debug_json,
+                    debug_scad,
                 ]
                 if not run_openscad(
                     "Analysis data (legacy JSON export)",
                     legacy_analysis_args,
                     f"{debug_base}_analysis.log",
-                    openscad_path
+                    openscad_path,
                 ):
-                    logging.warning("Legacy JSON export not available; writing fallback analysis JSON.")
+                    logging.warning(
+                        "Legacy JSON export not available; writing fallback analysis JSON."
+                    )
 
             json_exists = os.path.exists(debug_json) and os.path.getsize(debug_json) > 0
             if not json_exists:
@@ -633,19 +692,19 @@ def stl2scad(
                         "faces": len(final_faces),
                         "degenerate_faces_removed": degenerate_faces_removed,
                     },
-                    "metadata": metadata
+                    "metadata": metadata,
                 }
                 with open(debug_json, "w", encoding="utf-8") as analysis_file:
                     json.dump(fallback_analysis, analysis_file, indent=2)
 
             # Verify all files were created
             files_status = {
-                'Preview Image': (debug_png, os.path.exists(debug_png)),
-                'Analysis JSON': (debug_json, os.path.exists(debug_json)),
-                'Debug Output': (debug_echo, os.path.exists(debug_echo)),
-                'Comparison SCAD': (debug_scad, os.path.exists(debug_scad))
+                "Preview Image": (debug_png, os.path.exists(debug_png)),
+                "Analysis JSON": (debug_json, os.path.exists(debug_json)),
+                "Debug Output": (debug_echo, os.path.exists(debug_echo)),
+                "Comparison SCAD": (debug_scad, os.path.exists(debug_scad)),
             }
-            
+
             logging.info("\nDebug files status:")
             for name, (path, exists) in files_status.items():
                 status = "[OK]" if exists else "[MISSING]"
@@ -653,8 +712,10 @@ def stl2scad(
                 if exists:
                     logging.info(f"{name}: {status} ({size:,} bytes)")
                 else:
-                    logging.warning(f"{name}: {status} - File was not generated at {path}")
-            
+                    logging.warning(
+                        f"{name}: {status} - File was not generated at {path}"
+                    )
+
             logging.info("\nTo verify the conversion:")
             logging.info(f"1. Open {debug_scad} in OpenSCAD")
             logging.info("2. Use F5 to preview both models side by side")

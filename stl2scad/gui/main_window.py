@@ -7,7 +7,14 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 from PyQt5 import QtWidgets
-from PyQt5.QtCore import QThread, Qt, pyqtSignal, QPropertyAnimation, QEasingCurve, QTimer
+from PyQt5.QtCore import (
+    QThread,
+    Qt,
+    pyqtSignal,
+    QPropertyAnimation,
+    QEasingCurve,
+    QTimer,
+)
 from PyQt5.QtGui import QColor, QPixmap, QFont, QPalette, QIcon
 from PyQt5.QtWidgets import (
     QDoubleSpinBox,
@@ -42,17 +49,17 @@ from stl2scad.core.verification import (
 # Color palette
 # ---------------------------------------------------------------------------
 PALETTE = {
-    "bg":        "#16161d",
-    "panel":     "#1f1f2b",
+    "bg": "#16161d",
+    "panel": "#1f1f2b",
     "panel_alt": "#252534",
-    "border":    "#35354a",
-    "accent":    "#e8682a",
+    "border": "#35354a",
+    "accent": "#e8682a",
     "accent_dk": "#c0531f",
-    "text":      "#d8d8e8",
-    "text_dim":  "#888899",
-    "success":   "#4ec98a",
-    "warning":   "#f0b84a",
-    "error":     "#e05555",
+    "text": "#d8d8e8",
+    "text_dim": "#888899",
+    "success": "#4ec98a",
+    "warning": "#f0b84a",
+    "error": "#e05555",
     "highlight": "#2e2e42",
 }
 
@@ -269,12 +276,15 @@ QFrame#hsep {{
 # Worker threads (unchanged logic)
 # ---------------------------------------------------------------------------
 
+
 class ConversionWorker(QThread):
     progress = pyqtSignal(str)
     finished = pyqtSignal(object)
     error = pyqtSignal(str)
 
-    def __init__(self, input_file, output_file, tolerance=1e-6, debug=False, parametric=False):
+    def __init__(
+        self, input_file, output_file, tolerance=1e-6, debug=False, parametric=False
+    ):
         super().__init__()
         self.input_file = input_file
         self.output_file = output_file
@@ -285,7 +295,13 @@ class ConversionWorker(QThread):
     def run(self):
         try:
             self.progress.emit("Converting STL to SCAD…")
-            stats = stl2scad(self.input_file, self.output_file, self.tolerance, self.debug, self.parametric)
+            stats = stl2scad(
+                self.input_file,
+                self.output_file,
+                self.tolerance,
+                self.debug,
+                self.parametric,
+            )
             self.finished.emit(stats)
         except Exception as exc:
             self.error.emit(str(exc))
@@ -296,8 +312,17 @@ class VerificationWorker(QThread):
     finished = pyqtSignal(object)
     error = pyqtSignal(str)
 
-    def __init__(self, stl_file, scad_file, tolerance, conversion_tolerance, parametric,
-                 regenerate_scad, visualize, html_report):
+    def __init__(
+        self,
+        stl_file,
+        scad_file,
+        tolerance,
+        conversion_tolerance,
+        parametric,
+        regenerate_scad,
+        visualize,
+        html_report,
+    ):
         super().__init__()
         self.stl_file = stl_file
         self.scad_file = scad_file
@@ -312,15 +337,23 @@ class VerificationWorker(QThread):
         try:
             self.progress.emit("Preparing SCAD file for verification…")
             if self.regenerate_scad:
-                stl2scad(self.stl_file, self.scad_file,
-                         tolerance=self.conversion_tolerance, parametric=self.parametric)
+                stl2scad(
+                    self.stl_file,
+                    self.scad_file,
+                    tolerance=self.conversion_tolerance,
+                    parametric=self.parametric,
+                )
             elif not os.path.exists(self.scad_file):
                 raise FileNotFoundError(f"SCAD file not found: {self.scad_file}")
 
             self.progress.emit("Running geometric verification…")
-            result = verify_conversion(self.stl_file, self.scad_file, self.tolerance, debug=False)
+            result = verify_conversion(
+                self.stl_file, self.scad_file, self.tolerance, debug=False
+            )
 
-            report_dir = os.path.dirname(self.scad_file) or os.path.dirname(self.stl_file)
+            report_dir = os.path.dirname(self.scad_file) or os.path.dirname(
+                self.stl_file
+            )
             report_base = os.path.splitext(os.path.basename(self.stl_file))[0]
             report_file = os.path.join(report_dir, f"{report_base}_verification.json")
             result.save_report(report_file)
@@ -332,7 +365,9 @@ class VerificationWorker(QThread):
             if self.visualize or self.html_report:
                 self.progress.emit("Generating visualization artifacts…")
                 vis_dir = os.path.join(report_dir, f"{report_base}_visualizations")
-                vis_paths = generate_comparison_visualization(self.stl_file, self.scad_file, vis_dir)
+                vis_paths = generate_comparison_visualization(
+                    self.stl_file, self.scad_file, vis_dir
+                )
                 visualizations = {k: str(v) for k, v in vis_paths.items()}
 
             if self.html_report:
@@ -340,13 +375,15 @@ class VerificationWorker(QThread):
                 html_file = os.path.join(report_dir, f"{report_base}_verification.html")
                 generate_verification_report_html(vars(result), vis_paths, html_file)
 
-            self.finished.emit({
-                "result": result,
-                "scad_file": self.scad_file,
-                "report_file": report_file,
-                "visualizations": visualizations,
-                "html_file": html_file,
-            })
+            self.finished.emit(
+                {
+                    "result": result,
+                    "scad_file": self.scad_file,
+                    "report_file": report_file,
+                    "visualizations": visualizations,
+                    "html_file": html_file,
+                }
+            )
         except Exception as exc:
             self.error.emit(str(exc))
 
@@ -354,6 +391,7 @@ class VerificationWorker(QThread):
 # ---------------------------------------------------------------------------
 # Helper widgets
 # ---------------------------------------------------------------------------
+
 
 def _hsep():
     """Thin horizontal separator line."""
@@ -394,6 +432,7 @@ def _spinbox(default, decimals=3, lo=0.0, hi=9999.0, step=0.1, width=100):
 # Main Window
 # ---------------------------------------------------------------------------
 
+
 class MainWindow(QMainWindow):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -425,7 +464,7 @@ class MainWindow(QMainWindow):
         self._status_label = QLabel("Load an STL file to begin.")
         self._status_label.setObjectName("metric")
         self._progress = QProgressBar()
-        self._progress.setRange(0, 0)        # indeterminate by default
+        self._progress.setRange(0, 0)  # indeterminate by default
         self._progress.setFixedWidth(140)
         self._progress.setFixedHeight(6)
         self._progress.setVisible(False)
@@ -478,7 +517,9 @@ class MainWindow(QMainWindow):
         stats_bar_layout.setContentsMargins(4, 2, 4, 2)
         stats_bar_layout.addWidget(self._mesh_stats)
         stats_bar.setMaximumHeight(28)
-        stats_bar.setStyleSheet(f"QFrame {{ background: {PALETTE['panel']}; border-top: 1px solid {PALETTE['border']}; }}")
+        stats_bar.setStyleSheet(
+            f"QFrame {{ background: {PALETTE['panel']}; border-top: 1px solid {PALETTE['border']}; }}"
+        )
 
         # ── Central layout (sidebar | viewport) ─────────────────────
         sidebar = self._build_sidebar()
@@ -550,14 +591,20 @@ class MainWindow(QMainWindow):
 
         # App title
         title_widget = QWidget()
-        title_widget.setStyleSheet(f"background-color: {PALETTE['panel_alt']}; border-bottom: 1px solid {PALETTE['border']};")
+        title_widget.setStyleSheet(
+            f"background-color: {PALETTE['panel_alt']}; border-bottom: 1px solid {PALETTE['border']};"
+        )
         title_layout = QVBoxLayout(title_widget)
         title_layout.setContentsMargins(14, 12, 14, 12)
         title_layout.setSpacing(2)
         name_lbl = QLabel("STL2SCAD")
-        name_lbl.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {PALETTE['accent']}; letter-spacing: 3px; border: none; background: transparent;")
+        name_lbl.setStyleSheet(
+            f"font-size: 16px; font-weight: bold; color: {PALETTE['accent']}; letter-spacing: 3px; border: none; background: transparent;"
+        )
         sub_lbl = QLabel("STL → OpenSCAD Converter")
-        sub_lbl.setStyleSheet(f"font-size: 9px; color: {PALETTE['text_dim']}; letter-spacing: 1px; border: none; background: transparent;")
+        sub_lbl.setStyleSheet(
+            f"font-size: 9px; color: {PALETTE['text_dim']}; letter-spacing: 1px; border: none; background: transparent;"
+        )
         title_layout.addWidget(name_lbl)
         title_layout.addWidget(sub_lbl)
         outer.addWidget(title_widget)
@@ -613,7 +660,9 @@ class MainWindow(QMainWindow):
         tol_row = QHBoxLayout()
         tol_row.addWidget(_label("Tolerance:", "metric"))
         tol_row.addStretch(1)
-        self.convert_tol_spin = _spinbox(1e-6, decimals=9, lo=1e-9, hi=1.0, step=1e-6, width=110)
+        self.convert_tol_spin = _spinbox(
+            1e-6, decimals=9, lo=1e-9, hi=1.0, step=1e-6, width=110
+        )
         tol_row.addWidget(self.convert_tol_spin)
 
         # Options
@@ -695,7 +744,9 @@ class MainWindow(QMainWindow):
         # Version label at bottom
         ver_lbl = QLabel("stl2scad")
         ver_lbl.setAlignment(Qt.AlignCenter)
-        ver_lbl.setStyleSheet(f"color: {PALETTE['border']}; font-size: 9px; padding: 6px;")
+        ver_lbl.setStyleSheet(
+            f"color: {PALETTE['border']}; font-size: 9px; padding: 6px;"
+        )
         layout.addWidget(ver_lbl)
 
         scroll.setWidget(content)
@@ -855,11 +906,14 @@ class MainWindow(QMainWindow):
     def convert_to_scad(self):
         if not self.current_stl_file:
             return
-        output_file = self.current_scad_file or (os.path.splitext(self.current_stl_file)[0] + ".scad")
+        output_file = self.current_scad_file or (
+            os.path.splitext(self.current_stl_file)[0] + ".scad"
+        )
         self.current_scad_file = output_file
 
         self.worker = ConversionWorker(
-            self.current_stl_file, output_file,
+            self.current_stl_file,
+            output_file,
             tolerance=float(self.convert_tol_spin.value()),
             debug=self.debug_mode,
             parametric=self.parametric_check.isChecked(),
@@ -874,7 +928,9 @@ class MainWindow(QMainWindow):
         if not self.current_stl_file:
             return
         if not self.current_scad_file:
-            self.current_scad_file = os.path.splitext(self.current_stl_file)[0] + ".scad"
+            self.current_scad_file = (
+                os.path.splitext(self.current_stl_file)[0] + ".scad"
+            )
 
         use_existing = self.use_existing_check.isChecked()
         scad_file = self.current_scad_file
@@ -882,7 +938,10 @@ class MainWindow(QMainWindow):
             scad_file = self.verify_scad_file or self.current_scad_file
             if not scad_file or not os.path.exists(scad_file):
                 file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
-                    self, "Select SCAD File", os.path.dirname(self.current_stl_file), "SCAD Files (*.scad)"
+                    self,
+                    "Select SCAD File",
+                    os.path.dirname(self.current_stl_file),
+                    "SCAD Files (*.scad)",
                 )
                 if not file_path:
                     self._set_status("Verification canceled: no SCAD file selected.")
@@ -895,10 +954,13 @@ class MainWindow(QMainWindow):
             "surface_area": float(self.area_tol_spin.value()),
             "bounding_box": float(self.bbox_tol_spin.value()),
         }
-        visualize = self.visualize_check.isChecked() or self.html_report_check.isChecked()
+        visualize = (
+            self.visualize_check.isChecked() or self.html_report_check.isChecked()
+        )
 
         self.worker = VerificationWorker(
-            self.current_stl_file, scad_file,
+            self.current_stl_file,
+            scad_file,
             tolerance=tolerance,
             conversion_tolerance=float(self.convert_tol_spin.value()),
             parametric=self.parametric_check.isChecked(),
@@ -915,7 +977,9 @@ class MainWindow(QMainWindow):
     def select_output_scad_file(self):
         if not self.current_stl_file:
             return
-        initial = self.current_scad_file or (os.path.splitext(self.current_stl_file)[0] + ".scad")
+        initial = self.current_scad_file or (
+            os.path.splitext(self.current_stl_file)[0] + ".scad"
+        )
         file_path, _ = QtWidgets.QFileDialog.getSaveFileName(
             self, "Select Output SCAD File", initial, "SCAD Files (*.scad)"
         )
@@ -930,8 +994,10 @@ class MainWindow(QMainWindow):
         if not self.current_stl_file:
             return
         file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Select SCAD for Verification",
-            os.path.dirname(self.current_stl_file), "SCAD Files (*.scad)"
+            self,
+            "Select SCAD for Verification",
+            os.path.dirname(self.current_stl_file),
+            "SCAD Files (*.scad)",
         )
         if not file_path:
             return
@@ -964,7 +1030,11 @@ class MainWindow(QMainWindow):
                 pixmap = QPixmap(png_file)
                 self.image_label.setVisible(True)
                 self.image_label.setPixmap(
-                    pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    pixmap.scaled(
+                        self.image_label.size(),
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation,
+                    )
                 )
 
     def conversion_error(self, error_message):
@@ -982,14 +1052,19 @@ class MainWindow(QMainWindow):
         color = PALETTE["success"] if passed else PALETTE["error"]
         badge = "PASS" if passed else "FAIL"
 
-        details = [f"Verification {'PASSED' if passed else 'FAILED'}", f"Report: {report_file}"]
+        details = [
+            f"Verification {'PASSED' if passed else 'FAILED'}",
+            f"Report: {report_file}",
+        ]
         if html_file:
             details.append(f"HTML: {html_file}")
 
         self._set_status("  ·  ".join(details), color)
         self._set_badge(badge, color)
 
-        QtWidgets.QMessageBox.information(self, "Verification Complete", "\n".join(details))
+        QtWidgets.QMessageBox.information(
+            self, "Verification Complete", "\n".join(details)
+        )
 
     def verification_error(self, error_message):
         self._stop_busy()
@@ -1008,7 +1083,9 @@ class MainWindow(QMainWindow):
         center = vertices.mean(axis=0)
         size = float(np.max(vertices.max(axis=0) - vertices.min(axis=0)))
         self.gl_view.opts["center"] = pg.Vector(center[0], center[1], center[2])
-        self.gl_view.setCameraPosition(distance=max(size * 2, 1.0), elevation=45, azimuth=45)
+        self.gl_view.setCameraPosition(
+            distance=max(size * 2, 1.0), elevation=45, azimuth=45
+        )
         self.gl_view.update()
 
     def rotate_object(self, axis):

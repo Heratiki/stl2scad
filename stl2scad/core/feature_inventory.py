@@ -18,7 +18,6 @@ from typing import Any, Iterable, Optional, Sequence
 import numpy as np
 from stl.mesh import Mesh
 
-
 STL_SUFFIXES = {".stl"}
 _AXES = {
     "+x": np.array([1.0, 0.0, 0.0], dtype=np.float64),
@@ -60,7 +59,9 @@ def analyze_stl_folder(
 
     worker_count = max(1, int(config.workers))
     if worker_count == 1 or len(files) <= 1:
-        results = [analyze_stl_file(path, root_dir=input_path, config=config) for path in files]
+        results = [
+            analyze_stl_file(path, root_dir=input_path, config=config) for path in files
+        ]
     else:
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
             results = list(
@@ -92,7 +93,9 @@ def analyze_stl_folder(
     return report
 
 
-def _analyze_stl_file_worker(args: tuple[Path, Path, InventoryConfig]) -> dict[str, Any]:
+def _analyze_stl_file_worker(
+    args: tuple[Path, Path, InventoryConfig],
+) -> dict[str, Any]:
     path, root_dir, config = args
     return analyze_stl_file(path, root_dir=root_dir, config=config)
 
@@ -137,7 +140,9 @@ def analyze_stl_file(
                 face_areas,
                 threshold=config.normal_axis_threshold,
             ),
-            "symmetry": _symmetry_scores(unique_points, bbox, config.symmetry_tolerance),
+            "symmetry": _symmetry_scores(
+                unique_points, bbox, config.symmetry_tolerance
+            ),
             "coordinate_spacing": _coordinate_spacing_signals(
                 unique_points,
                 tolerance=config.spacing_tolerance,
@@ -292,7 +297,9 @@ def _coordinate_spacing_signals(
             signals[axis_name] = {"level_count": int(len(values)), "regular": False}
             continue
         median = float(np.median(diffs))
-        regularity = float(np.mean(np.abs(diffs - median) <= max(tolerance * 10.0, median * 0.03)))
+        regularity = float(
+            np.mean(np.abs(diffs - median) <= max(tolerance * 10.0, median * 0.03))
+        )
         plausible_parametric_levels = 3 <= len(values) <= 256
         signals[axis_name] = {
             "level_count": int(len(values)),
@@ -332,11 +339,13 @@ def _classify_inventory(payload: dict[str, Any]) -> dict[str, Any]:
         organic_score += 0.20
 
     nonzero_dims = sum(
-        1
-        for dim in ("width", "height", "depth")
-        if float(bbox.get(dim, 0.0)) > 1e-9
+        1 for dim in ("width", "height", "depth") if float(bbox.get(dim, 0.0)) > 1e-9
     )
-    primary = "mechanical_candidate" if mechanical_score >= organic_score else "organic_candidate"
+    primary = (
+        "mechanical_candidate"
+        if mechanical_score >= organic_score
+        else "organic_candidate"
+    )
     if nonzero_dims < 3:
         primary = "degenerate_or_flat_candidate"
 

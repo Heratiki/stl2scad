@@ -192,7 +192,9 @@ def _analyze_regions(mesh: stl.mesh.Mesh, tolerance: float) -> dict[str, Any]:
         confidence = confidences[0]
     else:
         primitive_type = "composite_union"
-        scad = "union() {\n" + "\n".join(f"    {snippet}" for snippet in snippets) + "\n}"
+        scad = (
+            "union() {\n" + "\n".join(f"    {snippet}" for snippet in snippets) + "\n}"
+        )
         confidence = min(confidences)
 
     return {
@@ -211,7 +213,9 @@ def main() -> int:
         return _emit(_capabilities_payload())
 
     if args.command != "detect-primitive":
-        return _emit({"detected": False, "diagnostics": {"reason": "unsupported_command"}})
+        return _emit(
+            {"detected": False, "diagnostics": {"reason": "unsupported_command"}}
+        )
 
     try:
         request = json.loads(sys.stdin.read() or "{}")

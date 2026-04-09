@@ -246,7 +246,9 @@ def print_verification_result(result: Any) -> None:
         print("\nVolume Comparison:")
         print(f"  STL: {vol['stl']:.2f} mm³")
         print(f"  SCAD: {vol['scad']:.2f} mm³")
-        print(f"  Difference: {vol['difference']:.2f} mm³ ({vol['difference_percent']:.2f}%)")
+        print(
+            f"  Difference: {vol['difference']:.2f} mm³ ({vol['difference_percent']:.2f}%)"
+        )
         if abs(vol["difference_percent"]) > result.tolerance["volume"]:
             print(f"  Status: FAILED (exceeds {result.tolerance['volume']}% tolerance)")
         else:
@@ -257,11 +259,17 @@ def print_verification_result(result: Any) -> None:
         print("\nSurface Area Comparison:")
         print(f"  STL: {area['stl']:.2f} mm²")
         print(f"  SCAD: {area['scad']:.2f} mm²")
-        print(f"  Difference: {area['difference']:.2f} mm² ({area['difference_percent']:.2f}%)")
+        print(
+            f"  Difference: {area['difference']:.2f} mm² ({area['difference_percent']:.2f}%)"
+        )
         if abs(area["difference_percent"]) > result.tolerance["surface_area"]:
-            print(f"  Status: FAILED (exceeds {result.tolerance['surface_area']}% tolerance)")
+            print(
+                f"  Status: FAILED (exceeds {result.tolerance['surface_area']}% tolerance)"
+            )
         else:
-            print(f"  Status: PASSED (within {result.tolerance['surface_area']}% tolerance)")
+            print(
+                f"  Status: PASSED (within {result.tolerance['surface_area']}% tolerance)"
+            )
 
     if "bounding_box" in result.comparison:
         bbox = result.comparison["bounding_box"]
@@ -275,10 +283,17 @@ def print_verification_result(result: Any) -> None:
                 print(
                     f"    Difference: {dim_data['difference']:.2f} mm ({dim_data['difference_percent']:.2f}%)"
                 )
-                if abs(dim_data["difference_percent"]) > result.tolerance["bounding_box"]:
-                    print(f"    Status: FAILED (exceeds {result.tolerance['bounding_box']}% tolerance)")
+                if (
+                    abs(dim_data["difference_percent"])
+                    > result.tolerance["bounding_box"]
+                ):
+                    print(
+                        f"    Status: FAILED (exceeds {result.tolerance['bounding_box']}% tolerance)"
+                    )
                 else:
-                    print(f"    Status: PASSED (within {result.tolerance['bounding_box']}% tolerance)")
+                    print(
+                        f"    Status: PASSED (within {result.tolerance['bounding_box']}% tolerance)"
+                    )
 
 
 def convert_command(args: argparse.Namespace) -> int:
@@ -305,7 +320,7 @@ def convert_command(args: argparse.Namespace) -> int:
             args.output_file,
             args.tolerance,
             args.debug,
-            getattr(args, 'parametric', False),
+            getattr(args, "parametric", False),
             recognition_backend=getattr(args, "recognition_backend", "native"),
         )
         print_stats(stats)
@@ -351,11 +366,13 @@ def verify_command(args: argparse.Namespace) -> int:
         else:
             print("Will generate temporary SCAD file")
             temp_dir_obj = tempfile.TemporaryDirectory()
-            scad_file_to_use = str(Path(temp_dir_obj.name) / f"{Path(args.input_file).stem}.scad")
+            scad_file_to_use = str(
+                Path(temp_dir_obj.name) / f"{Path(args.input_file).stem}.scad"
+            )
             stl2scad(
                 args.input_file,
                 scad_file_to_use,
-                parametric=getattr(args, 'parametric', False),
+                parametric=getattr(args, "parametric", False),
                 recognition_backend=getattr(args, "recognition_backend", "native"),
             )
 
@@ -380,7 +397,11 @@ def verify_command(args: argparse.Namespace) -> int:
         )
         print_verification_result(result)
 
-        report_dir = Path(args.output_file).parent if args.output_file else Path(args.input_file).parent
+        report_dir = (
+            Path(args.output_file).parent
+            if args.output_file
+            else Path(args.input_file).parent
+        )
         report_base = Path(args.input_file).stem
         report_file = report_dir / f"{report_base}_verification.json"
         result.save_report(report_file)
@@ -400,7 +421,9 @@ def verify_command(args: argparse.Namespace) -> int:
 
             if args.html_report:
                 html_file = report_dir / f"{report_base}_verification.html"
-                generate_verification_report_html(vars(result), visualizations, html_file)
+                generate_verification_report_html(
+                    vars(result), visualizations, html_file
+                )
                 print(f"\nHTML report saved to: {html_file}")
 
         return 0 if result.passed else 2
@@ -435,7 +458,9 @@ def batch_command(args: argparse.Namespace) -> int:
         output_path = Path(args.output_dir)
 
         if not input_path.exists() or not input_path.is_dir():
-            print(f"Error: Input directory not found: {args.input_dir}", file=sys.stderr)
+            print(
+                f"Error: Input directory not found: {args.input_dir}", file=sys.stderr
+            )
             return 1
 
         output_path.mkdir(exist_ok=True, parents=True)
@@ -470,7 +495,7 @@ def batch_command(args: argparse.Namespace) -> int:
                 stl2scad(
                     str(stl_file),
                     str(scad_file),
-                    parametric=getattr(args, 'parametric', False),
+                    parametric=getattr(args, "parametric", False),
                     recognition_backend=getattr(args, "recognition_backend", "native"),
                 )
                 result = verify_conversion(
@@ -491,7 +516,9 @@ def batch_command(args: argparse.Namespace) -> int:
                         vis_dir,
                     )
                     html_file = output_path / rel_path.with_suffix(".verification.html")
-                    generate_verification_report_html(vars(result), visualizations, html_file)
+                    generate_verification_report_html(
+                        vars(result), visualizations, html_file
+                    )
 
                 results[str(rel_path)] = {
                     "passed": result.passed,
@@ -555,7 +582,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         parsed = parser.parse_args(args_list)
     except SystemExit as exc:
-        return int(exc.code)
+        return int(exc.code) if exc.code is not None else 1
 
     handler = getattr(parsed, "handler", None)
     if handler is None:

@@ -13,13 +13,16 @@ import stl
 
 from ..converter import run_openscad, get_openscad_path
 
+
 def _get_stl_z_bounds(stl_path: Path) -> Tuple[float, float]:
     """Return min and max Z bounds for an STL mesh."""
     mesh = stl.mesh.Mesh.from_file(str(stl_path))
     return float(mesh.min_[2]), float(mesh.max_[2])
 
 
-def _compute_cross_section_heights(min_z: float, max_z: float, count: int = 5) -> List[float]:
+def _compute_cross_section_heights(
+    min_z: float, max_z: float, count: int = 5
+) -> List[float]:
     """Compute cross-section heights between 10% and 90% of model height."""
     if count <= 0:
         return []
@@ -29,30 +32,27 @@ def _compute_cross_section_heights(min_z: float, max_z: float, count: int = 5) -
         return [min_z + (max_z - min_z) * 0.5]
 
     model_height = max_z - min_z
-    return [
-        min_z + model_height * (0.1 + 0.8 * i / (count - 1))
-        for i in range(count)
-    ]
+    return [min_z + model_height * (0.1 + 0.8 * i / (count - 1)) for i in range(count)]
 
 
 def generate_comparison_visualization(
     stl_file: Union[str, Path],
     scad_file: Union[str, Path],
     output_dir: Union[str, Path],
-    views: Optional[List[str]] = None
+    views: Optional[List[str]] = None,
 ) -> Dict[str, Path]:
     """
     Generate comparison visualizations between STL and SCAD models.
-    
+
     Args:
         stl_file: Path to the STL file
         scad_file: Path to the SCAD file
         output_dir: Directory to save visualization files
         views: List of views to generate ('perspective', 'top', 'front', 'side', 'comparison')
-        
+
     Returns:
         Dict[str, Path]: Dictionary of generated visualization files
-        
+
     Raises:
         FileNotFoundError: If input files not found
         RuntimeError: If visualization generation fails
@@ -60,20 +60,20 @@ def generate_comparison_visualization(
     stl_path = Path(stl_file)
     scad_path = Path(scad_file)
     output_path = Path(output_dir)
-    
+
     # Validate input files
     if not stl_path.exists():
         raise FileNotFoundError(f"STL file not found: {stl_file}")
     if not scad_path.exists():
         raise FileNotFoundError(f"SCAD file not found: {scad_file}")
-    
+
     # Create output directory
     output_path.mkdir(exist_ok=True, parents=True)
-    
+
     # Set default views if not provided
     if views is None:
-        views = ['perspective', 'top', 'front', 'side', 'comparison']
-    
+        views = ["perspective", "top", "front", "side", "comparison"]
+
     # Get OpenSCAD path
     openscad_path = get_openscad_path()
 
@@ -83,13 +83,15 @@ def generate_comparison_visualization(
     except Exception:
         model_min_z, model_max_z = 0.0, 0.0
     cross_sections = 5
-    section_heights = _compute_cross_section_heights(model_min_z, model_max_z, cross_sections)
+    section_heights = _compute_cross_section_heights(
+        model_min_z, model_max_z, cross_sections
+    )
     model_height = max(0.0, model_max_z - model_min_z)
     cross_section_thickness = max(0.1, model_height * 0.01)
-    
+
     stl_path_posix = stl_path.absolute().as_posix()
     scad_path_posix = scad_path.absolute().as_posix()
-    
+
     # Create visualization script
     vis_script = f"""
     // STL to SCAD Comparison Visualization
@@ -159,27 +161,27 @@ def generate_comparison_visualization(
         side_by_side();
     }}
     """
-    
+
     # Write script to file
     vis_file = output_path / "comparison.scad"
-    with open(vis_file, 'w') as f:
+    with open(vis_file, "w") as f:
         f.write(vis_script)
-    
+
     # Generate visualizations
     visualizations = {}
-    
+
     # Camera positions for different views
     camera_settings = {
-        'perspective': {'eye': [120, 120, 80], 'center': [0, 0, 0], 'up': [0, 0, 1]},
-        'top': {'eye': [0, 0, 200], 'center': [0, 0, 0], 'up': [0, 1, 0]},
-        'front': {'eye': [0, -200, 0], 'center': [0, 0, 0], 'up': [0, 0, 1]},
-        'side': {'eye': [200, 0, 0], 'center': [0, 0, 0], 'up': [0, 0, 1]},
+        "perspective": {"eye": [120, 120, 80], "center": [0, 0, 0], "up": [0, 0, 1]},
+        "top": {"eye": [0, 0, 200], "center": [0, 0, 0], "up": [0, 1, 0]},
+        "front": {"eye": [0, -200, 0], "center": [0, 0, 0], "up": [0, 0, 1]},
+        "side": {"eye": [200, 0, 0], "center": [0, 0, 0], "up": [0, 0, 1]},
     }
-    
+
     for view_name in views:
         output_file = output_path / f"{view_name}_view.png"
 
-        if view_name == 'comparison':
+        if view_name == "comparison":
             # Generate side-by-side comparison with multiple angles
             angles = [0, 45, 90, 135, 180, 225, 270, 315]
             for angle in angles:
@@ -188,37 +190,61 @@ def generate_comparison_visualization(
 
                 success = run_openscad(
                     f"Comparison view {angle}°",
-                    ["-D", 'view_type="overlay"', "--camera", camera, "--render", "--autocenter", "--viewall", "-o", str(angle_file), str(vis_file)],
+                    [
+                        "-D",
+                        'view_type="overlay"',
+                        "--camera",
+                        camera,
+                        "--render",
+                        "--autocenter",
+                        "--viewall",
+                        "-o",
+                        str(angle_file),
+                        str(vis_file),
+                    ],
                     str(output_path / f"comparison_{angle}.log"),
-                    openscad_path
+                    openscad_path,
                 )
-                
+
                 if success and angle_file.exists():
                     if angle == 0:  # Use the first angle as the main comparison view
                         visualizations[view_name] = angle_file
                 else:
-                    print(f"Warning: Failed to generate {view_name} view at angle {angle}")
+                    print(
+                        f"Warning: Failed to generate {view_name} view at angle {angle}"
+                    )
         else:
             # Generate standard view
             if view_name in camera_settings:
-                camera = camera_settings[view_name]
-                eye_str = f"{camera['eye'][0]},{camera['eye'][1]},{camera['eye'][2]}"
-                center_str = f"{camera['center'][0]},{camera['center'][1]},{camera['center'][2]}"
-                up_str = f"{camera['up'][0]},{camera['up'][1]},{camera['up'][2]}"
+                camera_config = camera_settings[view_name]
+                eye_str = f"{camera_config['eye'][0]},{camera_config['eye'][1]},{camera_config['eye'][2]}"
+                center_str = f"{camera_config['center'][0]},{camera_config['center'][1]},{camera_config['center'][2]}"
+                up_str = f"{camera_config['up'][0]},{camera_config['up'][1]},{camera_config['up'][2]}"
                 camera_str = f"{eye_str},{center_str}"
-                
+
                 success = run_openscad(
                     f"{view_name.capitalize()} view",
-                    ["-D", 'view_type="overlay"', "--camera", camera_str, "--render", "--autocenter", "--viewall", "-o", str(output_file), str(vis_file)],
+                    [
+                        "-D",
+                        'view_type="overlay"',
+                        "--camera",
+                        camera_str,
+                        "--render",
+                        "--autocenter",
+                        "--viewall",
+                        "-o",
+                        str(output_file),
+                        str(vis_file),
+                    ],
                     str(output_path / f"{view_name}_view.log"),
-                    openscad_path
+                    openscad_path,
                 )
-                
+
                 if success and output_file.exists():
                     visualizations[view_name] = output_file
                 else:
                     print(f"Warning: Failed to generate {view_name} view")
-    
+
     # Generate cross-section views at actual model heights.
     for i, height in enumerate(section_heights):
         # Generate cross-section image
@@ -226,51 +252,55 @@ def generate_comparison_visualization(
         success = run_openscad(
             f"Cross-section {i+1}",
             [
-                "-D", 'view_type="cross_section"',
-                "-D", f"cross_section_z={height}",
-                "-D", f"cross_section_thickness={cross_section_thickness}",
+                "-D",
+                'view_type="cross_section"',
+                "-D",
+                f"cross_section_z={height}",
+                "-D",
+                f"cross_section_thickness={cross_section_thickness}",
                 "--render",
                 "--autocenter",
                 "--viewall",
-                "-o", str(output_file),
-                str(vis_file)
+                "-o",
+                str(output_file),
+                str(vis_file),
             ],
             str(output_path / f"cross_section_{i+1}.log"),
-            openscad_path
+            openscad_path,
         )
-        
+
         if success and output_file.exists():
             visualizations[f"cross_section_{i+1}"] = output_file
-    
+
     return visualizations
 
 
 def generate_verification_report_html(
     verification_result: Dict[str, Any],
     visualizations: Dict[str, Path],
-    output_file: Union[str, Path]
+    output_file: Union[str, Path],
 ) -> None:
     """
     Generate an HTML report for verification results with visualizations.
-    
+
     Args:
         verification_result: Verification result dictionary
         visualizations: Dictionary of visualization files
         output_file: Path to save the HTML report
     """
     # Extract key information from verification result
-    passed = verification_result.get('passed', False)
-    stl_file = verification_result.get('stl_file', '')
-    scad_file = verification_result.get('scad_file', '')
-    comparison = verification_result.get('comparison', {})
-    report = verification_result.get('report', {})
-    
+    passed = verification_result.get("passed", False)
+    stl_file = verification_result.get("stl_file", "")
+    scad_file = verification_result.get("scad_file", "")
+    comparison = verification_result.get("comparison", {})
+    report = verification_result.get("report", {})
+
     # Format metrics for display
     metrics_html = ""
-    
+
     # Volume comparison
-    if 'volume' in comparison:
-        vol = comparison['volume']
+    if "volume" in comparison:
+        vol = comparison["volume"]
         metrics_html += f"""
         <div class="metric-card">
             <h3>Volume Comparison</h3>
@@ -282,10 +312,10 @@ def generate_verification_report_html(
             </table>
         </div>
         """
-    
+
     # Surface area comparison
-    if 'surface_area' in comparison:
-        area = comparison['surface_area']
+    if "surface_area" in comparison:
+        area = comparison["surface_area"]
         metrics_html += f"""
         <div class="metric-card">
             <h3>Surface Area Comparison</h3>
@@ -297,13 +327,13 @@ def generate_verification_report_html(
             </table>
         </div>
         """
-    
+
     # Bounding box comparison
-    if 'bounding_box' in comparison:
-        bbox = comparison['bounding_box']
+    if "bounding_box" in comparison:
+        bbox = comparison["bounding_box"]
         bbox_html = "<div class='metric-card'><h3>Bounding Box Comparison</h3><table>"
-        
-        for dim in ['width', 'height', 'depth']:
+
+        for dim in ["width", "height", "depth"]:
             if dim in bbox:
                 dim_data = bbox[dim]
                 bbox_html += f"""
@@ -315,32 +345,32 @@ def generate_verification_report_html(
                     <td class="{get_status_class(dim_data['difference_percent'], 2)}">{dim_data['difference_percent']:.2f}%</td>
                 </tr>
                 """
-        
+
         bbox_html += "</table></div>"
         metrics_html += bbox_html
-    
+
     # Failures section
     failures_html = ""
-    if 'failures' in report and report['failures']:
+    if "failures" in report and report["failures"]:
         failures_html = "<div class='failures'><h3>Verification Failures</h3><ul>"
-        for failure in report['failures']:
+        for failure in report["failures"]:
             failures_html += f"<li>{failure['message']}</li>"
         failures_html += "</ul></div>"
-    
+
     # Visualizations section
     vis_html = "<div class='visualizations'><h2>Visualizations</h2>"
-    
+
     # Main comparison view
-    if 'perspective' in visualizations:
+    if "perspective" in visualizations:
         vis_html += f"""
         <div class="vis-card main-view">
             <h3>3D Perspective View</h3>
             <img src="{visualizations['perspective'].name}" alt="Perspective View">
         </div>
         """
-    
+
     # Comparison views
-    if 'comparison' in visualizations:
+    if "comparison" in visualizations:
         vis_html += f"""
         <div class="vis-card">
             <h3>Side-by-Side Comparison</h3>
@@ -348,10 +378,12 @@ def generate_verification_report_html(
             <p>Blue: Original STL, Red: Converted SCAD</p>
         </div>
         """
-    
+
     # Standard views
-    standard_views_html = "<div class='standard-views'><h3>Standard Views</h3><div class='view-grid'>"
-    for view in ['top', 'front', 'side']:
+    standard_views_html = (
+        "<div class='standard-views'><h3>Standard Views</h3><div class='view-grid'>"
+    )
+    for view in ["top", "front", "side"]:
         if view in visualizations:
             standard_views_html += f"""
             <div class="view-item">
@@ -361,10 +393,14 @@ def generate_verification_report_html(
             """
     standard_views_html += "</div></div>"
     vis_html += standard_views_html
-    
+
     # Cross-section views
-    cross_sections_html = "<div class='cross-sections'><h3>Cross-Sections</h3><div class='view-grid'>"
-    cross_section_keys = [k for k in visualizations.keys() if k.startswith('cross_section_')]
+    cross_sections_html = (
+        "<div class='cross-sections'><h3>Cross-Sections</h3><div class='view-grid'>"
+    )
+    cross_section_keys = [
+        k for k in visualizations.keys() if k.startswith("cross_section_")
+    ]
     for key in sorted(cross_section_keys):
         cross_sections_html += f"""
         <div class="view-item">
@@ -374,9 +410,9 @@ def generate_verification_report_html(
         """
     cross_sections_html += "</div></div>"
     vis_html += cross_sections_html
-    
+
     vis_html += "</div>"
-    
+
     # Create HTML report
     html = f"""
     <!DOCTYPE html>
@@ -522,9 +558,9 @@ def generate_verification_report_html(
     </body>
     </html>
     """
-    
+
     # Write HTML to file
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         f.write(html)
 
 

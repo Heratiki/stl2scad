@@ -35,7 +35,9 @@ def test_feature_graph_folder_report_writes_summary(test_data_dir, test_output_d
     ensure_benchmark_fixtures(fixtures_dir)
 
     output_json = test_output_dir / "feature_graph.json"
-    report = build_feature_graph_for_folder(fixtures_dir, output_json, max_files=3, workers=2)
+    report = build_feature_graph_for_folder(
+        fixtures_dir, output_json, max_files=3, workers=2
+    )
 
     assert output_json.exists()
     assert report["config"]["workers"] == 2
@@ -49,9 +51,15 @@ def test_feature_graph_extracts_repeated_through_holes(test_output_dir):
     _create_plate_with_holes(stl_file)
 
     graph = build_feature_graph_for_stl(stl_file)
-    holes = [feature for feature in graph["features"] if feature["type"] == "hole_like_cutout"]
+    holes = [
+        feature
+        for feature in graph["features"]
+        if feature["type"] == "hole_like_cutout"
+    ]
     patterns = [
-        feature for feature in graph["features"] if feature["type"] == "linear_hole_pattern"
+        feature
+        for feature in graph["features"]
+        if feature["type"] == "linear_hole_pattern"
     ]
 
     assert len(holes) == 2
@@ -80,7 +88,9 @@ def test_feature_graph_extracts_grid_through_holes(test_output_dir):
 
     graph = build_feature_graph_for_stl(stl_file)
     patterns = [
-        feature for feature in graph["features"] if feature["type"] == "grid_hole_pattern"
+        feature
+        for feature in graph["features"]
+        if feature["type"] == "grid_hole_pattern"
     ]
 
     assert len(patterns) == 1
@@ -96,7 +106,11 @@ def test_feature_graph_extracts_slot_cutout(test_output_dir):
     _create_plate_with_slot(stl_file)
 
     graph = build_feature_graph_for_stl(stl_file)
-    slots = [feature for feature in graph["features"] if feature["type"] == "slot_like_cutout"]
+    slots = [
+        feature
+        for feature in graph["features"]
+        if feature["type"] == "slot_like_cutout"
+    ]
 
     assert len(slots) == 1
     assert slots[0]["slot_axis"] == "x"
@@ -279,7 +293,9 @@ def _create_plate_with_slot(
         outline.append([straight_half + radius * np.cos(theta), radius * np.sin(theta)])
     for idx in range(segments + 1):
         theta = 0.5 * np.pi + np.pi * idx / segments
-        outline.append([-straight_half + radius * np.cos(theta), radius * np.sin(theta)])
+        outline.append(
+            [-straight_half + radius * np.cos(theta), radius * np.sin(theta)]
+        )
 
     base_index = len(vertices)
     for x, y in outline:

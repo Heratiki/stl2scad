@@ -65,7 +65,9 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.parametric_only and args.polyhedron_only:
-        raise ValueError("--parametric-only and --polyhedron-only are mutually exclusive")
+        raise ValueError(
+            "--parametric-only and --polyhedron-only are mutually exclusive"
+        )
 
     if args.parametric_only:
         modes = (True,)
@@ -86,7 +88,9 @@ def main() -> int:
 
     print(f"Performance baseline written to: {args.output}")
     print(f"Results: {len(report.get('results', []))}")
-    print(f"Overall mean: {report.get('summary', {}).get('overall_elapsed_mean_seconds', 0.0):.6f} s")
+    print(
+        f"Overall mean: {report.get('summary', {}).get('overall_elapsed_mean_seconds', 0.0):.6f} s"
+    )
     return 0
 
 

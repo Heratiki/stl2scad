@@ -9,63 +9,56 @@ from stl2scad.core.converter import get_openscad_path, run_openscad
 from stl2scad.core.verification.visualization import _compute_cross_section_heights
 from .utils import setup_logging, verify_debug_files
 
+
 def test_cross_section_height_calculation():
     """Cross-sections should span 10%..90% of model z-range."""
     heights = _compute_cross_section_heights(10.0, 30.0, 5)
     assert heights == pytest.approx([12.0, 16.0, 20.0, 24.0, 28.0])
 
+
 def test_preview_generation(sample_stl_file, test_output_dir):
     """Test generation of preview images."""
     log = setup_logging()
     log("\nTesting Preview Generation")
-    
+
     openscad_path = get_openscad_path()
     output_file = test_output_dir / "preview_test.scad"
-    
+
     # Write test SCAD file that imports the STL
     # Use as_posix() so Windows backslashes don't break OpenSCAD's path parser
-    output_file.write_text(f'''
+    output_file.write_text(f"""
     // Preview test
     import("{sample_stl_file.as_posix()}");
-    ''')
-    
+    """)
+
     # Test different preview options
     preview_configs = [
+        {"name": "basic", "args": ["--preview=throwntogether"]},
+        {"name": "detailed", "args": ["--render"]},
         {
-            'name': 'basic',
-            'args': ['--preview=throwntogether']
+            "name": "debug",
+            "args": [
+                "--preview=throwntogether",
+                "--view=axes,edges,scales",
+                "--autocenter",
+                "--viewall",
+            ],
         },
-        {
-            'name': 'detailed',
-            'args': ['--render']
-        },
-        {
-            'name': 'debug',
-            'args': [
-                '--preview=throwntogether',
-                '--view=axes,edges,scales',
-                '--autocenter',
-                '--viewall'
-            ]
-        }
     ]
-    
+
     for config in preview_configs:
         log(f"\nTesting {config['name']} preview")
         output_png = test_output_dir / f"preview_{config['name']}.png"
-        
-        args = config['args'] + [
-            '-o', str(output_png),
-            str(output_file)
-        ]
-        
+
+        args = config["args"] + ["-o", str(output_png), str(output_file)]
+
         result = run_openscad(
             f"{config['name']} preview",
             args,
             str(test_output_dir / f"{config['name']}_preview.log"),
-            openscad_path
+            openscad_path,
         )
-        
+
         if result:
             log(f"{config['name']} preview generated successfully")
             assert output_png.exists(), f"{config['name']} PNG not created"
@@ -73,60 +66,54 @@ def test_preview_generation(sample_stl_file, test_output_dir):
         else:
             log(f"Warning: {config['name']} preview generation failed", "WARNING")
 
+
 def test_analysis_generation(sample_stl_file, test_output_dir):
     """Test generation of analysis data."""
     log = setup_logging()
     log("\nTesting Analysis Generation")
-    
+
     openscad_path = get_openscad_path()
     output_file = test_output_dir / "analysis_test.scad"
-    
+
     # Write test SCAD file
     # Use as_posix() so Windows backslashes don't break OpenSCAD's path parser
-    output_file.write_text(f'''
+    output_file.write_text(f"""
     // Analysis test
     import("{sample_stl_file.as_posix()}");
     echo("Starting analysis...");
-    ''')
-    
+    """)
+
     # Test different analysis options via OpenSCAD summary-file JSON output.
     analysis_configs = [
-        {
-            'name': 'basic',
-            'args': ['--render']
-        },
-        {
-            'name': 'detailed',
-            'args': [
-                '--render',
-                '--summary=all'
-            ]
-        }
+        {"name": "basic", "args": ["--render"]},
+        {"name": "detailed", "args": ["--render", "--summary=all"]},
     ]
-    
+
     for config in analysis_configs:
         log(f"\nTesting {config['name']} analysis")
         output_json = test_output_dir / f"analysis_{config['name']}.json"
         output_png = test_output_dir / f"analysis_{config['name']}.png"
-        
-        args = config['args'] + [
-            '--summary-file', str(output_json),
-            '-o', str(output_png),
-            str(output_file)
+
+        args = config["args"] + [
+            "--summary-file",
+            str(output_json),
+            "-o",
+            str(output_png),
+            str(output_file),
         ]
-        
+
         result = run_openscad(
             f"{config['name']} analysis",
             args,
             str(test_output_dir / f"{config['name']}_analysis.log"),
-            openscad_path
+            openscad_path,
         )
-        
+
         assert result, f"{config['name']} analysis generation failed"
         log(f"{config['name']} analysis generated successfully")
         assert output_json.exists(), f"{config['name']} JSON not created"
         assert output_json.stat().st_size > 0, f"{config['name']} JSON is empty"
-        
+
         # Verify JSON content
         try:
             with open(output_json) as f:
@@ -136,15 +123,16 @@ def test_analysis_generation(sample_stl_file, test_output_dir):
             log(f"Error parsing {config['name']} JSON: {e}", "ERROR")
             raise
 
+
 def test_measurement_tools(test_output_dir):
     """Test measurement tool generation."""
     log = setup_logging()
     log("\nTesting Measurement Tools")
-    
+
     output_file = test_output_dir / "measurement_test.scad"
-    
+
     # Write test SCAD file with measurement tools
-    output_file.write_text('''
+    output_file.write_text("""
     // Measurement tools test
     module show_bbox(points) {
         min_point = [min([for (p = points) p[0]]), min([for (p = points) p[1]]), min([for (p = points) p[2]])];
@@ -172,26 +160,27 @@ def test_measurement_tools(test_output_dir):
     points = [[0,0,0], [20,0,0], [20,20,0], [0,20,0]];
     show_bbox(points);
     dimension_line([0,0,0], [20,0,0]);
-    ''')
-    
+    """)
+
     # Generate preview with measurements
     openscad_path = get_openscad_path()
     output_png = test_output_dir / "measurement_preview.png"
-    
+
     result = run_openscad(
         "Measurement preview",
         [
-            '--preview=throwntogether',
-            '--view=axes',
-            '--autocenter',
-            '--viewall',
-            '-o', str(output_png),
-            str(output_file)
+            "--preview=throwntogether",
+            "--view=axes",
+            "--autocenter",
+            "--viewall",
+            "-o",
+            str(output_png),
+            str(output_file),
         ],
         str(test_output_dir / "measurement.log"),
-        openscad_path
+        openscad_path,
     )
-    
+
     if result:
         log("Measurement preview generated successfully")
         assert output_png.exists(), "Measurement PNG not created"

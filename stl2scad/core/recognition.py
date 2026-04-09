@@ -430,7 +430,9 @@ def _fit_cylinder_candidate(
         if near_min < 0.01 or near_max < 0.01:
             continue
 
-        center = centroid + axis * ((float(np.min(t_values)) + float(np.max(t_values))) * 0.5)
+        center = centroid + axis * (
+            (float(np.min(t_values)) + float(np.max(t_values))) * 0.5
+        )
         primitive = f"cylinder(h={height:.6f}, r={radius:.6f}, center=true, $fn=96);"
         scad = _wrap_oriented_primitive(center, axis, primitive)
         confidence = max(0.0, 1.0 - (err_p95 / err_cap))

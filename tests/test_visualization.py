@@ -26,10 +26,12 @@ def test_preview_generation(sample_stl_file, test_output_dir):
 
     # Write test SCAD file that imports the STL
     # Use as_posix() so Windows backslashes don't break OpenSCAD's path parser
-    output_file.write_text(f"""
+    output_file.write_text(
+        f"""
     // Preview test
     import("{sample_stl_file.as_posix()}");
-    """)
+    """
+    )
 
     # Test different preview options
     preview_configs = [
@@ -77,11 +79,13 @@ def test_analysis_generation(sample_stl_file, test_output_dir):
 
     # Write test SCAD file
     # Use as_posix() so Windows backslashes don't break OpenSCAD's path parser
-    output_file.write_text(f"""
+    output_file.write_text(
+        f"""
     // Analysis test
     import("{sample_stl_file.as_posix()}");
     echo("Starting analysis...");
-    """)
+    """
+    )
 
     # Test different analysis options via OpenSCAD summary-file JSON output.
     analysis_configs = [
@@ -132,7 +136,8 @@ def test_measurement_tools(test_output_dir):
     output_file = test_output_dir / "measurement_test.scad"
 
     # Write test SCAD file with measurement tools
-    output_file.write_text("""
+    output_file.write_text(
+        """
     // Measurement tools test
     module show_bbox(points) {
         min_point = [min([for (p = points) p[0]]), min([for (p = points) p[1]]), min([for (p = points) p[2]])];
@@ -160,7 +165,8 @@ def test_measurement_tools(test_output_dir):
     points = [[0,0,0], [20,0,0], [20,20,0], [0,20,0]];
     show_bbox(points);
     dimension_line([0,0,0], [20,0,0]);
-    """)
+    """
+    )
 
     # Generate preview with measurements
     openscad_path = get_openscad_path()

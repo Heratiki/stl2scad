@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 import json
 import math
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Set, Tuple
+from typing import Any, Callable, Dict, List, Set, Tuple, Union
 
 import numpy as np
 from stl.mesh import Mesh
@@ -45,7 +45,7 @@ class FixtureSpec:
 
 
 def generate_benchmark_fixture_set(
-    output_dir: Path | str,
+    output_dir: Union[Path, str],
     overwrite: bool = True,
 ) -> Dict[str, Any]:
     """
@@ -94,7 +94,7 @@ def generate_benchmark_fixture_set(
     return manifest
 
 
-def load_benchmark_manifest(fixtures_dir: Path | str) -> Dict[str, Any]:
+def load_benchmark_manifest(fixtures_dir: Union[Path, str]) -> Dict[str, Any]:
     """Load fixture manifest from a benchmark fixture directory."""
     manifest_path = Path(fixtures_dir) / "manifest.json"
     if not manifest_path.exists():
@@ -105,7 +105,7 @@ def load_benchmark_manifest(fixtures_dir: Path | str) -> Dict[str, Any]:
         return json.load(manifest_file)
 
 
-def ensure_benchmark_fixtures(fixtures_dir: Path | str) -> Dict[str, Any]:
+def ensure_benchmark_fixtures(fixtures_dir: Union[Path, str]) -> Dict[str, Any]:
     """
     Ensure fixture set and manifest exist.
     Generates missing fixtures only when manifest is absent.

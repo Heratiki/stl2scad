@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 from pathlib import Path
-from typing import Any, Iterable, Optional, Sequence
+from typing import Any, Iterable, Optional, Sequence, Union
 
 import numpy as np
 from stl.mesh import Mesh
@@ -40,8 +40,8 @@ class InventoryConfig:
 
 
 def analyze_stl_folder(
-    input_dir: Path | str,
-    output_json: Path | str,
+    input_dir: Union[Path, str],
+    output_json: Union[Path, str],
     config: InventoryConfig = InventoryConfig(),
 ) -> dict[str, Any]:
     """
@@ -101,8 +101,8 @@ def _analyze_stl_file_worker(
 
 
 def analyze_stl_file(
-    stl_file: Path | str,
-    root_dir: Optional[Path | str] = None,
+    stl_file: Union[Path, str],
+    root_dir: Optional[Union[Path, str]] = None,
     config: InventoryConfig = InventoryConfig(),
 ) -> dict[str, Any]:
     """
@@ -163,7 +163,7 @@ def _iter_stl_files(input_dir: Path, recursive: bool) -> Iterable[Path]:
     )
 
 
-def _relative_or_absolute(path: Path, root_dir: Optional[Path | str]) -> str:
+def _relative_or_absolute(path: Path, root_dir: Optional[Union[Path, str]]) -> str:
     if root_dir is None:
         return str(path)
     try:

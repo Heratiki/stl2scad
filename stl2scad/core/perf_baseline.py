@@ -12,7 +12,7 @@ import platform
 import statistics
 import tempfile
 import time
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Sequence, Union
 
 import psutil
 from stl.mesh import Mesh
@@ -22,8 +22,8 @@ from .converter import stl2scad
 
 
 def run_conversion_perf_baseline(
-    fixtures_dir: Path | str,
-    output_json: Path | str,
+    fixtures_dir: Union[Path, str],
+    output_json: Union[Path, str],
     repeat: int = 3,
     categories: Sequence[str] = ("performance",),
     parametric_modes: Sequence[bool] = (False, True),

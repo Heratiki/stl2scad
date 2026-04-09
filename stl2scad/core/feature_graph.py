@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import json
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import numpy as np
 from stl.mesh import Mesh
@@ -20,8 +20,8 @@ from .feature_inventory import _bbox, _normalized_normals, _triangle_areas
 
 
 def build_feature_graph_for_stl(
-    stl_file: Path | str,
-    root_dir: Optional[Path | str] = None,
+    stl_file: Union[Path, str],
+    root_dir: Optional[Union[Path, str]] = None,
     normal_axis_threshold: float = 0.96,
     boundary_tolerance_ratio: float = 0.01,
 ) -> dict[str, Any]:
@@ -68,8 +68,8 @@ def build_feature_graph_for_stl(
 
 
 def build_feature_graph_for_folder(
-    input_dir: Path | str,
-    output_json: Path | str,
+    input_dir: Union[Path, str],
+    output_json: Union[Path, str],
     recursive: bool = True,
     max_files: Optional[int] = None,
     workers: int = 1,
@@ -971,7 +971,7 @@ def _slot_near_outer_boundary(
     return False
 
 
-def _relative_or_absolute(path: Path, root_dir: Optional[Path | str]) -> str:
+def _relative_or_absolute(path: Path, root_dir: Optional[Union[Path, str]]) -> str:
     if root_dir is None:
         return str(path)
     try:

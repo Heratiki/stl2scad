@@ -19,7 +19,7 @@ import re
 import shutil
 import subprocess
 import sys
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import numpy as np
 import stl
@@ -443,7 +443,9 @@ def _shape_description_to_scad(shape: dict[str, Any]) -> Optional[str]:
         if float(height) <= 1e-6:
             return None
         primitive = f"cylinder(h={float(height):.6f}, r={float(radius):.6f}, center=true, $fn=96);"
-        return _wrap_oriented_primitive(np.asarray(center, dtype=np.float64), axis, primitive)
+        return _wrap_oriented_primitive(
+            np.asarray(center, dtype=np.float64), axis, primitive
+        )
 
     return None
 
@@ -458,19 +460,19 @@ def _enrich_shape_geometry_from_points(
         return shape
 
     center = np.asarray(shape.get("center"), dtype=np.float64)
-    axis = np.asarray(shape.get("axis"), dtype=np.float64)
+    axis_vec: np.ndarray = np.asarray(shape.get("axis"), dtype=np.float64)
     radius = float(shape.get("radius", 0.0))
 
-    if center.shape != (3,) or axis.shape != (3,) or radius <= 1e-6:
+    if center.shape != (3,) or axis_vec.shape != (3,) or radius <= 1e-6:
         return shape
 
-    axis_norm = float(np.linalg.norm(axis))
+    axis_norm = float(np.linalg.norm(axis_vec))
     if axis_norm <= 1e-12:
         return shape
-    axis = axis / axis_norm
+    axis_vec = np.asarray(axis_vec / axis_norm, dtype=np.float64)
 
     relative = points - center
-    t_values = relative @ axis
+    t_values = relative @ axis_vec
     if len(t_values) == 0:
         return shape
 
@@ -485,9 +487,9 @@ def _enrich_shape_geometry_from_points(
     if height <= 1e-6:
         return shape
 
-    finite_center = center + axis * ((t_min + t_max) * 0.5)
+    finite_center = center + axis_vec * ((t_min + t_max) * 0.5)
     enriched = dict(shape)
-    enriched["axis"] = _normalize_tuple(tuple(float(value) for value in axis))
+    enriched["axis"] = _normalize_tuple(tuple(float(value) for value in axis_vec))
     enriched["finite_center"] = tuple(float(value) for value in finite_center)
     enriched["height"] = float(height)
     enriched["axis_min"] = t_min
@@ -509,15 +511,15 @@ def _normalize_tuple(values: tuple[float, ...]) -> tuple[float, ...]:
 
 def _wrap_oriented_primitive(
     center: np.ndarray,
-    axis: tuple[float, ...] | np.ndarray,
+    axis: Union[tuple[float, ...], np.ndarray],
     primitive_scad: str,
 ) -> str:
-    axis_vec = np.asarray(axis, dtype=np.float64)
+    axis_vec: np.ndarray = np.asarray(axis, dtype=np.float64)
     axis_norm = np.linalg.norm(axis_vec)
     if axis_norm <= 1e-12:
         axis_vec = np.array([0.0, 0.0, 1.0], dtype=np.float64)
     else:
-        axis_vec = axis_vec / axis_norm
+        axis_vec = np.asarray(axis_vec / axis_norm, dtype=np.float64)
 
     z_axis = np.array([0.0, 0.0, 1.0], dtype=np.float64)
     dot = float(np.clip(np.dot(z_axis, axis_vec), -1.0, 1.0))
@@ -525,11 +527,12 @@ def _wrap_oriented_primitive(
     if dot > 1.0 - 1e-9:
         transform_body = primitive_scad
     else:
+        rot_axis: np.ndarray
         if dot < -1.0 + 1e-9:
             rot_axis = np.array([1.0, 0.0, 0.0], dtype=np.float64)
             angle_deg = 180.0
         else:
-            rot_axis = np.cross(z_axis, axis_vec)
+            rot_axis = np.asarray(np.cross(z_axis, axis_vec), dtype=np.float64)
             rot_axis = rot_axis / max(float(np.linalg.norm(rot_axis)), 1e-12)
             angle_deg = math.degrees(math.acos(dot))
         transform_body = (

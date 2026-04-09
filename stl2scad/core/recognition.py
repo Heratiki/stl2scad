@@ -565,24 +565,25 @@ def _wrap_oriented_primitive(
     axis: np.ndarray,
     primitive_scad: str,
 ) -> str:
-    axis = np.asarray(axis, dtype=np.float64)
-    axis_norm = np.linalg.norm(axis)
+    axis_vec: np.ndarray = np.asarray(axis, dtype=np.float64)
+    axis_norm = np.linalg.norm(axis_vec)
     if axis_norm <= 1e-12:
-        axis = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+        axis_vec = np.array([0.0, 0.0, 1.0], dtype=np.float64)
     else:
-        axis = axis / axis_norm
+        axis_vec = np.asarray(axis_vec / axis_norm, dtype=np.float64)
 
     z_axis = np.array([0.0, 0.0, 1.0], dtype=np.float64)
-    dot = float(np.clip(np.dot(z_axis, axis), -1.0, 1.0))
+    dot = float(np.clip(np.dot(z_axis, axis_vec), -1.0, 1.0))
 
     if dot > 1.0 - 1e-9:
         transform_body = primitive_scad
     else:
+        rot_axis: np.ndarray
         if dot < -1.0 + 1e-9:
             rot_axis = np.array([1.0, 0.0, 0.0], dtype=np.float64)
             angle_deg = 180.0
         else:
-            rot_axis = np.cross(z_axis, axis)
+            rot_axis = np.asarray(np.cross(z_axis, axis_vec), dtype=np.float64)
             rot_axis = rot_axis / max(float(np.linalg.norm(rot_axis)), 1e-12)
             angle_deg = math.degrees(math.acos(dot))
         transform_body = (

@@ -29,11 +29,14 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=[
-        "numpy>=2.2.3",
-        "numpy-stl>=3.2.0",
+        "numpy>=1.24.3",
+        "numpy-stl>=3.1.2",
         "PyQt5>=5.15.11",
         "pyqtgraph>=0.13.3",
+        "PyOpenGL>=3.1.7",
+        "PyOpenGL-accelerate>=3.1.7",
         "typing_extensions>=4.12.2",
+        "psutil>=5.9.0",
     ],
     extras_require={
         "parametric_phase1": [

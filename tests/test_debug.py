@@ -53,7 +53,10 @@ def test_debug_features(test_output_dir, verbose=True, log_file="test_run.log"):
 
     # Test file paths — resolve relative to this file so the test works
     # regardless of the working directory pytest is invoked from.
-    input_file = str(Path(__file__).parent / "data" / "Cube_3d_printing_sample.stl")
+    sample_file = Path(__file__).parent / "data" / "Cube_3d_printing_sample.stl"
+    if not sample_file.exists():
+        sample_file = Path(__file__).parent / "data" / "cube.stl"
+    input_file = str(sample_file)
     output_file = str(test_output_dir / "test_output.scad")
 
     log(f"Input STL: {input_file}")

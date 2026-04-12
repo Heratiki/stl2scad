@@ -3,6 +3,7 @@ Tests for OpenSCAD command execution and version checking.
 """
 
 import pytest
+import sys
 from pathlib import Path
 from stl2scad.core.converter import get_openscad_path, run_openscad
 from .utils import setup_logging, check_openscad_processes
@@ -21,7 +22,10 @@ def test_openscad_version():
         openscad_path = get_openscad_path()
         log(f"OpenSCAD found at: {openscad_path}")
         assert openscad_path is not None
-        assert "OpenSCAD (Nightly)" in openscad_path
+        if sys.platform == "win32":
+            assert "OpenSCAD (Nightly)" in openscad_path
+        else:
+            assert "openscad" in openscad_path.lower()
     except Exception as e:
         log(f"Error getting OpenSCAD path: {str(e)}", "ERROR")
         log(f"Exception type: {type(e)}", "ERROR")

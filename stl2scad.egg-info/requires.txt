@@ -1,0 +1,14 @@
+numpy>=1.24.3
+numpy-stl>=3.1.2
+PyQt5>=5.15.11
+pyqtgraph>=0.13.3
+PyOpenGL>=3.1.7
+PyOpenGL-accelerate>=3.1.7
+typing_extensions>=4.12.2
+psutil>=5.9.0
+
+[parametric_phase1]
+trimesh>=4.0.0
+
+[parametric_phase2]
+cgal>=6.0.1

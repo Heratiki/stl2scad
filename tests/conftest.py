@@ -27,7 +27,10 @@ def test_output_dir():
 @pytest.fixture
 def sample_stl_file(test_data_dir):
     """Return path to sample STL file."""
-    return test_data_dir / "Cube_3d_printing_sample.stl"
+    candidate = test_data_dir / "Cube_3d_printing_sample.stl"
+    if candidate.exists():
+        return candidate
+    return test_data_dir / "cube.stl"
 
 
 @pytest.fixture

@@ -44,7 +44,7 @@ class Config(TypedDict):
 # Default configuration with proper typing
 DEFAULT_CONFIG: Config = {
     "openscad": {
-        "required_version": "2025.02.19",
+        "required_version": "2021.01",
         "paths": {
             "win32": {
                 "base": r"C:\Program Files\OpenSCAD (Nightly)",

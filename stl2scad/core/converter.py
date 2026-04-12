@@ -128,8 +128,8 @@ def get_openscad_path() -> Optional[str]:
             info = " ".join(info.split())
             logging.debug(f"Cleaned version info: {info}")
 
-            # Extract version number
-            version_match = re.search(r"Version:\s*(\d{4}\.\d{2}\.\d{2})", info)
+            # Extract version number (matches YYYY.MM.DD or YYYY.MM)
+            version_match = re.search(r"Version:\s*(\d{4}\.\d{2}(?:\.\d{2})?)", info)
             logging.debug(
                 f"Version match: {version_match.group(1) if version_match else 'No match'}"
             )

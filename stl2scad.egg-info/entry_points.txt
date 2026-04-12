@@ -1,0 +1,3 @@
+[console_scripts]
+stl2scad = stl2scad.cli:main
+stl2scad-gui = stl2scad.__main__:main

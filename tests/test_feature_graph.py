@@ -5,6 +5,7 @@ Tests for intermediate feature graph extraction.
 from pathlib import Path
 
 import numpy as np
+import pytest
 from stl.mesh import Mesh
 
 from stl2scad.core.benchmark_fixtures import ensure_benchmark_fixtures
@@ -165,6 +166,29 @@ def test_feature_graph_extracts_slot_cutout(test_output_dir):
     assert abs(slots[0]["width"] - 3.0) < 1e-5
     assert abs(slots[0]["length"] - 10.0) < 1e-5
     assert slots[0]["confidence"] >= 0.70
+
+
+@pytest.mark.parametrize("axis", ["x", "z"])
+def test_feature_graph_extracts_box_through_hole(test_output_dir, axis):
+    stl_file = test_output_dir / f"box_with_{axis}_hole.stl"
+    _create_box_with_hole(stl_file, axis=axis)
+
+    graph = build_feature_graph_for_stl(stl_file)
+    box_features = [
+        feature for feature in graph["features"] if feature["type"] == "box_like_solid"
+    ]
+    holes = [
+        feature
+        for feature in graph["features"]
+        if feature["type"] == "hole_like_cutout"
+    ]
+
+    assert len(box_features) == 1
+    assert len(holes) == 1
+    assert holes[0]["axis"] == axis
+    assert holes[0]["source_parent_type"] == "box_like_solid"
+    assert 3.5 < holes[0]["diameter"] < 4.5
+    assert holes[0]["confidence"] >= 0.70
 
 
 def test_feature_graph_scad_preview_emits_plate_with_holes(test_output_dir):
@@ -351,6 +375,76 @@ def _create_plate_with_slot(
         vertices.append([x, y, thickness])
     for idx in range(len(outline)):
         next_idx = (idx + 1) % len(outline)
+        b0 = base_index + 2 * idx
+        t0 = b0 + 1
+        b1 = base_index + 2 * next_idx
+        t1 = b1 + 1
+        faces.append([b0, b1, t1])
+        faces.append([b0, t1, t0])
+
+    mesh = Mesh(np.zeros(len(faces), dtype=Mesh.dtype))
+    vertices_array = np.asarray(vertices, dtype=np.float64)
+    for index, face in enumerate(faces):
+        mesh.vectors[index] = vertices_array[face]
+    mesh.save(str(output_file))
+
+
+def _create_box_with_hole(
+    output_file,
+    axis="z",
+    segments=32,
+    radius=2.0,
+    box_size=(18.0, 12.0, 10.0),
+    cross_center=(0.0, 0.0),
+):
+    half_x = box_size[0] * 0.5
+    half_y = box_size[1] * 0.5
+    half_z = box_size[2] * 0.5
+    vertices = [
+        [-half_x, -half_y, -half_z],
+        [half_x, -half_y, -half_z],
+        [half_x, half_y, -half_z],
+        [-half_x, half_y, -half_z],
+        [-half_x, -half_y, half_z],
+        [half_x, -half_y, half_z],
+        [half_x, half_y, half_z],
+        [-half_x, half_y, half_z],
+    ]
+    faces = [
+        [0, 2, 1],
+        [0, 3, 2],
+        [4, 5, 6],
+        [4, 6, 7],
+        [0, 1, 5],
+        [0, 5, 4],
+        [1, 2, 6],
+        [1, 6, 5],
+        [2, 3, 7],
+        [2, 7, 6],
+        [3, 0, 4],
+        [3, 4, 7],
+    ]
+
+    base_index = len(vertices)
+    for idx in range(segments):
+        theta = 2.0 * np.pi * idx / segments
+        cos_theta = radius * np.cos(theta)
+        sin_theta = radius * np.sin(theta)
+        if axis == "z":
+            x = cross_center[0] + cos_theta
+            y = cross_center[1] + sin_theta
+            vertices.append([x, y, -half_z])
+            vertices.append([x, y, half_z])
+        elif axis == "x":
+            y = cross_center[0] + cos_theta
+            z = cross_center[1] + sin_theta
+            vertices.append([-half_x, y, z])
+            vertices.append([half_x, y, z])
+        else:
+            raise ValueError("axis must be 'x' or 'z'")
+
+    for idx in range(segments):
+        next_idx = (idx + 1) % segments
         b0 = base_index + 2 * idx
         t0 = b0 + 1
         b1 = base_index + 2 * next_idx

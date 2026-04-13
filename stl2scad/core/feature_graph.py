@@ -535,134 +535,166 @@ def _extract_axis_aligned_through_holes(
     existing_features: list[dict[str, Any]],
     normal_axis_threshold: float,
 ) -> list[dict[str, Any]]:
-    plate_features = [
-        feature
-        for feature in existing_features
-        if feature.get("type") == "plate_like_solid"
-    ]
-    if not plate_features:
-        return []
-
-    plate = plate_features[0]
-    size = [float(value) for value in plate["size"]]
-    thickness_axis_index = int(np.argmin(size))
-    thickness = size[thickness_axis_index]
-    if thickness <= 1e-9:
-        return []
-
     axis_labels = ("x", "y", "z")
-    plane_axes = [index for index in range(3) if index != thickness_axis_index]
-    axis_vector = np.zeros(3, dtype=np.float64)
-    axis_vector[thickness_axis_index] = 1.0
-
     face_centers = np.mean(vectors, axis=1)
-    # Cylindrical through-hole walls are roughly perpendicular to plate thickness.
-    sidewall_mask = np.abs(normals @ axis_vector) <= (1.0 - normal_axis_threshold)
-    span_min = float(bbox[f"min_{axis_labels[thickness_axis_index]}"])
-    span_max = float(bbox[f"max_{axis_labels[thickness_axis_index]}"])
-    interior_mask = (
-        face_centers[:, thickness_axis_index] > span_min + thickness * 0.05
-    ) & (face_centers[:, thickness_axis_index] < span_max - thickness * 0.05)
-    candidate_faces = np.where(sidewall_mask | interior_mask)[0]
-    if len(candidate_faces) == 0:
-        return []
-
-    components = _connected_face_components(vectors, candidate_faces)
     features: list[dict[str, Any]] = []
-    min_radius = max(min(size[axis] for axis in plane_axes) * 0.005, 0.05)
-    max_radius = max(size[axis] for axis in plane_axes) * 0.45
-    for component_index, face_indices in enumerate(components):
-        if len(face_indices) < 8:
-            continue
-        component_vertices = vectors[face_indices].reshape(-1, 3)
-        coords_2d = component_vertices[:, plane_axes]
-        height_values = component_vertices[:, thickness_axis_index]
-        height_span = float(np.max(height_values) - np.min(height_values))
-        if height_span < thickness * 0.65:
+
+    for target in _candidate_cutout_axes(existing_features):
+        cutout_axis_index = int(target["axis_index"])
+        cutout_depth = float(target["depth"])
+        if cutout_depth <= 1e-9:
             continue
 
-        fit = _fit_circle_2d(coords_2d)
-        if fit is not None:
-            center_2d, radius, radial_error_ratio, angular_coverage = fit
-            if (
-                min_radius <= radius <= max_radius
-                and radial_error_ratio <= 0.08
-                and angular_coverage >= 0.70
-                and not _center_near_outer_boundary(center_2d, bbox, plane_axes, radius)
-            ):
-                center = [0.0, 0.0, 0.0]
-                center[plane_axes[0]] = float(center_2d[0])
-                center[plane_axes[1]] = float(center_2d[1])
-                center[thickness_axis_index] = (span_min + span_max) * 0.5
-                confidence = max(
-                    0.0, min(1.0, (1.0 - radial_error_ratio / 0.08) * angular_coverage)
-                )
-                features.append(
-                    {
-                        "type": "hole_like_cutout",
-                        "confidence": float(confidence),
-                        "axis": axis_labels[thickness_axis_index],
-                        "center": center,
-                        "diameter": float(radius * 2.0),
-                        "depth": float(height_span),
-                        "component_faces": int(len(face_indices)),
-                        "radial_error_ratio": float(radial_error_ratio),
-                        "angular_coverage": float(angular_coverage),
-                        "source_component_index": component_index,
-                        "note": "Candidate circular through-hole cutout in a plate-like solid.",
-                    }
-                )
+        plane_axes = [index for index in range(3) if index != cutout_axis_index]
+        axis_vector = np.zeros(3, dtype=np.float64)
+        axis_vector[cutout_axis_index] = 1.0
+        span_min = float(bbox[f"min_{axis_labels[cutout_axis_index]}"])
+        span_max = float(bbox[f"max_{axis_labels[cutout_axis_index]}"])
+        sidewall_mask = np.abs(normals @ axis_vector) <= (1.0 - normal_axis_threshold)
+        interior_mask = (
+            face_centers[:, cutout_axis_index] > span_min + cutout_depth * 0.05
+        ) & (face_centers[:, cutout_axis_index] < span_max - cutout_depth * 0.05)
+        candidate_faces = np.where(sidewall_mask | interior_mask)[0]
+        if len(candidate_faces) == 0:
+            continue
+
+        components = _connected_face_components(vectors, candidate_faces)
+        min_radius = max(min(target["size"][axis] for axis in plane_axes) * 0.005, 0.05)
+        max_radius = max(target["size"][axis] for axis in plane_axes) * 0.45
+        for component_index, face_indices in enumerate(components):
+            if len(face_indices) < 8:
+                continue
+            component_vertices = vectors[face_indices].reshape(-1, 3)
+            coords_2d = component_vertices[:, plane_axes]
+            height_values = component_vertices[:, cutout_axis_index]
+            height_span = float(np.max(height_values) - np.min(height_values))
+            if height_span < cutout_depth * 0.65:
                 continue
 
-        slot_fit = _fit_axis_aligned_slot_2d(coords_2d)
-        if slot_fit is None:
-            continue
-        (
-            center_2d,
-            start_2d,
-            end_2d,
-            width,
-            length,
-            slot_error_ratio,
-            slot_axis_index,
-        ) = slot_fit
-        radius = width * 0.5
-        if radius < min_radius or radius > max_radius:
-            continue
-        if _slot_near_outer_boundary(start_2d, end_2d, radius, bbox, plane_axes):
-            continue
+            fit = _fit_circle_2d(coords_2d)
+            if fit is not None:
+                center_2d, radius, radial_error_ratio, angular_coverage = fit
+                if (
+                    min_radius <= radius <= max_radius
+                    and radial_error_ratio <= 0.08
+                    and angular_coverage >= 0.70
+                    and not _center_near_outer_boundary(center_2d, bbox, plane_axes, radius)
+                ):
+                    center = [0.0, 0.0, 0.0]
+                    center[plane_axes[0]] = float(center_2d[0])
+                    center[plane_axes[1]] = float(center_2d[1])
+                    center[cutout_axis_index] = (span_min + span_max) * 0.5
+                    confidence = max(
+                        0.0,
+                        min(1.0, (1.0 - radial_error_ratio / 0.08) * angular_coverage),
+                    )
+                    features.append(
+                        {
+                            "type": "hole_like_cutout",
+                            "confidence": float(confidence),
+                            "axis": axis_labels[cutout_axis_index],
+                            "center": center,
+                            "diameter": float(radius * 2.0),
+                            "depth": float(height_span),
+                            "component_faces": int(len(face_indices)),
+                            "radial_error_ratio": float(radial_error_ratio),
+                            "angular_coverage": float(angular_coverage),
+                            "source_component_index": component_index,
+                            "source_parent_type": target["parent_type"],
+                            "note": (
+                                "Candidate circular through-hole cutout in a "
+                                f"{target['parent_type'].replace('_', '-')}"
+                            ),
+                        }
+                    )
+                    continue
 
-        center = [0.0, 0.0, 0.0]
-        start = [0.0, 0.0, 0.0]
-        end = [0.0, 0.0, 0.0]
-        center[plane_axes[0]] = float(center_2d[0])
-        center[plane_axes[1]] = float(center_2d[1])
-        start[plane_axes[0]] = float(start_2d[0])
-        start[plane_axes[1]] = float(start_2d[1])
-        end[plane_axes[0]] = float(end_2d[0])
-        end[plane_axes[1]] = float(end_2d[1])
-        for vector in (center, start, end):
-            vector[thickness_axis_index] = (span_min + span_max) * 0.5
-        confidence = max(0.0, min(1.0, 1.0 - slot_error_ratio / 0.12))
-        features.append(
-            {
-                "type": "slot_like_cutout",
-                "confidence": float(confidence),
-                "axis": axis_labels[thickness_axis_index],
-                "center": center,
-                "start": start,
-                "end": end,
-                "width": float(width),
-                "length": float(length),
-                "depth": float(height_span),
-                "component_faces": int(len(face_indices)),
-                "slot_error_ratio": float(slot_error_ratio),
-                "slot_axis": axis_labels[plane_axes[slot_axis_index]],
-                "source_component_index": component_index,
-                "note": "Candidate rounded slot through-cutout in a plate-like solid.",
-            }
-        )
+            slot_fit = _fit_axis_aligned_slot_2d(coords_2d)
+            if slot_fit is None:
+                continue
+            (
+                center_2d,
+                start_2d,
+                end_2d,
+                width,
+                length,
+                slot_error_ratio,
+                slot_axis_index,
+            ) = slot_fit
+            radius = width * 0.5
+            if radius < min_radius or radius > max_radius:
+                continue
+            if _slot_near_outer_boundary(start_2d, end_2d, radius, bbox, plane_axes):
+                continue
+
+            center = [0.0, 0.0, 0.0]
+            start = [0.0, 0.0, 0.0]
+            end = [0.0, 0.0, 0.0]
+            center[plane_axes[0]] = float(center_2d[0])
+            center[plane_axes[1]] = float(center_2d[1])
+            start[plane_axes[0]] = float(start_2d[0])
+            start[plane_axes[1]] = float(start_2d[1])
+            end[plane_axes[0]] = float(end_2d[0])
+            end[plane_axes[1]] = float(end_2d[1])
+            for vector in (center, start, end):
+                vector[cutout_axis_index] = (span_min + span_max) * 0.5
+            confidence = max(0.0, min(1.0, 1.0 - slot_error_ratio / 0.12))
+            features.append(
+                {
+                    "type": "slot_like_cutout",
+                    "confidence": float(confidence),
+                    "axis": axis_labels[cutout_axis_index],
+                    "center": center,
+                    "start": start,
+                    "end": end,
+                    "width": float(width),
+                    "length": float(length),
+                    "depth": float(height_span),
+                    "component_faces": int(len(face_indices)),
+                    "slot_error_ratio": float(slot_error_ratio),
+                    "slot_axis": axis_labels[plane_axes[slot_axis_index]],
+                    "source_component_index": component_index,
+                    "source_parent_type": target["parent_type"],
+                    "note": (
+                        "Candidate rounded slot through-cutout in a "
+                        f"{target['parent_type'].replace('_', '-')}"
+                    ),
+                }
+            )
     return features
+
+
+def _candidate_cutout_axes(
+    existing_features: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+
+    for feature in existing_features:
+        feature_type = feature.get("type")
+        if feature_type == "plate_like_solid":
+            size = [float(value) for value in feature["size"]]
+            axis_index = int(np.argmin(size))
+            candidates.append(
+                {
+                    "parent_type": "plate_like_solid",
+                    "axis_index": axis_index,
+                    "depth": float(size[axis_index]),
+                    "size": size,
+                }
+            )
+        elif feature_type == "box_like_solid":
+            size = [float(value) for value in feature["size"]]
+            for axis_index, depth in enumerate(size):
+                candidates.append(
+                    {
+                        "parent_type": "box_like_solid",
+                        "axis_index": axis_index,
+                        "depth": float(depth),
+                        "size": size,
+                    }
+                )
+
+    return candidates
 
 
 def _extract_repeated_hole_patterns(

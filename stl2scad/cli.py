@@ -448,6 +448,17 @@ def feature_inventory_command(args: argparse.Namespace) -> int:
     """Execute the feature-inventory command."""
     try:
         workers = _resolve_workers(args.workers)
+
+        def _progress(done: int, total: int, path: str) -> None:
+            print(
+                f"\r[{done}/{total}] {Path(path).name}",
+                end="",
+                flush=True,
+                file=sys.stderr,
+            )
+            if done == total:
+                print(file=sys.stderr)
+
         report = analyze_stl_folder(
             input_dir=Path(args.input_dir),
             output_json=Path(args.output),
@@ -456,6 +467,7 @@ def feature_inventory_command(args: argparse.Namespace) -> int:
                 max_files=args.max_files,
                 workers=workers,
             ),
+            progress_callback=_progress,
         )
         summary = report["summary"]
         print(f"Feature inventory written to: {args.output}")

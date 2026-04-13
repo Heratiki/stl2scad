@@ -8,12 +8,13 @@ user models instead of only primitive fixtures.
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 from pathlib import Path
-from typing import Any, Iterable, Optional, Sequence, Union
+import sys
+from typing import Any, Callable, Iterable, Optional, Sequence, Union
 
 import numpy as np
 from stl.mesh import Mesh
@@ -43,9 +44,13 @@ def analyze_stl_folder(
     input_dir: Union[Path, str],
     output_json: Union[Path, str],
     config: InventoryConfig = InventoryConfig(),
+    progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> dict[str, Any]:
     """
     Analyze STL files in a folder and write a JSON inventory report.
+
+    ``progress_callback``, when provided, is called after each file completes
+    with ``(completed_count, total_count, file_path_str)``.
     """
     input_path = Path(input_dir)
     if not input_path.exists():
@@ -57,19 +62,32 @@ def analyze_stl_folder(
     if config.max_files is not None:
         files = files[: config.max_files]
 
+    total = len(files)
     worker_count = max(1, int(config.workers))
-    if worker_count == 1 or len(files) <= 1:
-        results = [
-            analyze_stl_file(path, root_dir=input_path, config=config) for path in files
-        ]
+    if worker_count == 1 or total <= 1:
+        results = []
+        for idx, path in enumerate(files, 1):
+            result = analyze_stl_file(path, root_dir=input_path, config=config)
+            results.append(result)
+            if progress_callback is not None:
+                progress_callback(idx, total, str(path))
     else:
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
-            results = list(
-                executor.map(
-                    _analyze_stl_file_worker,
-                    [(path, input_path, config) for path in files],
-                )
-            )
+            future_to_path = {
+                executor.submit(
+                    _analyze_stl_file_worker, (path, input_path, config)
+                ): path
+                for path in files
+            }
+            result_map: dict[Path, dict[str, Any]] = {}
+            done_count = 0
+            for future in as_completed(future_to_path):
+                path = future_to_path[future]
+                result_map[path] = future.result()
+                done_count += 1
+                if progress_callback is not None:
+                    progress_callback(done_count, total, str(path))
+            results = [result_map[path] for path in files]
     report = {
         "schema_version": 1,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),

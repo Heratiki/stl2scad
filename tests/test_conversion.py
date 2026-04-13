@@ -362,3 +362,112 @@ def test_phase1_converter_fallback_emits_polyhedron_for_subtraction_shell(
     content = output_file.read_text()
     assert "polyhedron(" in content
     assert "union()" not in content
+
+
+# -- Overlap edge-case regression tests --
+
+
+def test_phase1_overlapping_dual_box_emits_union(test_data_dir, monkeypatch):
+    """Two boxes with partial AABB overlap should be accepted as union()."""
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+    mesh = stl.mesh.Mesh.from_file(
+        str(fixtures_dir / "composite_overlapping_dual_box.stl")
+    )
+
+    monkeypatch.setattr(
+        recognition_module,
+        "_has_trimesh_manifold_dependencies",
+        lambda: True,
+    )
+
+    scad, reason = recognition_module.detect_primitive_with_diagnostics(
+        mesh, backend="trimesh_manifold"
+    )
+    assert scad is not None, f"Expected union() output but got fallback: {reason}"
+    assert "union()" in scad
+    assert scad.count("cube(") >= 2
+    assert reason == ""
+
+
+def test_phase1_cylinder_beside_box_emits_union(test_data_dir, monkeypatch):
+    """Cylinder placed beside a box (partial bbox overlap) should emit union()."""
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+    mesh = stl.mesh.Mesh.from_file(
+        str(fixtures_dir / "composite_cylinder_beside_box.stl")
+    )
+
+    monkeypatch.setattr(
+        recognition_module,
+        "_has_trimesh_manifold_dependencies",
+        lambda: True,
+    )
+
+    scad, reason = recognition_module.detect_primitive_with_diagnostics(
+        mesh, backend="trimesh_manifold"
+    )
+    assert scad is not None, f"Expected union() output but got fallback: {reason}"
+    assert "union()" in scad
+    assert "cylinder(" in scad
+    assert "cube(" in scad
+    assert reason == ""
+
+
+def test_phase1_subtraction_shell_reason_code(test_data_dir, monkeypatch):
+    """Subtraction shell should emit volume_mismatch reason, not generic overlap."""
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+    mesh = stl.mesh.Mesh.from_file(
+        str(fixtures_dir / "composite_subtraction_shell.stl")
+    )
+
+    monkeypatch.setattr(
+        recognition_module,
+        "_has_trimesh_manifold_dependencies",
+        lambda: True,
+    )
+
+    scad, reason = recognition_module.detect_primitive_with_diagnostics(
+        mesh, backend="trimesh_manifold"
+    )
+    assert scad is None
+    assert reason == "multi_component_volume_mismatch"
+
+
+def test_classify_component_overlap_diagnostics(test_data_dir):
+    """Overlap classification should emit machine-readable diagnostics."""
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+    mesh = stl.mesh.Mesh.from_file(
+        str(fixtures_dir / "composite_overlapping_dual_box.stl")
+    )
+
+    components = recognition_module._preprocess_components(mesh)
+    assert len(components) == 2
+
+    result = recognition_module._classify_component_overlap(components)
+    assert result["has_overlap"] is True
+    assert result["has_high_containment"] is False
+    assert 0.1 <= result["max_containment"] <= 0.4
+    assert result["pair_count"] == 1
+    assert len(result["pair_details"]) == 1
+    detail = result["pair_details"][0]
+    assert "overlap_volume" in detail
+    assert "containment_ratio" in detail
+    assert "bbox_vol_a" in detail
+
+
+def test_classify_component_overlap_subtraction_shell(test_data_dir):
+    """Subtraction shell should show high containment in diagnostics."""
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+    mesh = stl.mesh.Mesh.from_file(
+        str(fixtures_dir / "composite_subtraction_shell.stl")
+    )
+
+    components = recognition_module._preprocess_components(mesh)
+    result = recognition_module._classify_component_overlap(components)
+    assert result["has_overlap"] is True
+    assert result["has_high_containment"] is True
+    assert result["max_containment"] > 0.9

@@ -438,6 +438,39 @@ def _make_disconnected_dual_box() -> Mesh:
     return _mesh_from_voxels(cells, voxel_size=1.0, origin=(-5.5, -2.0, -2.0))
 
 
+def _make_overlapping_dual_box() -> Mesh:
+    """Two independent boxes whose AABBs overlap by ~20% along X.
+
+    Box A: (0,0,0)-(10,4,4), Box B: (8,0,0)-(18,4,4).
+    Overlap region: (8,0,0)-(10,4,4) → 2*4*4=32, each box vol=160.
+    Containment ratio = 32/160 = 0.20.
+    They share no vertices so they split into 2 connected components.
+    """
+    box_a = _make_box(width=10.0, depth=4.0, height=4.0, origin=(0.0, 0.0, 0.0))
+    box_b = _make_box(width=10.0, depth=4.0, height=4.0, origin=(8.0, 0.0, 0.0))
+    return _merge_meshes(box_a, box_b)
+
+
+def _make_cylinder_beside_box() -> Mesh:
+    """A cylinder placed beside a box, with partial bbox overlap.
+
+    The cylinder center is at (9, 2, 5) with r=3, h=10 (along Z).
+    Its bbox extends from (6, -1, 0) to (12, 5, 10).
+    The box is (0, 0, 0) to (8, 4, 4).
+    Overlap in X: 6-8, Y: 0-4, Z: 0-4 → 2*4*4=32.
+    Cylinder bbox vol = 6*6*10=360, box vol = 8*4*4=128.
+    Containment = 32/128 = 0.25.
+    """
+    box = _make_box(width=8.0, depth=4.0, height=4.0, origin=(0.0, 0.0, 0.0))
+    cyl = _make_cylinder(radius=3.0, height=10.0, segments=48)
+    # Translate cylinder to (9, 2, 0)
+    cyl_verts = cyl.vectors.reshape(-1, 3).copy()
+    cyl_verts[:, 0] += 9.0
+    cyl_verts[:, 1] += 2.0
+    cyl.vectors = cyl_verts.reshape(cyl.vectors.shape)
+    return _merge_meshes(box, cyl)
+
+
 def _box_cells(
     x0: int,
     x1: int,
@@ -503,6 +536,14 @@ def _mesh_from_voxels(
     vertices_array[:, 2] += origin[2]
 
     return _mesh_from_vertices_faces(vertices_array, np.asarray(faces, dtype=np.int32))
+
+
+def _merge_meshes(a: Mesh, b: Mesh) -> Mesh:
+    """Combine two meshes into one by concatenating their triangle arrays."""
+    combined = np.concatenate([a.vectors, b.vectors], axis=0)
+    mesh = Mesh(np.zeros(len(combined), dtype=Mesh.dtype), remove_empty_areas=False)
+    mesh.vectors = combined
+    return mesh
 
 
 def _mesh_from_vertices_faces(vertices: np.ndarray, faces: np.ndarray) -> Mesh:

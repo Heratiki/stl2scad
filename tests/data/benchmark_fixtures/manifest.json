@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-04-06T18:17:10.440512+00:00",
+  "generated_at_utc": "2026-04-13T06:52:12.754980+00:00",
   "required_phase0_fixture_names": [
     "primitive_box_axis_aligned",
     "primitive_cylinder_axis_aligned",
@@ -10,6 +10,8 @@
     "composite_union_l_shape",
     "composite_subtraction_shell",
     "composite_disconnected_dual_box",
+    "composite_overlapping_dual_box",
+    "composite_cylinder_beside_box",
     "perf_sphere_low",
     "perf_sphere_medium",
     "perf_sphere_high"
@@ -206,6 +208,56 @@
         "width": 11.0,
         "height": 4.0,
         "depth": 4.0
+      }
+    },
+    {
+      "name": "composite_overlapping_dual_box",
+      "file": "composite_overlapping_dual_box.stl",
+      "category": "composite",
+      "primitive_family": "multi_component",
+      "description": "Two boxes with partial AABB overlap (benign assembly contact).",
+      "tags": [
+        "phase0",
+        "composite",
+        "multi_component",
+        "overlap"
+      ],
+      "triangles": 24,
+      "bounding_box": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "min_z": 0.0,
+        "max_x": 18.0,
+        "max_y": 4.0,
+        "max_z": 4.0,
+        "width": 18.0,
+        "height": 4.0,
+        "depth": 4.0
+      }
+    },
+    {
+      "name": "composite_cylinder_beside_box",
+      "file": "composite_cylinder_beside_box.stl",
+      "category": "composite",
+      "primitive_family": "multi_component",
+      "description": "Cylinder placed beside a box with partial bbox overlap.",
+      "tags": [
+        "phase0",
+        "composite",
+        "multi_component",
+        "overlap"
+      ],
+      "triangles": 204,
+      "bounding_box": {
+        "min_x": 0.0,
+        "min_y": -1.0,
+        "min_z": 0.0,
+        "max_x": 12.0,
+        "max_y": 5.0,
+        "max_z": 10.0,
+        "width": 12.0,
+        "height": 6.0,
+        "depth": 10.0
       }
     },
     {

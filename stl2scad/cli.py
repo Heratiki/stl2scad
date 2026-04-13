@@ -7,6 +7,7 @@ OpenSCAD format and verifying conversion accuracy.
 
 import argparse
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -14,6 +15,12 @@ from typing import Any, Dict, List, Optional
 
 from stl2scad.core.converter import ConversionStats, STLValidationError, stl2scad
 from stl2scad.core.acceleration import get_acceleration_report
+from stl2scad.core.feature_graph import (
+    build_feature_graph_for_folder,
+    build_feature_graph_for_stl,
+    emit_feature_graph_scad_preview,
+)
+from stl2scad.core.feature_inventory import InventoryConfig, analyze_stl_folder
 from stl2scad.core.recognition import SUPPORTED_RECOGNITION_BACKENDS
 from stl2scad.core.verification import (
     generate_comparison_visualization,
@@ -229,6 +236,75 @@ def build_parser() -> argparse.ArgumentParser:
     )
     accel_parser.set_defaults(handler=acceleration_command)
 
+    feature_inventory_parser = subparsers.add_parser(
+        "feature-inventory",
+        help="Analyze STL folders for feature-level reconstruction signals",
+    )
+    feature_inventory_parser.add_argument(
+        "input_dir",
+        help="Directory containing STL files to analyze",
+    )
+    feature_inventory_parser.add_argument(
+        "--output",
+        default="artifacts/feature_inventory.json",
+        help="Path to JSON inventory output file",
+    )
+    feature_inventory_parser.add_argument(
+        "--max-files",
+        type=_non_negative_int,
+        default=None,
+        help="Optional cap on files analyzed",
+    )
+    feature_inventory_parser.add_argument(
+        "--no-recursive",
+        action="store_true",
+        help="Only analyze STL files directly in input_dir",
+    )
+    feature_inventory_parser.add_argument(
+        "--workers",
+        type=_non_negative_int,
+        default=0,
+        help="Parallel workers for folder scans. Use 0 for auto, 1 for serial",
+    )
+    feature_inventory_parser.set_defaults(handler=feature_inventory_command)
+
+    feature_graph_parser = subparsers.add_parser(
+        "feature-graph",
+        help="Build conservative feature graphs for STL files or folders",
+    )
+    feature_graph_parser.add_argument(
+        "input_path",
+        help="Input STL file or directory to analyze",
+    )
+    feature_graph_parser.add_argument(
+        "--output",
+        default="artifacts/feature_graph.json",
+        help="Path to JSON feature-graph output",
+    )
+    feature_graph_parser.add_argument(
+        "--max-files",
+        type=_non_negative_int,
+        default=None,
+        help="Optional cap when input_path is a directory",
+    )
+    feature_graph_parser.add_argument(
+        "--no-recursive",
+        action="store_true",
+        help="Only analyze STL files directly in input_path when it is a directory",
+    )
+    feature_graph_parser.add_argument(
+        "--workers",
+        type=_non_negative_int,
+        default=0,
+        help="Parallel workers for folder scans. Use 0 for auto, 1 for serial",
+    )
+    feature_graph_parser.add_argument(
+        "--scad-preview",
+        default=None,
+        help="Optional SCAD preview output path for a single STL input",
+    )
+    feature_graph_parser.set_defaults(handler=feature_graph_command)
+
     return parser
 
 
@@ -326,6 +402,15 @@ def print_verification_result(result: Any) -> None:
                     )
 
 
+def _resolve_workers(value: int) -> int:
+    """Resolve worker counts, allowing 0 to mean auto."""
+    if value < 0:
+        raise ValueError("--workers must be >= 0")
+    if value == 0:
+        return max(1, min(os.cpu_count() or 1, 32))
+    return value
+
+
 def acceleration_command(args: argparse.Namespace) -> int:
     """Inspect hardware acceleration support and recommendations."""
     report = get_acceleration_report()
@@ -357,6 +442,93 @@ def acceleration_command(args: argparse.Namespace) -> int:
         for rec in recs:
             print(f"    - {rec}")
     return 0
+
+
+def feature_inventory_command(args: argparse.Namespace) -> int:
+    """Execute the feature-inventory command."""
+    try:
+        workers = _resolve_workers(args.workers)
+        report = analyze_stl_folder(
+            input_dir=Path(args.input_dir),
+            output_json=Path(args.output),
+            config=InventoryConfig(
+                recursive=not args.no_recursive,
+                max_files=args.max_files,
+                workers=workers,
+            ),
+        )
+        summary = report["summary"]
+        print(f"Feature inventory written to: {args.output}")
+        print(f"Files analyzed: {summary['file_count']}")
+        print(f"Workers: {workers}")
+        print(f"OK: {summary['ok_count']}")
+        print(f"Errors: {summary['error_count']}")
+        print(f"Classifications: {summary['classification_counts']}")
+        print(f"Candidate features: {summary['candidate_feature_counts']}")
+        return 0
+    except FileNotFoundError as exc:
+        print(f"Error: File not found - {str(exc)}", file=sys.stderr)
+        return 1
+    except NotADirectoryError as exc:
+        print(f"Error: Not a directory - {str(exc)}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"Error: {str(exc)}", file=sys.stderr)
+        return 1
+
+
+def feature_graph_command(args: argparse.Namespace) -> int:
+    """Execute the feature-graph command."""
+    try:
+        input_path = Path(args.input_path)
+        output_path = Path(args.output)
+
+        if input_path.is_dir():
+            workers = _resolve_workers(args.workers)
+            report = build_feature_graph_for_folder(
+                input_path,
+                output_path,
+                recursive=not args.no_recursive,
+                max_files=args.max_files,
+                workers=workers,
+            )
+            summary = report["summary"]
+            print(f"Feature graph report written to: {output_path}")
+            print(f"Files analyzed: {summary['file_count']}")
+            print(f"Workers: {workers}")
+            print(f"Errors: {summary['error_count']}")
+            print(f"Features: {summary['feature_counts']}")
+            return 0
+
+        graph = build_feature_graph_for_stl(input_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as output_handle:
+            json.dump(graph, output_handle, indent=2)
+        print(f"Feature graph written to: {output_path}")
+        print(f"Features: {len(graph['features'])}")
+
+        if args.scad_preview:
+            scad = emit_feature_graph_scad_preview(graph)
+            if scad is None:
+                print(
+                    "SCAD preview not emitted: no high-confidence supported feature combination."
+                )
+            else:
+                scad_path = Path(args.scad_preview)
+                scad_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(scad_path, "w", encoding="utf-8") as scad_handle:
+                    scad_handle.write(scad)
+                print(f"SCAD preview written to: {scad_path}")
+        return 0
+    except FileNotFoundError as exc:
+        print(f"Error: File not found - {str(exc)}", file=sys.stderr)
+        return 1
+    except NotADirectoryError as exc:
+        print(f"Error: Not a directory - {str(exc)}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"Error: {str(exc)}", file=sys.stderr)
+        return 1
 
 
 def convert_command(args: argparse.Namespace) -> int:

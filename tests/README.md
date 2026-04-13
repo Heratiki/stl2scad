@@ -12,6 +12,8 @@ This directory contains the test suite for STL2SCAD. The tests are organized int
   - `test_cli.py`: CLI parser and command dispatch tests
   - `test_conversion.py`: STL to SCAD conversion and parametric-path tests
   - `test_cgal_backend.py`: Phase 2 CGAL helper adapter boundary tests
+  - `test_feature_inventory.py`: feature-inventory folder analysis and report generation checks
+  - `test_feature_graph.py`: conservative feature-graph extraction and SCAD-preview checks
   - `test_phase0_benchmarks.py`: benchmark fixture generation and perf-baseline runner checks
   - `test_verification.py`: Verification metrics and tolerances
   - `test_visualization.py`: Visualization and HTML report generation
@@ -58,6 +60,12 @@ pytest tests/test_phase0_benchmarks.py
 
 # Run CLI tests
 pytest tests/test_cli.py
+
+# Run feature inventory tests
+pytest tests/test_feature_inventory.py
+
+# Run feature graph tests
+pytest tests/test_feature_graph.py
 
 # Run verification tests
 pytest tests/test_verification.py

@@ -120,6 +120,25 @@ python -m stl2scad verify <input.stl> [--parametric] [--recognition-backend nati
 python -m stl2scad batch <input_dir> <output_dir> [--volume-tol 1.0] [--area-tol 2.0] [--bbox-tol 0.5] [--sample-seed 123] [--html-report] [--parametric] [--recognition-backend native|trimesh_manifold|cgal]
 ```
 
+### `feature-inventory`
+
+Analyze a directory of STL files for reconstruction signals before attempting
+feature-based SCAD generation:
+
+```bash
+python -m stl2scad feature-inventory <input_dir> [--output artifacts/feature_inventory.json] [--max-files 100] [--workers 0]
+```
+
+### `feature-graph`
+
+Build a conservative feature graph for a single STL or an STL folder. For
+single-file inputs, an optional SCAD preview can be emitted when supported
+high-confidence plate/hole/slot patterns are found.
+
+```bash
+python -m stl2scad feature-graph <input_path> [--output artifacts/feature_graph.json] [--max-files 100] [--workers 0] [--scad-preview artifacts/feature_preview.scad]
+```
+
 ### CLI Exit Codes
 
 - `0`: success

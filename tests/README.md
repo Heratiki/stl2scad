@@ -14,6 +14,7 @@ This directory contains the test suite for STL2SCAD. The tests are organized int
   - `test_cgal_backend.py`: Phase 2 CGAL helper adapter boundary tests
   - `test_feature_inventory.py`: feature-inventory folder analysis and report generation checks
   - `test_feature_graph.py`: conservative feature-graph extraction and SCAD-preview checks
+  - `test_feature_fixtures.py`: manifest-driven OpenSCAD ground-truth fixture validation and round-trip detection checks
   - `test_phase0_benchmarks.py`: benchmark fixture generation and perf-baseline runner checks
   - `test_verification.py`: Verification metrics and tolerances
   - `test_visualization.py`: Visualization and HTML report generation
@@ -66,6 +67,9 @@ pytest tests/test_feature_inventory.py
 
 # Run feature graph tests
 pytest tests/test_feature_graph.py
+
+# Run ground-truth feature fixture tests
+pytest tests/test_feature_fixtures.py
 
 # Run verification tests
 pytest tests/test_verification.py

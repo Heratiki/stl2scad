@@ -208,6 +208,13 @@ Run Phase 1 backend baseline (polyhedron + parametric modes with `trimesh_manifo
 python scripts/run_perf_baseline.py --fixtures-dir tests/data/benchmark_fixtures --output artifacts/perf_phase1_trimesh.json --repeat 3 --recognition-backend trimesh_manifold
 ```
 
+Generate manifest-driven OpenSCAD feature fixtures used for ground-truth
+detector evaluation:
+
+```bash
+python scripts/generate_feature_fixtures.py
+```
+
 ## License
 
 This project is licensed under the MIT License. See `LICENSE` for details.

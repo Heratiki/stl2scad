@@ -20,6 +20,14 @@ from .cgal_backend import detect_primitive_with_cgal, is_cgal_backend_available
 
 SUPPORTED_RECOGNITION_BACKENDS = ("native", "trimesh_manifold", "cgal")
 
+REASON_BACKEND_UNAVAILABLE = "backend_unavailable"
+REASON_NO_CANDIDATE_NATIVE = "no_candidate_native"
+REASON_NO_COMPONENTS = "no_components_after_preprocess"
+REASON_MULTI_COMPONENT_OVERLAP = "multi_component_overlap"
+REASON_NO_COMPONENT_PRIMITIVE = "no_component_primitive_candidate"
+REASON_CGAL_NO_CANDIDATE = "cgal_no_candidate"
+REASON_CGAL_FALLBACK_FAILED = "cgal_fallback_failed"
+
 
 @dataclass
 class _ComponentMesh:
@@ -86,10 +94,28 @@ def detect_primitive(
     Returns an OpenSCAD snippet when a primitive is confidently recognized,
     otherwise returns None so the caller can use safe polyhedron fallback.
     """
+    primitive_scad, _ = detect_primitive_with_diagnostics(mesh, tolerance, backend)
+    return primitive_scad
+
+
+def detect_primitive_with_diagnostics(
+    mesh: stl.mesh.Mesh,
+    tolerance: float = 0.01,
+    backend: str = "native",
+) -> Tuple[Optional[str], str]:
+    """Detect primitive and return an optional fallback reason code.
+
+    Returns:
+        Tuple[Optional[str], str]: (scad_snippet, reason_code)
+        reason_code is empty when detection succeeds.
+    """
     selected_backend = normalize_recognition_backend(backend)
 
     if selected_backend == "native":
-        return _detect_primitive_native(mesh, tolerance)
+        primitive = _detect_primitive_native(mesh, tolerance)
+        if primitive:
+            return primitive, ""
+        return None, REASON_NO_CANDIDATE_NATIVE
 
     if selected_backend == "trimesh_manifold":
         if not _has_trimesh_manifold_dependencies():
@@ -97,8 +123,8 @@ def detect_primitive(
                 "Recognition backend 'trimesh_manifold' requested but optional "
                 "dependencies are unavailable; falling back to polyhedron output."
             )
-            return None
-        return _detect_primitive_trimesh_manifold(mesh, tolerance)
+            return None, REASON_BACKEND_UNAVAILABLE
+        return _detect_primitive_trimesh_manifold_with_reason(mesh, tolerance)
 
     if selected_backend == "cgal":
         if not _has_cgal_dependencies():
@@ -106,8 +132,8 @@ def detect_primitive(
                 "Recognition backend 'cgal' requested but optional dependencies "
                 "are unavailable; falling back to polyhedron output."
             )
-            return None
-        return _detect_primitive_cgal(mesh, tolerance)
+            return None, REASON_BACKEND_UNAVAILABLE
+        return _detect_primitive_cgal_with_reason(mesh, tolerance)
 
     # Defensive fallback if future edits bypass validation.
     raise ValueError(f"Unhandled recognition backend '{selected_backend}'")
@@ -150,27 +176,8 @@ def _detect_primitive_trimesh_manifold(
     - attempt primitive fitting (sphere, cone/frustum, cylinder, box)
     - emit union() for multi-component success
     """
-    components = _preprocess_components(mesh)
-    if not components:
-        return _detect_primitive_native(mesh, tolerance)
-
-    # Reject overlapping/nested component layouts (e.g. shell-like subtraction
-    # surfaces). Current Phase 1 assembly supports only disjoint unions.
-    if len(components) > 1 and _components_have_overlapping_bboxes(components):
-        return None
-
-    snippets: list[str] = []
-    for component in components:
-        candidate = _detect_component_primitive(component, tolerance)
-        if candidate is None:
-            return None
-        snippets.append(candidate.scad.strip())
-
-    if len(snippets) == 1:
-        return snippets[0] + "\n"
-
-    body = "\n".join(f"    {snippet}" for snippet in snippets)
-    return "union() {\n" + body + "\n}\n"
+    primitive, _ = _detect_primitive_trimesh_manifold_with_reason(mesh, tolerance)
+    return primitive
 
 
 def _detect_primitive_cgal(
@@ -181,14 +188,57 @@ def _detect_primitive_cgal(
     - call CGAL helper boundary when available
     - fallback to Phase 1 trimesh pipeline if CGAL backend declines detection
     """
+    primitive, _ = _detect_primitive_cgal_with_reason(mesh, tolerance)
+    return primitive
+
+
+def _detect_primitive_trimesh_manifold_with_reason(
+    mesh: stl.mesh.Mesh, tolerance: float = 0.01
+) -> Tuple[Optional[str], str]:
+    components = _preprocess_components(mesh)
+    if not components:
+        primitive = _detect_primitive_native(mesh, tolerance)
+        if primitive:
+            return primitive, ""
+        return None, REASON_NO_COMPONENTS
+
+    # Reject overlapping/nested component layouts (e.g. shell-like subtraction
+    # surfaces). Current Phase 1 assembly supports only disjoint unions.
+    if len(components) > 1 and _components_have_overlapping_bboxes(components):
+        return None, REASON_MULTI_COMPONENT_OVERLAP
+
+    snippets: list[str] = []
+    for component in components:
+        candidate = _detect_component_primitive(component, tolerance)
+        if candidate is None:
+            return None, REASON_NO_COMPONENT_PRIMITIVE
+        snippets.append(candidate.scad.strip())
+
+    if len(snippets) == 1:
+        return snippets[0] + "\n", ""
+
+    body = "\n".join(f"    {snippet}" for snippet in snippets)
+    return "union() {\n" + body + "\n}\n", ""
+
+
+def _detect_primitive_cgal_with_reason(
+    mesh: stl.mesh.Mesh, tolerance: float = 0.01
+) -> Tuple[Optional[str], str]:
     cgal_result = detect_primitive_with_cgal(mesh, tolerance=tolerance)
     if cgal_result and cgal_result.detected and cgal_result.scad:
-        return cgal_result.scad.strip() + "\n"
+        return cgal_result.scad.strip() + "\n", ""
 
     if _has_trimesh_manifold_dependencies():
-        return _detect_primitive_trimesh_manifold(mesh, tolerance)
+        primitive, reason = _detect_primitive_trimesh_manifold_with_reason(
+            mesh, tolerance
+        )
+        if primitive:
+            return primitive, ""
+        if reason:
+            return None, reason
+        return None, REASON_CGAL_FALLBACK_FAILED
 
-    return None
+    return None, REASON_CGAL_NO_CANDIDATE
 
 
 def _has_trimesh_manifold_dependencies() -> bool:

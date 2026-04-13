@@ -81,7 +81,11 @@ def run_openscad(
 
 from . import config
 from .cgal_backend import detect_primitive_with_cgal
-from .recognition import detect_primitive, normalize_recognition_backend
+from .recognition import (
+    detect_primitive_with_diagnostics,
+    get_available_recognition_backends,
+    normalize_recognition_backend,
+)
 
 
 def get_openscad_path() -> Optional[str]:
@@ -395,6 +399,27 @@ def _infer_primitive_type_from_scad(scad_code: str) -> Optional[str]:
     return None
 
 
+def _should_attempt_parametric(
+    stl_mesh: stl.mesh.Mesh,
+    selected_backend: str,
+) -> Tuple[bool, str]:
+    """Decide whether parametric detection is likely to be worth attempting."""
+    available = set(get_available_recognition_backends())
+    if selected_backend not in available:
+        return False, "auto_gate_backend_unavailable"
+
+    triangle_count = int(len(stl_mesh.vectors))
+    if selected_backend == "native" and triangle_count > 5000:
+        return False, "auto_gate_native_large_mesh"
+
+    # Very high triangle meshes in current phase almost always end up in
+    # polyhedron fallback while paying additional recognition overhead.
+    if triangle_count > 100000:
+        return False, "auto_gate_high_triangle_count"
+
+    return True, ""
+
+
 def stl2scad(
     input_file: str,
     output_file: str,
@@ -480,8 +505,17 @@ def stl2scad(
     primitive_scad = None
     primitive_type: Optional[str] = None
     backend_used: Optional[str] = None
+    fallback_reason = ""
     if parametric:
-        if selected_backend == "cgal":
+        should_attempt, gate_reason = _should_attempt_parametric(
+            stl_mesh, selected_backend
+        )
+        metadata["recognition_attempted"] = "true" if should_attempt else "false"
+        if not should_attempt:
+            fallback_reason = gate_reason
+            metadata["recognition_fallback_reason"] = fallback_reason
+            metadata["recognition_backend_used"] = "polyhedron_fallback"
+        elif selected_backend == "cgal":
             cgal_result = detect_primitive_with_cgal(stl_mesh, tolerance=tolerance)
             if cgal_result and cgal_result.detected and cgal_result.scad:
                 primitive_scad = cgal_result.scad.strip() + "\n"
@@ -494,15 +528,29 @@ def stl2scad(
                         cgal_result.diagnostics
                     )
             else:
-                primitive_scad = detect_primitive(stl_mesh, backend="trimesh_manifold")
+                primitive_scad, fallback_reason = detect_primitive_with_diagnostics(
+                    stl_mesh, backend="trimesh_manifold"
+                )
                 if primitive_scad:
                     backend_used = "trimesh_manifold_fallback"
                     primitive_type = _infer_primitive_type_from_scad(primitive_scad)
+                else:
+                    metadata["recognition_backend_used"] = "polyhedron_fallback"
+                    metadata["recognition_fallback_reason"] = (
+                        fallback_reason or "cgal_declined_detection"
+                    )
         else:
-            primitive_scad = detect_primitive(stl_mesh, backend=selected_backend)
+            primitive_scad, fallback_reason = detect_primitive_with_diagnostics(
+                stl_mesh, backend=selected_backend
+            )
             if primitive_scad:
                 backend_used = selected_backend
                 primitive_type = _infer_primitive_type_from_scad(primitive_scad)
+            else:
+                metadata["recognition_backend_used"] = "polyhedron_fallback"
+                metadata["recognition_fallback_reason"] = (
+                    fallback_reason or "no_primitive_match"
+                )
 
     if primitive_scad:
         if backend_used:

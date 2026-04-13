@@ -264,6 +264,11 @@ def _detect_primitive_cgal_with_reason(
         return cgal_result.scad.strip() + "\n", ""
 
     if _has_trimesh_manifold_dependencies():
+        # Compatibility path: honor the direct fallback detector first.
+        primitive = _detect_primitive_trimesh_manifold(mesh, tolerance)
+        if primitive:
+            return primitive.rstrip() + "\n", ""
+
         primitive, reason = _detect_primitive_trimesh_manifold_with_reason(
             mesh, tolerance
         )

@@ -18,6 +18,8 @@ from stl.mesh import Mesh
 
 from .feature_inventory import _bbox, _normalized_normals, _triangle_areas
 
+STL_SUFFIXES = {".stl"}
+
 
 def build_feature_graph_for_stl(
     stl_file: Union[Path, str],
@@ -83,8 +85,12 @@ def build_feature_graph_for_folder(
     if not input_path.is_dir():
         raise NotADirectoryError(f"Input path is not a directory: {input_path}")
 
-    pattern = "**/*.stl" if recursive else "*.stl"
-    files = sorted(path for path in input_path.glob(pattern) if path.is_file())
+    pattern = "**/*" if recursive else "*"
+    files = sorted(
+        path
+        for path in input_path.glob(pattern)
+        if path.is_file() and path.suffix.lower() in STL_SUFFIXES
+    )
     if max_files is not None:
         files = files[:max_files]
 

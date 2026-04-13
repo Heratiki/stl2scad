@@ -46,6 +46,24 @@ def test_feature_graph_folder_report_writes_summary(test_data_dir, test_output_d
     assert report["summary"]["feature_counts"]
 
 
+def test_feature_graph_folder_includes_uppercase_stl_extension(test_output_dir):
+    upper_file = test_output_dir / "plate_upper.STL"
+    _create_plate_with_holes(upper_file)
+
+    output_json = test_output_dir / "feature_graph_uppercase.json"
+    report = build_feature_graph_for_folder(
+        test_output_dir,
+        output_json,
+        recursive=False,
+        workers=1,
+    )
+
+    graph_files = {graph["source_file"] for graph in report["graphs"]}
+    assert "plate_upper.STL" in graph_files
+    assert report["summary"]["file_count"] == 1
+    assert report["summary"]["error_count"] == 0
+
+
 def test_feature_graph_extracts_repeated_through_holes(test_output_dir):
     stl_file = test_output_dir / "plate_with_two_holes.stl"
     _create_plate_with_holes(stl_file)

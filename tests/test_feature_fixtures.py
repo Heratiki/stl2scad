@@ -57,7 +57,6 @@ def test_feature_fixture_validation_rejects_out_of_bounds_hole():
         validate_feature_fixture_spec(invalid_fixture)
 
 
-@pytest.mark.openscad
 def test_feature_fixture_round_trip_detection(test_data_dir, test_output_dir):
     manifest_path = test_data_dir / "feature_fixtures_manifest.json"
     fixtures = load_feature_fixture_manifest(manifest_path)

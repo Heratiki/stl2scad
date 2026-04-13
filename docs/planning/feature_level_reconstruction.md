@@ -59,10 +59,68 @@ For a single STL with a high-confidence plate/hole graph, the script can also wr
 python scripts/build_feature_graph.py input.stl --output artifacts/input_feature_graph.json --scad-preview artifacts/input_feature_preview.scad
 ```
 
+## Current State Assessment (2026-04-13)
+
+Three interconnected systems are now in place: feature inventory, feature graph, and manifest-driven feature fixtures. All 26 related tests pass. CLI commands `feature-inventory` and `feature-graph` are wired up with parallel worker support and progress reporting.
+
+### Feature Fixtures (`stl2scad/core/feature_fixtures.py`) — High value
+
+Manifest-driven system that generates known-geometry OpenSCAD plates (with holes, slots, linear/grid patterns), renders them to STL via OpenSCAD, then runs the feature graph detector on the result to verify it finds exactly what was defined. This is a closed-loop ground-truth validation pipeline.
+
+**Strengths:**
+
+- Thorough input validation — bounds checking, duplicate detection, geometry-in-plate constraints
+- Round-trip test (`test_feature_fixtures.py::test_feature_fixture_round_trip_detection`) is the real payoff: manifest -> SCAD -> STL -> feature graph -> assert counts match. Catches regressions in the detector without relying on hand-labeled data.
+- 5 fixture cases: plain plate, single hole, 2-hole linear pattern, 2x3 grid, slot
+
+**Limitations:**
+
+- Only supports `plate` fixture type — no boxes, cylinders, or freeform composites
+- 5 test cases are a good start but thin — no edge cases like very small holes, oblique slots, mixed patterns on one plate, or tolerance-boundary geometry
+- `expected_detection` counts are manually authored, so they're only as good as the author's understanding of what the detector should find
+
+### Feature Inventory (`stl2scad/core/feature_inventory.py`) — Moderate value
+
+Batch-analyzes STL folders and produces JSON reports with geometry signals (bounding box, normal axis profile, symmetry scores, coordinate spacing regularity) and mechanical-vs-organic classification.
+
+**Strengths:**
+
+- Progress callback, parallel workers, clean report structure
+- Candidate feature heuristics (axis-aligned planes, mirror symmetry, regular spacing) are reasonable first-pass signals
+- Useful for triaging large STL collections before reconstruction
+
+**Limitations:**
+
+- Mechanical/organic scoring is coarse (weighted sum of 3-4 signals) — works for obvious cases, struggles with ambiguous models
+- Classification is per-file, not per-region — a model with both mechanical and organic features gets one label
+- No integration yet with the feature graph or reconstruction pipeline — informational only
+
+### Feature Graph (`stl2scad/core/feature_graph.py`) — High value
+
+Detects axis-aligned boxes, through-holes, slots, and repeated hole patterns (linear + grid) from raw STL geometry, then emits a SCAD preview.
+
+**Strengths:**
+
+- Conservative by design (0.70 confidence threshold) — avoids false positives
+- Pattern detection (linear arrays, grids) is genuinely useful for mechanical parts
+- SCAD preview emission with parameterized variables produces editable output
+
+**Limitations:**
+
+- Only handles axis-aligned geometry — rotated features are invisible
+- Pattern detection depends on hole centers being near-exactly spaced; real-world STLs from meshed CAD may have enough floating-point noise to break it
+
 ## Next Milestones
-1. Run the inventory against the real STL collection and review aggregate signals.
-2. Tighten hole/slot detectors against real files and add confidence thresholds for SCAD emission readiness.
-3. Add targeted detectors for the most common candidate feature families.
-4. Generate an intermediate feature graph before SCAD emission.
-5. Emit feature-based SCAD templates only when confidence is high; otherwise fall back.
-6. Add optional user-assisted labeling for ambiguous features.
+
+### Immediate priorities
+
+1. **Expand fixture variety** — the 5 current plate cases don't stress the detector much. Add mixed-feature plates (holes + slots on one plate), near-boundary holes, varying plate aspect ratios, and very small/large hole diameters.
+2. **Non-plate fixture types** — extend beyond plates to boxes-with-holes, L-brackets, etc. to exercise the feature graph's box detection path.
+3. **Connect inventory -> graph** — the inventory and feature graph are currently independent pipelines. Have the inventory pre-filter files and feed likely-mechanical candidates into the feature graph to complete the workflow.
+
+### Ongoing
+
+1. Tighten hole/slot detectors against real files and add confidence thresholds for SCAD emission readiness.
+2. Add targeted detectors for the most common candidate feature families.
+3. Emit feature-based SCAD templates only when confidence is high; otherwise fall back.
+4. Add optional user-assisted labeling for ambiguous features.

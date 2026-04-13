@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
+import subprocess
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -75,6 +77,29 @@ def _build_parser() -> argparse.ArgumentParser:
         default=2.0,
         help="Bounding-box tolerance percent.",
     )
+    parser.add_argument(
+        "--max-output-bytes",
+        type=int,
+        default=1_000_000_000,
+        help="Maximum total bytes allowed under output-dir during this run (default: 1GB).",
+    )
+    parser.add_argument(
+        "--max-scad-bytes-per-file",
+        type=int,
+        default=100_000_000,
+        help="Maximum allowed SCAD size per generated file (default: 100MB).",
+    )
+    parser.add_argument(
+        "--min-free-bytes",
+        type=int,
+        default=2_000_000_000,
+        help="Minimum free disk bytes required before and during run (default: 2GB).",
+    )
+    parser.add_argument(
+        "--cleanup-generated-scad",
+        action="store_true",
+        help="Delete generated .scad files after metrics are collected to reduce disk usage.",
+    )
     return parser
 
 
@@ -117,13 +142,70 @@ def _load_triangles(stl_path: Path) -> int:
     return int(len(mesh.vectors))
 
 
+def _dir_size_bytes(path: Path) -> int:
+    total = 0
+    for child in path.rglob("*"):
+        if child.is_file():
+            total += child.stat().st_size
+    return total
+
+
+def _free_bytes(path: Path) -> int:
+    usage = os.statvfs(str(path))
+    return int(usage.f_bavail * usage.f_frsize)
+
+
+def _git_state(repo_root: Path) -> dict[str, Any]:
+    commit = "unknown"
+    dirty = None
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=3,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            commit = proc.stdout.strip()
+    except Exception:
+        pass
+
+    try:
+        proc = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=3,
+        )
+        if proc.returncode == 0:
+            dirty = bool(proc.stdout.strip())
+    except Exception:
+        pass
+
+    return {
+        "git_commit": commit,
+        "git_dirty": dirty,
+    }
+
+
 def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
+    repo_root = Path(__file__).resolve().parents[1]
 
     models_dir = Path(args.models_dir)
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    if _free_bytes(output_dir) < args.min_free_bytes:
+        raise RuntimeError(
+            "Insufficient free disk space before evaluation run. "
+            f"Need >= {args.min_free_bytes} bytes free."
+        )
 
     modes = _parse_modes(args.modes)
     stl_files = sorted(models_dir.glob("*.stl"))
@@ -137,9 +219,13 @@ def main() -> int:
     }
 
     results: list[dict[str, Any]] = []
+    output_bytes_before = _dir_size_bytes(output_dir)
+    output_budget_exceeded = False
     for stl_path in stl_files:
         tri_count = _load_triangles(stl_path)
         for mode in modes:
+            if output_budget_exceeded:
+                break
             is_parametric = mode == "parametric"
             mode_suffix = "parametric" if is_parametric else "poly"
             scad_path = output_dir / f"{stl_path.stem}.{mode_suffix}.scad"
@@ -153,6 +239,12 @@ def main() -> int:
             }
 
             try:
+                if _free_bytes(output_dir) < args.min_free_bytes:
+                    raise RuntimeError(
+                        "free_space_below_threshold: "
+                        f"min_free_bytes={args.min_free_bytes}"
+                    )
+
                 t0 = perf_counter()
                 stats = stl2scad(
                     str(stl_path),
@@ -162,6 +254,21 @@ def main() -> int:
                     compute_backend=args.compute_backend,
                 )
                 elapsed = perf_counter() - t0
+
+                scad_size = scad_path.stat().st_size
+                if scad_size > args.max_scad_bytes_per_file:
+                    raise RuntimeError(
+                        "scad_file_too_large: "
+                        f"{scad_size} > {args.max_scad_bytes_per_file}"
+                    )
+
+                current_output_bytes = _dir_size_bytes(output_dir)
+                if current_output_bytes - output_bytes_before > args.max_output_bytes:
+                    output_budget_exceeded = True
+                    raise RuntimeError(
+                        "output_budget_exceeded: "
+                        f"{current_output_bytes - output_bytes_before} > {args.max_output_bytes}"
+                    )
 
                 verification = verify_existing_conversion(
                     stl_path,
@@ -199,10 +306,13 @@ def main() -> int:
                         "recognition_backend_used": stats.metadata.get(
                             "recognition_backend_used", ""
                         ),
-                        "scad_size_bytes": scad_path.stat().st_size,
+                        "scad_size_bytes": scad_size,
                         "error": "",
                     }
                 )
+
+                if args.cleanup_generated_scad and scad_path.exists():
+                    scad_path.unlink()
             except Exception as exc:  # pragma: no cover - operational reporting path
                 row.update(
                     {
@@ -224,6 +334,8 @@ def main() -> int:
                 )
 
             results.append(row)
+        if output_budget_exceeded:
+            break
 
     summary = {
         "models_dir": str(models_dir),
@@ -231,12 +343,19 @@ def main() -> int:
         "backend": args.backend,
         "compute_backend": args.compute_backend,
         "modes": modes,
+        "max_output_bytes": args.max_output_bytes,
+        "max_scad_bytes_per_file": args.max_scad_bytes_per_file,
+        "min_free_bytes": args.min_free_bytes,
+        "cleanup_generated_scad": bool(args.cleanup_generated_scad),
+        **_git_state(repo_root),
         "count_total": len(results),
         "count_errors": sum(1 for r in results if r.get("error")),
         "count_verify_pass": sum(1 for r in results if r.get("verify_pass") is True),
         "count_parametric_fallback": sum(
             1 for r in results if r.get("used_fallback") is True
         ),
+        "output_bytes_before": output_bytes_before,
+        "output_bytes_after": _dir_size_bytes(output_dir),
     }
 
     json_path = output_dir / "model_eval_report.json"

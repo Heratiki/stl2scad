@@ -57,6 +57,55 @@ def test_feature_fixture_validation_rejects_out_of_bounds_hole():
         validate_feature_fixture_spec(invalid_fixture)
 
 
+def test_feature_fixture_generation_supports_box_and_l_bracket():
+    box_fixture = validate_feature_fixture_spec(
+        {
+            "name": "box_plain",
+            "fixture_type": "box",
+            "output_filename": "box_plain.scad",
+            "box_size": [18.0, 12.0, 10.0],
+            "expected_detection": {
+                "plate_like_solid": False,
+                "box_like_solid": True,
+                "hole_count": 0,
+                "slot_count": 0,
+                "linear_pattern_count": 0,
+                "grid_pattern_count": 0,
+            },
+        }
+    )
+    bracket_fixture = validate_feature_fixture_spec(
+        {
+            "name": "l_bracket_plain",
+            "fixture_type": "l_bracket",
+            "output_filename": "l_bracket_plain.scad",
+            "bracket_size": [24.0, 12.0, 20.0],
+            "leg_thickness": 4.0,
+            "expected_detection": {
+                "plate_like_solid": False,
+                "box_like_solid": False,
+                "hole_count": 0,
+                "slot_count": 0,
+                "linear_pattern_count": 0,
+                "grid_pattern_count": 0,
+            },
+        }
+    )
+
+    box_scad = generate_feature_fixture_scad(box_fixture)
+    bracket_scad = generate_feature_fixture_scad(bracket_fixture)
+
+    assert "fixture_type: box" in box_scad
+    assert "difference()" in box_scad
+    assert "cube(box_size)" in box_scad
+    assert iter_expected_feature_counts(box_fixture)["box_like_solid"] == 1
+
+    assert "fixture_type: l_bracket" in bracket_scad
+    assert "union()" in bracket_scad
+    assert "leg_thickness = 4.000000;" in bracket_scad
+    assert iter_expected_feature_counts(bracket_fixture)["box_like_solid"] == 0
+
+
 def test_feature_fixture_round_trip_detection(test_data_dir, test_output_dir):
     manifest_path = test_data_dir / "feature_fixtures_manifest.json"
     fixtures = load_feature_fixture_manifest(manifest_path)

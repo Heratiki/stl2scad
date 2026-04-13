@@ -21,6 +21,7 @@ from stl2scad.core.feature_graph import (
     emit_feature_graph_scad_preview,
 )
 from stl2scad.core.feature_inventory import InventoryConfig, analyze_stl_folder
+from stl2scad.core.feature_inventory import build_feature_graphs_from_inventory
 from stl2scad.core.recognition import SUPPORTED_RECOGNITION_BACKENDS
 from stl2scad.core.verification import (
     generate_comparison_visualization,
@@ -305,6 +306,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     feature_graph_parser.set_defaults(handler=feature_graph_command)
 
+    feature_graph_inventory_parser = subparsers.add_parser(
+        "feature-graph-from-inventory",
+        help="Build feature graphs only for mechanical candidates from an inventory report",
+    )
+    feature_graph_inventory_parser.add_argument(
+        "inventory_json",
+        help="Path to a feature inventory JSON report",
+    )
+    feature_graph_inventory_parser.add_argument(
+        "--output",
+        default="artifacts/feature_graph_from_inventory.json",
+        help="Path to JSON feature-graph output",
+    )
+    feature_graph_inventory_parser.add_argument(
+        "--workers",
+        type=_non_negative_int,
+        default=0,
+        help="Parallel workers for graph building. Use 0 for auto, 1 for serial",
+    )
+    feature_graph_inventory_parser.set_defaults(
+        handler=feature_graph_from_inventory_command
+    )
+
     return parser
 
 
@@ -543,6 +567,49 @@ def feature_graph_command(args: argparse.Namespace) -> int:
                 with open(scad_path, "w", encoding="utf-8") as scad_handle:
                     scad_handle.write(scad)
                 print(f"SCAD preview written to: {scad_path}")
+        return 0
+    except FileNotFoundError as exc:
+        print(f"Error: File not found - {str(exc)}", file=sys.stderr)
+        return 1
+    except NotADirectoryError as exc:
+        print(f"Error: Not a directory - {str(exc)}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"Error: {str(exc)}", file=sys.stderr)
+        return 1
+
+
+def feature_graph_from_inventory_command(args: argparse.Namespace) -> int:
+    """Execute the feature-graph-from-inventory command."""
+    try:
+        workers = _resolve_workers(args.workers)
+
+        def _progress(done: int, total: int, path: str) -> None:
+            print(
+                f"\r[{done}/{total}] {Path(path).name}",
+                end="",
+                flush=True,
+                file=sys.stderr,
+            )
+            if done == total:
+                print(file=sys.stderr)
+
+        report = build_feature_graphs_from_inventory(
+            inventory=Path(args.inventory_json),
+            output_json=Path(args.output),
+            workers=workers,
+            progress_callback=_progress,
+        )
+        summary = report["summary"]
+        selection = report["selection"]
+        print(f"Feature graph report written to: {args.output}")
+        print(
+            "Mechanical candidates processed: "
+            f"{selection['mechanical_candidate_count']}"
+        )
+        print(f"Workers: {workers}")
+        print(f"Errors: {summary['error_count']}")
+        print(f"Features: {summary['feature_counts']}")
         return 0
     except FileNotFoundError as exc:
         print(f"Error: File not found - {str(exc)}", file=sys.stderr)

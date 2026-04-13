@@ -8,6 +8,9 @@ import json
 from pathlib import Path
 from typing import Any, Iterable, Optional, Union
 
+_SUPPORTED_FIXTURE_TYPES = {"plate", "box", "l_bracket"}
+_AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
+
 
 def load_feature_fixture_manifest(
     manifest_path: Union[str, Path],
@@ -37,9 +40,10 @@ def validate_feature_fixture_spec(raw_fixture: dict[str, Any]) -> dict[str, Any]
         raise ValueError("Feature fixture entries must be objects")
 
     fixture_type = str(raw_fixture.get("fixture_type", "")).strip()
-    if fixture_type != "plate":
+    if fixture_type not in _SUPPORTED_FIXTURE_TYPES:
+        supported = ", ".join(sorted(_SUPPORTED_FIXTURE_TYPES))
         raise ValueError(
-            f"Unsupported feature fixture type '{fixture_type}'. Only 'plate' is supported"
+            f"Unsupported feature fixture type '{fixture_type}'. Supported types: {supported}"
         )
 
     name = str(raw_fixture.get("name", "")).strip()
@@ -50,39 +54,123 @@ def validate_feature_fixture_spec(raw_fixture: dict[str, Any]) -> dict[str, Any]
     if not output_filename.endswith(".scad"):
         raise ValueError(f"Feature fixture '{name}' must define a .scad output_filename")
 
-    plate_size = _as_vector3(raw_fixture.get("plate_size"), f"{name}.plate_size")
-    _require_positive(plate_size, f"{name}.plate_size")
-
     spec: dict[str, Any] = {
         "name": name,
         "fixture_type": fixture_type,
         "description": str(raw_fixture.get("description", "")).strip(),
         "output_filename": output_filename,
-        "plate_size": plate_size,
-        "holes": [],
-        "linear_hole_patterns": [],
-        "grid_hole_patterns": [],
-        "slots": [],
         "expected_detection": _validate_expected_detection(
             raw_fixture.get("expected_detection"), name
         ),
     }
 
+    geometry = _validate_geometry_by_fixture_type(raw_fixture, name, fixture_type)
+    spec.update(geometry)
+
+    expected = spec["expected_detection"]
+    explicit_holes = int(spec.get("explicit_hole_count", 0))
+    explicit_slots = int(spec.get("explicit_slot_count", 0))
+    if expected["hole_count"] > explicit_holes:
+        raise ValueError(
+            f"Feature fixture '{name}' expects {expected['hole_count']} holes but only defines {explicit_holes}"
+        )
+    if expected["slot_count"] > explicit_slots:
+        raise ValueError(
+            f"Feature fixture '{name}' expects {expected['slot_count']} slots but only defines {explicit_slots}"
+        )
+
+    return spec
+
+
+def generate_feature_fixture_scad(fixture: dict[str, Any]) -> str:
+    """Generate OpenSCAD source for one validated fixture."""
+    normalized = validate_feature_fixture_spec(fixture)
+    fixture_type = normalized["fixture_type"]
+    if fixture_type == "plate":
+        return _generate_plate_fixture_scad(normalized)
+    if fixture_type == "box":
+        return _generate_box_fixture_scad(normalized)
+    if fixture_type == "l_bracket":
+        return _generate_l_bracket_fixture_scad(normalized)
+    raise ValueError(f"Unsupported feature fixture type '{fixture_type}'")
+
+
+def write_feature_fixture_library(
+    manifest_path: Union[str, Path],
+    output_dir: Union[str, Path],
+) -> list[Path]:
+    """Generate all SCAD fixtures from a manifest."""
+    fixtures = load_feature_fixture_manifest(manifest_path)
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    written: list[Path] = []
+    for fixture in fixtures:
+        target = output_path / fixture["output_filename"]
+        target.write_text(generate_feature_fixture_scad(fixture), encoding="utf-8")
+        written.append(target)
+    return written
+
+
+def iter_expected_feature_counts(
+    fixture: dict[str, Any],
+) -> dict[str, int]:
+    """Return expected detector counts for a validated fixture."""
+    expected = fixture["expected_detection"]
+    return {
+        "plate_like_solid": 1 if expected["plate_like_solid"] else 0,
+        "box_like_solid": 1 if expected["box_like_solid"] else 0,
+        "hole_like_cutout": expected["hole_count"],
+        "slot_like_cutout": expected["slot_count"],
+        "linear_hole_pattern": expected["linear_pattern_count"],
+        "grid_hole_pattern": expected["grid_pattern_count"],
+    }
+
+
+def _validate_geometry_by_fixture_type(
+    raw_fixture: dict[str, Any],
+    fixture_name: str,
+    fixture_type: str,
+) -> dict[str, Any]:
+    if fixture_type == "plate":
+        return _validate_plate_fixture_geometry(raw_fixture, fixture_name)
+    if fixture_type == "box":
+        return _validate_box_fixture_geometry(raw_fixture, fixture_name)
+    if fixture_type == "l_bracket":
+        return _validate_l_bracket_fixture_geometry(raw_fixture, fixture_name)
+    raise ValueError(f"Unsupported feature fixture type '{fixture_type}'")
+
+
+def _validate_plate_fixture_geometry(
+    raw_fixture: dict[str, Any],
+    fixture_name: str,
+) -> dict[str, Any]:
+    plate_size = _as_vector3(raw_fixture.get("plate_size"), f"{fixture_name}.plate_size")
+    _require_positive(plate_size, f"{fixture_name}.plate_size")
+
+    spec: dict[str, Any] = {
+        "plate_size": plate_size,
+        "holes": [],
+        "linear_hole_patterns": [],
+        "grid_hole_patterns": [],
+        "slots": [],
+    }
+
     for index, raw_hole in enumerate(raw_fixture.get("holes", [])):
-        hole = _validate_hole(raw_hole, name, index, plate_size)
-        spec["holes"].append(hole)
+        spec["holes"].append(_validate_plate_hole(raw_hole, fixture_name, index, plate_size))
 
     for index, raw_pattern in enumerate(raw_fixture.get("linear_hole_patterns", [])):
-        pattern = _validate_linear_pattern(raw_pattern, name, index, plate_size)
-        spec["linear_hole_patterns"].append(pattern)
+        spec["linear_hole_patterns"].append(
+            _validate_linear_pattern(raw_pattern, fixture_name, index, plate_size)
+        )
 
     for index, raw_pattern in enumerate(raw_fixture.get("grid_hole_patterns", [])):
-        pattern = _validate_grid_pattern(raw_pattern, name, index, plate_size)
-        spec["grid_hole_patterns"].append(pattern)
+        spec["grid_hole_patterns"].append(
+            _validate_grid_pattern(raw_pattern, fixture_name, index, plate_size)
+        )
 
     for index, raw_slot in enumerate(raw_fixture.get("slots", [])):
-        slot = _validate_slot(raw_slot, name, index, plate_size)
-        spec["slots"].append(slot)
+        spec["slots"].append(_validate_slot(raw_slot, fixture_name, index, plate_size))
 
     explicit_holes = len(spec["holes"])
     explicit_holes += sum(
@@ -94,54 +182,91 @@ def validate_feature_fixture_spec(raw_fixture: dict[str, Any]) -> dict[str, Any]
     )
     spec["explicit_hole_count"] = explicit_holes
     spec["explicit_slot_count"] = len(spec["slots"])
-
-    expected = spec["expected_detection"]
-    if expected["hole_count"] > explicit_holes:
-        raise ValueError(
-            f"Feature fixture '{name}' expects {expected['hole_count']} holes but only defines {explicit_holes}"
-        )
-    if expected["slot_count"] > len(spec["slots"]):
-        raise ValueError(
-            f"Feature fixture '{name}' expects {expected['slot_count']} slots but only defines {len(spec['slots'])}"
-        )
-
     return spec
 
 
-def generate_feature_fixture_scad(fixture: dict[str, Any]) -> str:
-    """Generate OpenSCAD source for one validated fixture."""
-    validate_feature_fixture_spec(fixture)
+def _validate_box_fixture_geometry(
+    raw_fixture: dict[str, Any],
+    fixture_name: str,
+) -> dict[str, Any]:
+    box_size = _as_vector3(raw_fixture.get("box_size"), f"{fixture_name}.box_size")
+    _require_positive(box_size, f"{fixture_name}.box_size")
+
+    spec: dict[str, Any] = {
+        "box_size": box_size,
+        "holes": [],
+        "cutouts": [],
+        "explicit_hole_count": 0,
+        "explicit_slot_count": 0,
+    }
+
+    for index, raw_hole in enumerate(raw_fixture.get("holes", [])):
+        spec["holes"].append(_validate_box_hole(raw_hole, fixture_name, index, box_size))
+
+    for index, raw_cutout in enumerate(raw_fixture.get("cutouts", [])):
+        spec["cutouts"].append(
+            _validate_box_cutout(raw_cutout, fixture_name, index, box_size)
+        )
+
+    spec["explicit_hole_count"] = len(spec["holes"])
+    return spec
+
+
+def _validate_l_bracket_fixture_geometry(
+    raw_fixture: dict[str, Any],
+    fixture_name: str,
+) -> dict[str, Any]:
+    bracket_size = _as_vector3(
+        raw_fixture.get("bracket_size"), f"{fixture_name}.bracket_size"
+    )
+    _require_positive(bracket_size, f"{fixture_name}.bracket_size")
+    leg_thickness = _as_positive_float(
+        raw_fixture.get("leg_thickness"),
+        f"{fixture_name}.leg_thickness",
+    )
+    max_thickness = min(bracket_size[0], bracket_size[2])
+    if leg_thickness >= max_thickness:
+        raise ValueError(
+            f"{fixture_name}.leg_thickness must be smaller than bracket width and height"
+        )
+
+    return {
+        "bracket_size": bracket_size,
+        "leg_thickness": leg_thickness,
+        "explicit_hole_count": 0,
+        "explicit_slot_count": 0,
+    }
+
+
+def _generate_plate_fixture_scad(fixture: dict[str, Any]) -> str:
     plate_size = fixture["plate_size"]
     half_x = plate_size[0] * 0.5
     half_y = plate_size[1] * 0.5
     thickness = plate_size[2]
-
-    lines = [
-        "// Auto-generated from tests/data/feature_fixtures_manifest.json",
-        f"// fixture: {fixture['name']}",
-        f"// description: {fixture.get('description', '')}",
-        "$fn = 96;",
-        "",
-        f"plate_size = {_format_vector(plate_size)};",
-        f"plate_origin = {_format_vector([-half_x, -half_y, 0.0])};",
-        "",
-        "module through_hole(center, diameter, height) {",
-        "  translate(center) cylinder(d=diameter, h=height, center=false);",
-        "}",
-        "",
-        "module through_slot(start, end, width, height) {",
-        "  hull() {",
-        "    through_hole(start, width, height);",
-        "    through_hole(end, width, height);",
-        "  }",
-        "}",
-        "",
-        "difference() {",
-        "  translate(plate_origin) cube(plate_size);",
-    ]
-
     cut_height = thickness + 0.2
     z_offset = -0.1
+
+    lines = _fixture_header_lines(fixture)
+    lines.extend(
+        [
+            f"plate_size = {_format_vector(plate_size)};",
+            f"plate_origin = {_format_vector([-half_x, -half_y, 0.0])};",
+            "",
+            "module through_hole(center, diameter, height) {",
+            "  translate(center) cylinder(d=diameter, h=height, center=false);",
+            "}",
+            "",
+            "module through_slot(start, end, width, height) {",
+            "  hull() {",
+            "    through_hole(start, width, height);",
+            "    through_hole(end, width, height);",
+            "  }",
+            "}",
+            "",
+            "difference() {",
+            "  translate(plate_origin) cube(plate_size);",
+        ]
+    )
 
     for index, hole in enumerate(fixture["holes"]):
         center = [hole["center"][0], hole["center"][1], z_offset]
@@ -185,35 +310,97 @@ def generate_feature_fixture_scad(fixture: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def write_feature_fixture_library(
-    manifest_path: Union[str, Path],
-    output_dir: Union[str, Path],
-) -> list[Path]:
-    """Generate all SCAD fixtures from a manifest."""
-    fixtures = load_feature_fixture_manifest(manifest_path)
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    written: list[Path] = []
-    for fixture in fixtures:
-        target = output_path / fixture["output_filename"]
-        target.write_text(generate_feature_fixture_scad(fixture), encoding="utf-8")
-        written.append(target)
-    return written
-
-
-def iter_expected_feature_counts(
-    fixture: dict[str, Any],
-) -> dict[str, int]:
-    """Return expected detector counts for a validated fixture."""
-    expected = fixture["expected_detection"]
-    return {
-        "plate_like_solid": 1 if expected["plate_like_solid"] else 0,
-        "hole_like_cutout": expected["hole_count"],
-        "slot_like_cutout": expected["slot_count"],
-        "linear_hole_pattern": expected["linear_pattern_count"],
-        "grid_hole_pattern": expected["grid_pattern_count"],
+def _generate_box_fixture_scad(fixture: dict[str, Any]) -> str:
+    box_size = fixture["box_size"]
+    half_x = box_size[0] * 0.5
+    half_y = box_size[1] * 0.5
+    half_z = box_size[2] * 0.5
+    cut_lengths = {
+        "x": box_size[0] + 0.2,
+        "y": box_size[1] + 0.2,
+        "z": box_size[2] + 0.2,
     }
+
+    lines = _fixture_header_lines(fixture)
+    lines.extend(
+        [
+            f"box_size = {_format_vector(box_size)};",
+            f"box_origin = {_format_vector([-half_x, -half_y, -half_z])};",
+            "",
+            "module through_hole_x(center, diameter, length) {",
+            "  translate([box_origin[0] - 0.1, center[1], center[2]])",
+            "    rotate(a=90, v=[0, 1, 0]) cylinder(d=diameter, h=length, center=false);",
+            "}",
+            "",
+            "module through_hole_y(center, diameter, length) {",
+            "  translate([center[0], box_origin[1] - 0.1, center[2]])",
+            "    rotate(a=90, v=[-1, 0, 0]) cylinder(d=diameter, h=length, center=false);",
+            "}",
+            "",
+            "module through_hole_z(center, diameter, length) {",
+            "  translate([center[0], center[1], box_origin[2] - 0.1])",
+            "    cylinder(d=diameter, h=length, center=false);",
+            "}",
+            "",
+            "difference() {",
+            "  translate(box_origin) cube(box_size);",
+        ]
+    )
+
+    for index, hole in enumerate(fixture["holes"]):
+        center = _format_vector(hole["center"])
+        length = cut_lengths[hole["axis"]]
+        lines.append(
+            f"  through_hole_{hole['axis']}({center}, {hole['diameter']:.6f}, {length:.6f});  // hole_{index}"
+        )
+
+    for index, cutout in enumerate(fixture["cutouts"]):
+        cutout_origin = [
+            cutout["center"][0] - cutout["size"][0] * 0.5,
+            cutout["center"][1] - cutout["size"][1] * 0.5,
+            cutout["center"][2] - cutout["size"][2] * 0.5,
+        ]
+        lines.append(
+            f"  translate({_format_vector(cutout_origin)}) cube({_format_vector(cutout['size'])});  // cutout_{index}"
+        )
+
+    lines.extend(["}", ""])
+    return "\n".join(lines)
+
+
+def _generate_l_bracket_fixture_scad(fixture: dict[str, Any]) -> str:
+    bracket_size = fixture["bracket_size"]
+    leg_thickness = fixture["leg_thickness"]
+    half_x = bracket_size[0] * 0.5
+    half_y = bracket_size[1] * 0.5
+    half_z = bracket_size[2] * 0.5
+
+    lines = _fixture_header_lines(fixture)
+    lines.extend(
+        [
+            f"bracket_size = {_format_vector(bracket_size)};",
+            f"leg_thickness = {leg_thickness:.6f};",
+            f"bracket_origin = {_format_vector([-half_x, -half_y, -half_z])};",
+            "",
+            "union() {",
+            "  translate(bracket_origin) cube([bracket_size[0], bracket_size[1], leg_thickness]);",
+            "  translate(bracket_origin) cube([leg_thickness, bracket_size[1], bracket_size[2]]);",
+            "}",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _fixture_header_lines(fixture: dict[str, Any]) -> list[str]:
+    return [
+        "// Auto-generated from tests/data/feature_fixtures_manifest.json",
+        f"// fixture: {fixture['name']}",
+        f"// fixture_type: {fixture['fixture_type']}",
+        f"// description: {fixture.get('description', '')}",
+        "$fn = 96;",
+        "",
+    ]
 
 
 def _validate_expected_detection(
@@ -224,7 +411,8 @@ def _validate_expected_detection(
             f"Feature fixture '{fixture_name}' must define expected_detection"
         )
     expected = {
-        "plate_like_solid": bool(raw_expected.get("plate_like_solid", True)),
+        "plate_like_solid": bool(raw_expected.get("plate_like_solid", False)),
+        "box_like_solid": bool(raw_expected.get("box_like_solid", False)),
         "hole_count": _as_non_negative_int(
             raw_expected.get("hole_count", 0),
             f"{fixture_name}.expected_detection.hole_count",
@@ -245,7 +433,7 @@ def _validate_expected_detection(
     return expected
 
 
-def _validate_hole(
+def _validate_plate_hole(
     raw_hole: dict[str, Any],
     fixture_name: str,
     index: int,
@@ -256,8 +444,61 @@ def _validate_hole(
         raw_hole.get("diameter"),
         f"{fixture_name}.holes[{index}].diameter",
     )
-    _require_circle_inside_plate(center, diameter * 0.5, plate_size, fixture_name, f"holes[{index}]")
+    _require_circle_inside_plate(
+        center,
+        diameter * 0.5,
+        plate_size,
+        fixture_name,
+        f"holes[{index}]",
+    )
     return {"center": center, "diameter": diameter}
+
+
+def _validate_box_hole(
+    raw_hole: dict[str, Any],
+    fixture_name: str,
+    index: int,
+    box_size: list[float],
+) -> dict[str, Any]:
+    axis = str(raw_hole.get("axis", "")).strip().lower()
+    if axis not in _AXIS_INDEX:
+        raise ValueError(f"{fixture_name}.holes[{index}].axis must be one of x, y, z")
+    center = _as_vector3(raw_hole.get("center"), f"{fixture_name}.holes[{index}].center")
+    diameter = _as_positive_float(
+        raw_hole.get("diameter"),
+        f"{fixture_name}.holes[{index}].diameter",
+    )
+    _require_point_inside_centered_box(
+        center,
+        box_size,
+        fixture_name,
+        f"holes[{index}].center",
+    )
+    _require_circle_inside_box_cross_section(
+        center,
+        axis,
+        diameter * 0.5,
+        box_size,
+        fixture_name,
+        f"holes[{index}]",
+    )
+    return {"axis": axis, "center": center, "diameter": diameter}
+
+
+def _validate_box_cutout(
+    raw_cutout: dict[str, Any],
+    fixture_name: str,
+    index: int,
+    box_size: list[float],
+) -> dict[str, Any]:
+    center = _as_vector3(
+        raw_cutout.get("center"),
+        f"{fixture_name}.cutouts[{index}].center",
+    )
+    size = _as_vector3(raw_cutout.get("size"), f"{fixture_name}.cutouts[{index}].size")
+    _require_positive(size, f"{fixture_name}.cutouts[{index}].size")
+    _require_centered_box_inside_box(center, size, box_size, fixture_name, f"cutouts[{index}]")
+    return {"center": center, "size": size}
 
 
 def _validate_linear_pattern(
@@ -383,8 +624,20 @@ def _validate_slot(
     )
     if start == end:
         raise ValueError(f"{fixture_name}.slots[{index}] start and end must differ")
-    _require_circle_inside_plate(start, width * 0.5, plate_size, fixture_name, f"slots[{index}].start")
-    _require_circle_inside_plate(end, width * 0.5, plate_size, fixture_name, f"slots[{index}].end")
+    _require_circle_inside_plate(
+        start,
+        width * 0.5,
+        plate_size,
+        fixture_name,
+        f"slots[{index}].start",
+    )
+    _require_circle_inside_plate(
+        end,
+        width * 0.5,
+        plate_size,
+        fixture_name,
+        f"slots[{index}].end",
+    )
     return {"start": start, "end": end, "width": width}
 
 
@@ -401,6 +654,64 @@ def _require_circle_inside_plate(
         raise ValueError(f"{fixture_name}.{label} extends beyond the plate width")
     if center[1] - radius < -half_y or center[1] + radius > half_y:
         raise ValueError(f"{fixture_name}.{label} extends beyond the plate depth")
+
+
+def _require_point_inside_centered_box(
+    center: list[float],
+    box_size: list[float],
+    fixture_name: str,
+    label: str,
+) -> None:
+    half_sizes = [dimension * 0.5 for dimension in box_size]
+    axis_names = ("width", "depth", "height")
+    for axis_index, axis_name in enumerate(axis_names):
+        if center[axis_index] < -half_sizes[axis_index] or center[axis_index] > half_sizes[axis_index]:
+            raise ValueError(
+                f"{fixture_name}.{label} extends beyond the box {axis_name}"
+            )
+
+
+def _require_circle_inside_box_cross_section(
+    center: list[float],
+    axis: str,
+    radius: float,
+    box_size: list[float],
+    fixture_name: str,
+    label: str,
+) -> None:
+    half_sizes = [dimension * 0.5 for dimension in box_size]
+    cross_section_axes = [index for index in range(3) if index != _AXIS_INDEX[axis]]
+    axis_names = ("width", "depth", "height")
+    for axis_index in cross_section_axes:
+        if center[axis_index] - radius < -half_sizes[axis_index]:
+            raise ValueError(
+                f"{fixture_name}.{label} extends beyond the box {axis_names[axis_index]}"
+            )
+        if center[axis_index] + radius > half_sizes[axis_index]:
+            raise ValueError(
+                f"{fixture_name}.{label} extends beyond the box {axis_names[axis_index]}"
+            )
+
+
+def _require_centered_box_inside_box(
+    center: list[float],
+    size: list[float],
+    box_size: list[float],
+    fixture_name: str,
+    label: str,
+) -> None:
+    half_sizes = [dimension * 0.5 for dimension in box_size]
+    axis_names = ("width", "depth", "height")
+    for axis_index, axis_name in enumerate(axis_names):
+        half_cutout = size[axis_index] * 0.5
+        if center[axis_index] - half_cutout < -half_sizes[axis_index]:
+            raise ValueError(
+                f"{fixture_name}.{label} extends beyond the box {axis_name}"
+            )
+        if center[axis_index] + half_cutout > half_sizes[axis_index]:
+            raise ValueError(
+                f"{fixture_name}.{label} extends beyond the box {axis_name}"
+            )
 
 
 def _as_positive_float(value: Any, label: str) -> float:

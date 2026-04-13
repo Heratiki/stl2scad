@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 from pathlib import Path
-import sys
 from typing import Any, Callable, Iterable, Optional, Sequence, Union
 
 import numpy as np
@@ -111,11 +110,128 @@ def analyze_stl_folder(
     return report
 
 
+def build_feature_graphs_from_inventory(
+    inventory: Union[dict[str, Any], Path, str],
+    output_json: Union[Path, str],
+    workers: int = 1,
+    progress_callback: Optional[Callable[[int, int, str], None]] = None,
+) -> dict[str, Any]:
+    """
+    Build feature graphs only for files classified as mechanical candidates.
+
+    ``inventory`` may be a previously loaded inventory-report dictionary or a path
+    to an inventory JSON file produced by ``analyze_stl_folder``.
+    """
+    inventory_report = _load_inventory_report(inventory)
+    input_dir_value = inventory_report.get("input_dir")
+    input_dir = Path(input_dir_value) if input_dir_value else None
+    inventory_files = inventory_report.get("files")
+    if not isinstance(inventory_files, list):
+        raise ValueError("Inventory report must contain a files list")
+
+    selected_entries = [
+        result
+        for result in inventory_files
+        if result.get("status") == "ok"
+        and result.get("classification", {}).get("primary") == "mechanical_candidate"
+    ]
+    resolved_files = [
+        _resolve_inventory_entry_path(entry, input_dir) for entry in selected_entries
+    ]
+    worker_count = max(1, int(workers))
+
+    if worker_count == 1 or len(resolved_files) <= 1:
+        graphs = []
+        for idx, path in enumerate(resolved_files, 1):
+            graph = _build_feature_graph_from_inventory_file(path, input_dir)
+            graphs.append(graph)
+            if progress_callback is not None:
+                progress_callback(idx, len(resolved_files), str(path))
+    else:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            future_to_path = {
+                executor.submit(
+                    _build_feature_graph_from_inventory_worker,
+                    (path, input_dir),
+                ): path
+                for path in resolved_files
+            }
+            graph_map: dict[Path, dict[str, Any]] = {}
+            done_count = 0
+            for future in as_completed(future_to_path):
+                path = future_to_path[future]
+                graph_map[path] = future.result()
+                done_count += 1
+                if progress_callback is not None:
+                    progress_callback(done_count, len(resolved_files), str(path))
+            graphs = [graph_map[path] for path in resolved_files]
+
+    skipped_non_mechanical_count = sum(
+        1
+        for result in inventory_files
+        if result.get("status") == "ok"
+        and result.get("classification", {}).get("primary") != "mechanical_candidate"
+    )
+    skipped_error_count = sum(
+        1 for result in inventory_files if result.get("status") != "ok"
+    )
+    source_inventory = str(inventory) if isinstance(inventory, (str, Path)) else None
+
+    report = {
+        "schema_version": 1,
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "inventory_source": source_inventory,
+        "input_dir": str(input_dir) if input_dir is not None else None,
+        "config": {
+            "workers": worker_count,
+        },
+        "selection": {
+            "inventory_file_count": len(inventory_files),
+            "mechanical_candidate_count": len(selected_entries),
+            "skipped_non_mechanical_count": skipped_non_mechanical_count,
+            "skipped_error_count": skipped_error_count,
+        },
+        "summary": _summarize_graphs(graphs),
+        "graphs": graphs,
+    }
+
+    output_path = Path(output_json)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as handle:
+        json.dump(report, handle, indent=2)
+    return report
+
+
 def _analyze_stl_file_worker(
     args: tuple[Path, Path, InventoryConfig],
 ) -> dict[str, Any]:
     path, root_dir, config = args
     return analyze_stl_file(path, root_dir=root_dir, config=config)
+
+
+def _build_feature_graph_from_inventory_worker(
+    args: tuple[Path, Optional[Path]],
+) -> dict[str, Any]:
+    path, root_dir = args
+    return _build_feature_graph_from_inventory_file(path, root_dir)
+
+
+def _build_feature_graph_from_inventory_file(
+    path: Path,
+    root_dir: Optional[Path],
+) -> dict[str, Any]:
+    from .feature_graph import build_feature_graph_for_stl
+
+    try:
+        return build_feature_graph_for_stl(path, root_dir=root_dir)
+    except Exception as exc:
+        return {
+            "schema_version": 1,
+            "source_file": _relative_or_absolute(path, root_dir),
+            "status": "error",
+            "error": str(exc),
+            "features": [],
+        }
 
 
 def analyze_stl_file(
@@ -188,6 +304,28 @@ def _relative_or_absolute(path: Path, root_dir: Optional[Union[Path, str]]) -> s
         return str(path.relative_to(Path(root_dir)))
     except ValueError:
         return str(path)
+
+
+def _load_inventory_report(
+    inventory: Union[dict[str, Any], Path, str],
+) -> dict[str, Any]:
+    if isinstance(inventory, dict):
+        return inventory
+    path = Path(inventory)
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _resolve_inventory_entry_path(
+    entry: dict[str, Any],
+    input_dir: Optional[Path],
+) -> Path:
+    file_value = entry.get("file")
+    if not isinstance(file_value, str) or not file_value:
+        raise ValueError("Inventory entries must contain a non-empty file path")
+    path = Path(file_value)
+    if path.is_absolute() or input_dir is None:
+        return path
+    return input_dir / path
 
 
 def _unique_points(points: np.ndarray, tolerance: float) -> np.ndarray:
@@ -440,4 +578,20 @@ def _summarize_results(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "error_count": len(errors),
         "classification_counts": classifications,
         "candidate_feature_counts": feature_counts,
+    }
+
+
+def _summarize_graphs(graphs: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    feature_counts: dict[str, int] = {}
+    error_count = 0
+    for graph in graphs:
+        if graph.get("status") == "error":
+            error_count += 1
+        for feature in graph.get("features", []):
+            feature_type = str(feature.get("type", "unknown"))
+            feature_counts[feature_type] = feature_counts.get(feature_type, 0) + 1
+    return {
+        "file_count": len(graphs),
+        "error_count": error_count,
+        "feature_counts": feature_counts,
     }

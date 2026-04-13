@@ -325,6 +325,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Parallel workers for graph building. Use 0 for auto, 1 for serial",
     )
+    feature_graph_inventory_parser.add_argument(
+        "--scad-preview-dir",
+        default=None,
+        help="Optional output directory for SCAD previews generated from each graph",
+    )
     feature_graph_inventory_parser.set_defaults(
         handler=feature_graph_from_inventory_command
     )
@@ -610,6 +615,32 @@ def feature_graph_from_inventory_command(args: argparse.Namespace) -> int:
         print(f"Workers: {workers}")
         print(f"Errors: {summary['error_count']}")
         print(f"Features: {summary['feature_counts']}")
+
+        if args.scad_preview_dir:
+            preview_root = Path(args.scad_preview_dir)
+            preview_root.mkdir(parents=True, exist_ok=True)
+            emitted_count = 0
+            skipped_count = 0
+            for graph in report.get("graphs", []):
+                if graph.get("status") == "error":
+                    skipped_count += 1
+                    continue
+                scad = emit_feature_graph_scad_preview(graph)
+                if scad is None:
+                    skipped_count += 1
+                    continue
+
+                source_file = str(graph.get("source_file", "graph.stl"))
+                relative_source = Path(source_file)
+                output_path = preview_root / relative_source.with_suffix(".preview.scad")
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(output_path, "w", encoding="utf-8") as handle:
+                    handle.write(scad)
+                emitted_count += 1
+
+            print(f"SCAD previews emitted: {emitted_count}")
+            print(f"SCAD previews skipped: {skipped_count}")
+
         return 0
     except FileNotFoundError as exc:
         print(f"Error: File not found - {str(exc)}", file=sys.stderr)

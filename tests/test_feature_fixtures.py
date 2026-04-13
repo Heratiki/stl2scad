@@ -57,6 +57,34 @@ def test_feature_fixture_validation_rejects_out_of_bounds_hole():
         validate_feature_fixture_spec(invalid_fixture)
 
 
+def test_feature_fixture_validation_rejects_invalid_counterbore_geometry():
+    invalid_fixture = {
+        "name": "invalid_plate_counterbore",
+        "fixture_type": "plate",
+        "output_filename": "invalid_plate_counterbore.scad",
+        "plate_size": [30.0, 20.0, 6.0],
+        "counterbores": [
+            {
+                "center": [0.0, 0.0],
+                "through_diameter": 4.0,
+                "bore_diameter": 3.0,
+                "bore_depth": 2.0,
+            }
+        ],
+        "expected_detection": {
+            "plate_like_solid": True,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 1,
+        },
+    }
+
+    with pytest.raises(ValueError, match="bore_diameter must be larger than through_diameter"):
+        validate_feature_fixture_spec(invalid_fixture)
+
+
 def test_feature_fixture_generation_supports_box_and_l_bracket():
     box_fixture = validate_feature_fixture_spec(
         {

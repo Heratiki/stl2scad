@@ -252,6 +252,100 @@ def test_feature_graph_scad_preview_emits_grid_hole_loop(test_output_dir):
     assert scad.count("cylinder(") == 1
 
 
+def test_feature_graph_extracts_counterbore_hole(test_output_dir):
+    stl_file = test_output_dir / "plate_with_counterbore.stl"
+    through_radius = 2.0
+    bore_radius = 4.0
+    bore_depth = 3.0
+    plate_thickness = 6.0
+    _create_plate_with_counterbore(
+        stl_file,
+        through_radius=through_radius,
+        bore_radius=bore_radius,
+        bore_depth=bore_depth,
+        plate_size=(40.0, 24.0, plate_thickness),
+    )
+
+    graph = build_feature_graph_for_stl(stl_file)
+    counterbores = [
+        feature
+        for feature in graph["features"]
+        if feature["type"] == "counterbore_hole"
+    ]
+    simple_holes = [
+        feature
+        for feature in graph["features"]
+        if feature["type"] == "hole_like_cutout"
+    ]
+
+    assert len(counterbores) == 1, (
+        f"Expected 1 counterbore, got {len(counterbores)}. "
+        f"Simple holes: {len(simple_holes)}. "
+        f"All features: {[f['type'] for f in graph['features']]}"
+    )
+    assert len(simple_holes) == 0, "Counterbore should not also be detected as a simple hole"
+    cbore = counterbores[0]
+    assert cbore["confidence"] >= 0.70
+    assert abs(cbore["through_diameter"] - through_radius * 2.0) < through_radius * 0.3
+    assert abs(cbore["bore_diameter"] - bore_radius * 2.0) < bore_radius * 0.3
+    assert abs(cbore["bore_depth"] - bore_depth) < bore_depth * 0.3
+    assert cbore["source_parent_type"] == "plate_like_solid"
+
+
+def test_feature_graph_scad_preview_emits_counterbore_cutout(test_output_dir):
+    stl_file = test_output_dir / "plate_with_counterbore_preview.stl"
+    _create_plate_with_counterbore(stl_file)
+
+    graph = build_feature_graph_for_stl(stl_file)
+    scad = emit_feature_graph_scad_preview(graph)
+
+    assert scad is not None
+    assert "module counterbore_cutout" in scad
+    assert "counterbore_0_through_diameter" in scad
+    assert "counterbore_0_bore_diameter" in scad
+    assert "counterbore_0_bore_depth" in scad
+    assert "counterbore_cutout(counterbore_0_center" in scad
+
+
+def test_feature_graph_extracts_holes_with_light_mesh_noise(test_output_dir):
+    stl_file = test_output_dir / "plate_with_two_holes_noisy.stl"
+    _create_plate_with_holes(stl_file)
+    _jitter_mesh_vertices(stl_file, scale=0.01, seed=123)
+
+    graph = build_feature_graph_for_stl(stl_file)
+    holes = [
+        feature
+        for feature in graph["features"]
+        if feature["type"] == "hole_like_cutout" and feature["confidence"] >= 0.55
+    ]
+    patterns = [
+        feature
+        for feature in graph["features"]
+        if feature["type"] == "linear_hole_pattern"
+    ]
+
+    assert len(holes) >= 2
+    assert any(3.0 < hole["diameter"] < 5.0 for hole in holes)
+    assert len(patterns) >= 1
+
+
+def test_feature_graph_extracts_slot_with_light_mesh_noise(test_output_dir):
+    stl_file = test_output_dir / "plate_with_slot_noisy.stl"
+    _create_plate_with_slot(stl_file)
+    _jitter_mesh_vertices(stl_file, scale=0.008, seed=77)
+
+    graph = build_feature_graph_for_stl(stl_file)
+    slots = [
+        feature
+        for feature in graph["features"]
+        if feature["type"] == "slot_like_cutout" and feature["confidence"] >= 0.55
+    ]
+
+    assert len(slots) >= 1
+    assert 2.0 < slots[0]["width"] < 4.0
+    assert 8.0 < slots[0]["length"] < 12.0
+
+
 def test_feature_graph_scad_preview_declines_without_plate(test_data_dir):
     fixtures_dir = test_data_dir / "benchmark_fixtures"
     ensure_benchmark_fixtures(fixtures_dir)
@@ -456,4 +550,126 @@ def _create_box_with_hole(
     vertices_array = np.asarray(vertices, dtype=np.float64)
     for index, face in enumerate(faces):
         mesh.vectors[index] = vertices_array[face]
+    mesh.save(str(output_file))
+
+
+def _create_plate_with_counterbore(
+    output_file,
+    segments=32,
+    through_radius=2.0,
+    bore_radius=4.0,
+    bore_depth=3.0,
+    plate_size=(40.0, 24.0, 6.0),
+    center_xy=(0.0, 0.0),
+):
+    """Create a synthetic STL of a plate with a counterbore hole.
+
+    The counterbore has a larger-radius bore at the top and a smaller
+    through-hole going all the way through. The geometry consists of:
+    - A plate box (12 triangles)
+    - Smaller cylinder sidewalls from z=0 to z=(thickness - bore_depth)
+    - Larger cylinder sidewalls from z=(thickness - bore_depth) to z=thickness
+    - An annular step face connecting the two radii
+    """
+    half_width = plate_size[0] * 0.5
+    half_depth = plate_size[1] * 0.5
+    thickness = plate_size[2]
+    step_z = thickness - bore_depth
+    cx, cy = center_xy
+
+    vertices = [
+        [-half_width, -half_depth, 0.0],
+        [half_width, -half_depth, 0.0],
+        [half_width, half_depth, 0.0],
+        [-half_width, half_depth, 0.0],
+        [-half_width, -half_depth, thickness],
+        [half_width, -half_depth, thickness],
+        [half_width, half_depth, thickness],
+        [-half_width, half_depth, thickness],
+    ]
+    faces = [
+        [0, 2, 1], [0, 3, 2],
+        [4, 5, 6], [4, 6, 7],
+        [0, 1, 5], [0, 5, 4],
+        [1, 2, 6], [1, 6, 5],
+        [2, 3, 7], [2, 7, 6],
+        [3, 0, 4], [3, 4, 7],
+    ]
+
+    # Through-hole sidewalls: z=0 to z=step_z (smaller radius).
+    through_base = len(vertices)
+    for idx in range(segments):
+        theta = 2.0 * np.pi * idx / segments
+        x = cx + through_radius * np.cos(theta)
+        y = cy + through_radius * np.sin(theta)
+        vertices.append([x, y, 0.0])
+        vertices.append([x, y, step_z])
+    for idx in range(segments):
+        next_idx = (idx + 1) % segments
+        b0 = through_base + 2 * idx
+        t0 = b0 + 1
+        b1 = through_base + 2 * next_idx
+        t1 = b1 + 1
+        faces.append([b0, b1, t1])
+        faces.append([b0, t1, t0])
+
+    # Bore sidewalls: z=step_z to z=thickness (larger radius).
+    bore_base = len(vertices)
+    for idx in range(segments):
+        theta = 2.0 * np.pi * idx / segments
+        x = cx + bore_radius * np.cos(theta)
+        y = cy + bore_radius * np.sin(theta)
+        vertices.append([x, y, step_z])
+        vertices.append([x, y, thickness])
+    for idx in range(segments):
+        next_idx = (idx + 1) % segments
+        b0 = bore_base + 2 * idx
+        t0 = b0 + 1
+        b1 = bore_base + 2 * next_idx
+        t1 = b1 + 1
+        faces.append([b0, b1, t1])
+        faces.append([b0, t1, t0])
+
+    # Annular step face at z=step_z between the two radii.
+    ring_base = len(vertices)
+    for idx in range(segments):
+        theta = 2.0 * np.pi * idx / segments
+        xi = cx + through_radius * np.cos(theta)
+        yi = cy + through_radius * np.sin(theta)
+        xo = cx + bore_radius * np.cos(theta)
+        yo = cy + bore_radius * np.sin(theta)
+        vertices.append([xi, yi, step_z])
+        vertices.append([xo, yo, step_z])
+    for idx in range(segments):
+        next_idx = (idx + 1) % segments
+        i0 = ring_base + 2 * idx
+        o0 = i0 + 1
+        i1 = ring_base + 2 * next_idx
+        o1 = i1 + 1
+        faces.append([i0, o0, o1])
+        faces.append([i0, o1, i1])
+
+    mesh = Mesh(np.zeros(len(faces), dtype=Mesh.dtype))
+    vertices_array = np.asarray(vertices, dtype=np.float64)
+    for index, face in enumerate(faces):
+        mesh.vectors[index] = vertices_array[face]
+    mesh.save(str(output_file))
+
+
+def _jitter_mesh_vertices(output_file, scale=0.02, seed=0):
+    """Apply deterministic gaussian jitter to mesh vertices to mimic STL noise."""
+    mesh = Mesh.from_file(str(output_file))
+    vectors = np.asarray(mesh.vectors, dtype=np.float64)
+    rng = np.random.default_rng(seed)
+    flat = vectors.reshape(-1, 3)
+    offsets: dict[tuple[float, float, float], np.ndarray] = {}
+    for idx, point in enumerate(flat):
+        key = (round(float(point[0]), 6), round(float(point[1]), 6), round(float(point[2]), 6))
+        offset = offsets.get(key)
+        if offset is None:
+            offset = rng.normal(0.0, scale, size=3)
+            offsets[key] = offset
+        flat[idx] = point + offset
+    vectors = flat.reshape(vectors.shape)
+    mesh.vectors[:] = vectors
     mesh.save(str(output_file))

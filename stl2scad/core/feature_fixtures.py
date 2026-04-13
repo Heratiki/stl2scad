@@ -70,6 +70,7 @@ def validate_feature_fixture_spec(raw_fixture: dict[str, Any]) -> dict[str, Any]
     expected = spec["expected_detection"]
     explicit_holes = int(spec.get("explicit_hole_count", 0))
     explicit_slots = int(spec.get("explicit_slot_count", 0))
+    explicit_counterbores = int(spec.get("explicit_counterbore_count", 0))
     if expected["hole_count"] > explicit_holes:
         raise ValueError(
             f"Feature fixture '{name}' expects {expected['hole_count']} holes but only defines {explicit_holes}"
@@ -77,6 +78,10 @@ def validate_feature_fixture_spec(raw_fixture: dict[str, Any]) -> dict[str, Any]
     if expected["slot_count"] > explicit_slots:
         raise ValueError(
             f"Feature fixture '{name}' expects {expected['slot_count']} slots but only defines {explicit_slots}"
+        )
+    if expected["counterbore_count"] > explicit_counterbores:
+        raise ValueError(
+            f"Feature fixture '{name}' expects {expected['counterbore_count']} counterbores but only defines {explicit_counterbores}"
         )
 
     return spec
@@ -124,6 +129,7 @@ def iter_expected_feature_counts(
         "slot_like_cutout": expected["slot_count"],
         "linear_hole_pattern": expected["linear_pattern_count"],
         "grid_hole_pattern": expected["grid_pattern_count"],
+        "counterbore_hole": expected["counterbore_count"],
     }
 
 
@@ -151,6 +157,7 @@ def _validate_plate_fixture_geometry(
     spec: dict[str, Any] = {
         "plate_size": plate_size,
         "holes": [],
+        "counterbores": [],
         "linear_hole_patterns": [],
         "grid_hole_patterns": [],
         "slots": [],
@@ -158,6 +165,11 @@ def _validate_plate_fixture_geometry(
 
     for index, raw_hole in enumerate(raw_fixture.get("holes", [])):
         spec["holes"].append(_validate_plate_hole(raw_hole, fixture_name, index, plate_size))
+
+    for index, raw_counterbore in enumerate(raw_fixture.get("counterbores", [])):
+        spec["counterbores"].append(
+            _validate_plate_counterbore(raw_counterbore, fixture_name, index, plate_size)
+        )
 
     for index, raw_pattern in enumerate(raw_fixture.get("linear_hole_patterns", [])):
         spec["linear_hole_patterns"].append(
@@ -182,6 +194,7 @@ def _validate_plate_fixture_geometry(
     )
     spec["explicit_hole_count"] = explicit_holes
     spec["explicit_slot_count"] = len(spec["slots"])
+    spec["explicit_counterbore_count"] = len(spec["counterbores"])
     return spec
 
 
@@ -263,6 +276,12 @@ def _generate_plate_fixture_scad(fixture: dict[str, Any]) -> str:
             "  }",
             "}",
             "",
+            "module counterbore_hole(center, through_d, bore_d, bore_depth, height) {",
+            "  translate(center) cylinder(d=through_d, h=height, center=false);",
+            "  translate([center[0], center[1], center[2] + height - bore_depth])",
+            "    cylinder(d=bore_d, h=bore_depth + 0.1, center=false);",
+            "}",
+            "",
             "difference() {",
             "  translate(plate_origin) cube(plate_size);",
         ]
@@ -297,6 +316,12 @@ def _generate_plate_fixture_scad(fixture: dict[str, Any]) -> str:
                 "    }",
                 "  }",
             ]
+        )
+
+    for index, counterbore in enumerate(fixture["counterbores"]):
+        center = [counterbore["center"][0], counterbore["center"][1], z_offset]
+        lines.append(
+            f"  counterbore_hole({_format_vector(center)}, {counterbore['through_diameter']:.6f}, {counterbore['bore_diameter']:.6f}, {counterbore['bore_depth']:.6f}, {cut_height:.6f});  // counterbore_{index}"
         )
 
     for index, slot in enumerate(fixture["slots"]):
@@ -429,6 +454,10 @@ def _validate_expected_detection(
             raw_expected.get("grid_pattern_count", 0),
             f"{fixture_name}.expected_detection.grid_pattern_count",
         ),
+        "counterbore_count": _as_non_negative_int(
+            raw_expected.get("counterbore_count", 0),
+            f"{fixture_name}.expected_detection.counterbore_count",
+        ),
     }
     return expected
 
@@ -452,6 +481,52 @@ def _validate_plate_hole(
         f"holes[{index}]",
     )
     return {"center": center, "diameter": diameter}
+
+
+def _validate_plate_counterbore(
+    raw_counterbore: dict[str, Any],
+    fixture_name: str,
+    index: int,
+    plate_size: list[float],
+) -> dict[str, Any]:
+    center = _as_vector2(
+        raw_counterbore.get("center"),
+        f"{fixture_name}.counterbores[{index}].center",
+    )
+    through_diameter = _as_positive_float(
+        raw_counterbore.get("through_diameter"),
+        f"{fixture_name}.counterbores[{index}].through_diameter",
+    )
+    bore_diameter = _as_positive_float(
+        raw_counterbore.get("bore_diameter"),
+        f"{fixture_name}.counterbores[{index}].bore_diameter",
+    )
+    bore_depth = _as_positive_float(
+        raw_counterbore.get("bore_depth"),
+        f"{fixture_name}.counterbores[{index}].bore_depth",
+    )
+    if bore_diameter <= through_diameter:
+        raise ValueError(
+            f"{fixture_name}.counterbores[{index}].bore_diameter must be larger than through_diameter"
+        )
+    thickness = plate_size[2]
+    if bore_depth >= thickness:
+        raise ValueError(
+            f"{fixture_name}.counterbores[{index}].bore_depth must be less than plate thickness"
+        )
+    _require_circle_inside_plate(
+        center,
+        bore_diameter * 0.5,
+        plate_size,
+        fixture_name,
+        f"counterbores[{index}]",
+    )
+    return {
+        "center": center,
+        "through_diameter": through_diameter,
+        "bore_diameter": bore_diameter,
+        "bore_depth": bore_depth,
+    }
 
 
 def _validate_box_hole(

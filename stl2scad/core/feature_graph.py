@@ -162,9 +162,10 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
     """
     Emit conservative SCAD preview for supported feature graph patterns.
 
-    Currently supported:
-    - one plate_like_solid
-    - optional hole_like_cutout features along the plate thickness axis
+        Currently supported:
+        - one plate_like_solid
+        - optional hole_like_cutout, counterbore_hole, and slot_like_cutout
+            features along the plate thickness axis
     """
     plate = _best_feature(graph, "plate_like_solid")
     if plate is None or float(plate.get("confidence", 0.0)) < 0.70:
@@ -180,6 +181,12 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         feature
         for feature in graph.get("features", [])
         if feature.get("type") == "slot_like_cutout"
+        and float(feature.get("confidence", 0.0)) >= 0.70
+    ]
+    counterbores = [
+        feature
+        for feature in graph.get("features", [])
+        if feature.get("type") == "counterbore_hole"
         and float(feature.get("confidence", 0.0)) >= 0.70
     ]
     origin = [float(value) for value in plate["origin"]]
@@ -198,7 +205,7 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         f"plate_origin = {_scad_vector(origin)};",
         f"plate_size = {_scad_vector(size)};",
     ]
-    if holes or slots:
+    if holes or slots or counterbores:
         for pattern_index, pattern in enumerate(supported_patterns):
             if pattern.get(
                 "type"
@@ -243,6 +250,17 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
                     f"slot_{slot_index}_width = {float(slot['width']):.6f};",
                 ]
             )
+        for cbore_index, counterbore in enumerate(counterbores):
+            if counterbore.get("axis") != thickness_axis:
+                continue
+            lines.extend(
+                [
+                    f"counterbore_{cbore_index}_center = {_scad_vector([float(value) for value in counterbore['center']])};",
+                    f"counterbore_{cbore_index}_through_diameter = {float(counterbore['through_diameter']):.6f};",
+                    f"counterbore_{cbore_index}_bore_diameter = {float(counterbore['bore_diameter']):.6f};",
+                    f"counterbore_{cbore_index}_bore_depth = {float(counterbore['bore_depth']):.6f};",
+                ]
+            )
         lines.extend(
             [
                 "",
@@ -253,6 +271,19 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
                 "}",
             ]
         )
+        if counterbores:
+            lines.extend(
+                [
+                    "",
+                    "module counterbore_cutout(center, through_diameter, bore_diameter, bore_depth) {",
+                    "  hole_cutout(center, through_diameter);",
+                    *_counterbore_bore_module_body(
+                        size[thickness_axis_index] + 0.2,
+                        thickness_axis,
+                    ),
+                    "}",
+                ]
+            )
         if slots:
             lines.extend(
                 [
@@ -316,6 +347,18 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
             continue
         lines.append(
             f"  slot_cutout(slot_{slot_index}_start, slot_{slot_index}_end, slot_{slot_index}_width);"
+        )
+
+    for cbore_index, counterbore in enumerate(counterbores):
+        if counterbore.get("axis") != thickness_axis:
+            continue
+        lines.append(
+            "  counterbore_cutout("
+            f"counterbore_{cbore_index}_center, "
+            f"counterbore_{cbore_index}_through_diameter, "
+            f"counterbore_{cbore_index}_bore_diameter, "
+            f"counterbore_{cbore_index}_bore_depth"
+            ");"
         )
 
     lines.append("}")
@@ -527,6 +570,33 @@ def _hole_cutout_module_body(
     return ["  // unsupported hole axis"]
 
 
+def _counterbore_bore_module_body(
+    depth: float,
+    axis: str,
+) -> list[str]:
+    if axis == "z":
+        return [
+            "  translate([center[0], center[1], center[2] + "
+            f"{depth * 0.5:.6f} - bore_depth])",
+            "    cylinder(h=bore_depth + 0.1, d=bore_diameter, $fn=64);",
+        ]
+    elif axis == "x":
+        return [
+            "  translate([center[0] + "
+            f"{depth * 0.5:.6f} - bore_depth, center[1], center[2]])",
+            "    rotate(a=90, v=[0, 1, 0])",
+            "      cylinder(h=bore_depth + 0.1, d=bore_diameter, $fn=64);",
+        ]
+    elif axis == "y":
+        return [
+            "  translate([center[0], center[1] + "
+            f"{depth * 0.5:.6f} - bore_depth, center[2]])",
+            "    rotate(a=90, v=[1, 0, 0])",
+            "      cylinder(h=bore_depth + 0.1, d=bore_diameter, $fn=64);",
+        ]
+    return ["  // unsupported hole axis"]
+
+
 def _extract_axis_aligned_through_holes(
     vectors: np.ndarray,
     normals: np.ndarray,
@@ -551,10 +621,23 @@ def _extract_axis_aligned_through_holes(
         span_min = float(bbox[f"min_{axis_labels[cutout_axis_index]}"])
         span_max = float(bbox[f"max_{axis_labels[cutout_axis_index]}"])
         sidewall_mask = np.abs(normals @ axis_vector) <= (1.0 - normal_axis_threshold)
+        # Keep only cutout-region faces away from the outer boundary planes on
+        # the two perpendicular axes. This avoids merging hole sidewalls with
+        # the parent solid's outer side faces into one giant component.
+        interior_plane_mask = np.ones(len(vectors), dtype=bool)
+        for axis in plane_axes:
+            axis_min = float(bbox[f"min_{axis_labels[axis]}"])
+            axis_max = float(bbox[f"max_{axis_labels[axis]}"])
+            axis_span = max(axis_max - axis_min, 1e-9)
+            boundary_margin = axis_span * 0.05
+            interior_plane_mask &= (
+                (face_centers[:, axis] > axis_min + boundary_margin)
+                & (face_centers[:, axis] < axis_max - boundary_margin)
+            )
         interior_mask = (
             face_centers[:, cutout_axis_index] > span_min + cutout_depth * 0.05
         ) & (face_centers[:, cutout_axis_index] < span_max - cutout_depth * 0.05)
-        candidate_faces = np.where(sidewall_mask | interior_mask)[0]
+        candidate_faces = np.where((sidewall_mask | interior_mask) & interior_plane_mask)[0]
         if len(candidate_faces) == 0:
             continue
 
@@ -569,6 +652,53 @@ def _extract_axis_aligned_through_holes(
             height_values = component_vertices[:, cutout_axis_index]
             height_span = float(np.max(height_values) - np.min(height_values))
             if height_span < cutout_depth * 0.65:
+                continue
+
+            # Counterbores are stepped holes and often fail a single-circle fit,
+            # so try this path before the simple-hole fallback.
+            cbore = _try_counterbore_fit(
+                component_vertices,
+                cutout_axis_index,
+                plane_axes,
+                cutout_depth,
+                span_min,
+                span_max,
+            )
+            if (
+                cbore is not None
+                and cbore["confidence"] >= 0.70
+                and min_radius <= cbore["bore_radius"] <= max_radius
+                and min_radius <= cbore["through_radius"] <= max_radius
+                and not _center_near_outer_boundary(
+                    cbore["center_2d"], bbox, plane_axes, cbore["bore_radius"]
+                )
+            ):
+                center = [0.0, 0.0, 0.0]
+                center[plane_axes[0]] = float(cbore["center_2d"][0])
+                center[plane_axes[1]] = float(cbore["center_2d"][1])
+                center[cutout_axis_index] = (span_min + span_max) * 0.5
+                features.append(
+                    {
+                        "type": "counterbore_hole",
+                        "confidence": float(cbore["confidence"]),
+                        "axis": axis_labels[cutout_axis_index],
+                        "center": center,
+                        "through_diameter": float(cbore["through_radius"] * 2.0),
+                        "bore_diameter": float(cbore["bore_radius"] * 2.0),
+                        "bore_depth": float(cbore["bore_depth"]),
+                        "through_depth": float(cbore["through_depth"]),
+                        "total_depth": float(cbore["total_depth"]),
+                        "component_faces": int(len(face_indices)),
+                        "radial_error_ratio": float(cbore["radial_error_ratio"]),
+                        "angular_coverage": float(cbore["angular_coverage"]),
+                        "source_component_index": component_index,
+                        "source_parent_type": target["parent_type"],
+                        "note": (
+                            "Candidate counterbore hole cutout in a "
+                            f"{target['parent_type'].replace('_', '-')}"
+                        ),
+                    }
+                )
                 continue
 
             fit = _fit_circle_2d(coords_2d)
@@ -710,7 +840,8 @@ def _extract_repeated_hole_patterns(
     groups: dict[tuple[str, int], list[dict[str, Any]]] = {}
     for hole in holes:
         diameter = float(hole["diameter"])
-        key = (str(hole["axis"]), int(round(diameter * 1000.0)))
+        # Group diameters with a modest tolerance to absorb mesh noise.
+        key = (str(hole["axis"]), int(round(diameter * 100.0)))
         groups.setdefault(key, []).append(hole)
 
     for (axis, diameter_key), group in groups.items():
@@ -725,14 +856,16 @@ def _extract_repeated_hole_patterns(
             for axis_index in varying_axes
         ]
         pattern_type = (
-            "grid_hole_pattern" if min(unique_counts) >= 2 else "linear_hole_pattern"
+            "grid_hole_pattern"
+            if len(group) >= 4 and min(unique_counts) >= 2
+            else "linear_hole_pattern"
         )
         pattern = {
             "type": pattern_type,
             "confidence": float(min(float(hole["confidence"]) for hole in group)),
             "axis": axis,
             "hole_count": int(len(group)),
-            "diameter": float(diameter_key / 1000.0),
+            "diameter": float(diameter_key / 100.0),
             "centers": [[float(value) for value in hole["center"]] for hole in group],
             "note": "Candidate repeated hole pattern for future SCAD loop emission.",
         }
@@ -764,7 +897,7 @@ def _linear_hole_pattern_metadata(
     regularity_error = float(
         np.max(np.linalg.norm(ordered_centers - expected, axis=1)) / spacing
     )
-    if regularity_error > 0.05:
+    if regularity_error > 0.08:
         return {}
 
     return {
@@ -832,7 +965,7 @@ def _grid_hole_pattern_metadata(
     regularity_error = float(
         np.max(np.linalg.norm(ordered_array - expected_array, axis=1)) / min_spacing
     )
-    if regularity_error > 0.05:
+    if regularity_error > 0.08:
         return {}
 
     return {
@@ -846,6 +979,133 @@ def _grid_hole_pattern_metadata(
         "grid_row_axis": ("x", "y", "z")[varying_axes[1]],
         "grid_col_axis": ("x", "y", "z")[varying_axes[0]],
         "regularity_error": regularity_error,
+    }
+
+
+def _try_counterbore_fit(
+    component_vertices: np.ndarray,
+    cutout_axis_index: int,
+    plane_axes: list[int],
+    height_span: float,
+    span_min: float,
+    span_max: float,
+) -> Optional[dict[str, Any]]:
+    """Try to detect a counterbore (stepped hole) in a connected component.
+
+    Splits vertices by height along the cutout axis, looking for two
+    concentric circles of different radii at different height segments.
+    Returns a dict with counterbore parameters if found, or None.
+    """
+    height_values = component_vertices[:, cutout_axis_index]
+    h_min = float(np.min(height_values))
+    h_max = float(np.max(height_values))
+    h_span = h_max - h_min
+    if h_span < height_span * 0.5:
+        return None
+
+    # Fit circles on thin top/bottom slices first. This is more robust than
+    # histogram gap splitting for meshes with quantized Z levels.
+    slice_thickness = max(h_span * 0.20, 1e-9)
+    lower_mask = height_values <= (h_min + slice_thickness)
+    upper_mask = height_values >= (h_max - slice_thickness)
+
+    lower_pts = component_vertices[lower_mask][:, plane_axes]
+    upper_pts = component_vertices[upper_mask][:, plane_axes]
+    if len(lower_pts) < 8 or len(upper_pts) < 8:
+        return None
+
+    lower_fit = _fit_circle_2d(lower_pts)
+    upper_fit = _fit_circle_2d(upper_pts)
+    if lower_fit is None or upper_fit is None:
+        return None
+
+    lower_center, lower_radius, lower_error, lower_coverage = lower_fit
+    upper_center, upper_radius, upper_error, upper_coverage = upper_fit
+
+    # Both fits must be reasonable.
+    if lower_error > 0.12 or upper_error > 0.12:
+        return None
+    if lower_coverage < 0.60 or upper_coverage < 0.60:
+        return None
+
+    # Centers must be concentric.
+    larger_radius = max(lower_radius, upper_radius)
+    center_distance = float(np.linalg.norm(lower_center - upper_center))
+    if center_distance > larger_radius * 0.10:
+        return None
+
+    # Radii must differ by at least 20%.
+    smaller_radius = min(lower_radius, upper_radius)
+    if smaller_radius <= 0:
+        return None
+    radius_ratio = larger_radius / smaller_radius
+    if radius_ratio < 1.20:
+        return None
+
+    # Determine which radius is bore vs through-hole.
+    if upper_radius > lower_radius:
+        bore_radius = upper_radius
+        through_radius = lower_radius
+        bore_error = upper_error
+        through_error = lower_error
+        bore_coverage = upper_coverage
+        through_coverage = lower_coverage
+    else:
+        bore_radius = lower_radius
+        through_radius = upper_radius
+        bore_error = lower_error
+        through_error = upper_error
+        bore_coverage = lower_coverage
+        through_coverage = upper_coverage
+
+    # Use a shared center estimate and classify vertices by nearest radius.
+    center_2d = (lower_center + upper_center) * 0.5
+    radii = np.linalg.norm(component_vertices[:, plane_axes] - center_2d, axis=1)
+    to_bore = np.abs(radii - bore_radius)
+    to_through = np.abs(radii - through_radius)
+    bore_membership = to_bore <= to_through
+    through_membership = ~bore_membership
+    if np.count_nonzero(bore_membership) < 16 or np.count_nonzero(through_membership) < 16:
+        return None
+
+    bore_segment_heights = height_values[bore_membership]
+    through_segment_heights = height_values[through_membership]
+    bore_depth = float(np.max(bore_segment_heights) - np.min(bore_segment_heights))
+    through_depth = float(np.max(through_segment_heights) - np.min(through_segment_heights))
+    total_depth = float(h_max - h_min)
+
+    if (
+        bore_depth < total_depth * 0.10
+        or through_depth < total_depth * 0.10
+        or bore_depth > total_depth * 0.95
+        or through_depth > total_depth * 0.95
+    ):
+        return None
+
+    # Larger-radius bore should touch only one outer boundary plane.
+    edge_tolerance = total_depth * 0.08
+    bore_touches_min = np.min(bore_segment_heights) <= h_min + edge_tolerance
+    bore_touches_max = np.max(bore_segment_heights) >= h_max - edge_tolerance
+    if bore_touches_min == bore_touches_max:
+        return None
+
+    worst_error = max(bore_error, through_error)
+    worst_coverage = min(bore_coverage, through_coverage)
+    confidence = max(
+        0.0,
+        min(1.0, (1.0 - worst_error / 0.10) * worst_coverage),
+    )
+
+    return {
+        "center_2d": center_2d,
+        "through_radius": float(through_radius),
+        "bore_radius": float(bore_radius),
+        "bore_depth": float(bore_depth),
+        "through_depth": float(through_depth),
+        "total_depth": float(total_depth),
+        "radial_error_ratio": float(worst_error),
+        "angular_coverage": float(worst_coverage),
+        "confidence": float(confidence),
     }
 
 
@@ -907,7 +1167,7 @@ def _fit_circle_2d(
     radius = float(np.sqrt(radius_sq))
     distances = np.linalg.norm(points - center, axis=1)
     radial_error_ratio = float(
-        np.percentile(np.abs(distances - radius), 95) / max(radius, 1e-9)
+        np.percentile(np.abs(distances - radius), 90) / max(radius, 1e-9)
     )
     angles = np.arctan2(points[:, 1] - center[1], points[:, 0] - center[0])
     bins = np.unique(np.floor(((angles + np.pi) / (2.0 * np.pi)) * 24.0).astype(int))
@@ -950,9 +1210,9 @@ def _fit_axis_aligned_slot_2d(
     closest = start + projections[:, None] * segment
     distances = np.linalg.norm(points - closest, axis=1)
     slot_error_ratio = float(
-        np.percentile(np.abs(distances - radius), 95) / max(radius, 1e-9)
+        np.percentile(np.abs(distances - radius), 90) / max(radius, 1e-9)
     )
-    if slot_error_ratio > 0.12:
+    if slot_error_ratio > 0.16:
         return None
 
     # Require evidence for both caps and both straight sides to avoid treating noise as a slot.
@@ -962,7 +1222,9 @@ def _fit_axis_aligned_slot_2d(
     side_tolerance = radius * 0.25
     has_start_cap = bool(np.any(long_coords <= start[long_axis] + cap_tolerance))
     has_end_cap = bool(np.any(long_coords >= end[long_axis] - cap_tolerance))
-    middle_mask = (long_coords >= start[long_axis]) & (long_coords <= end[long_axis])
+    middle_mask = (long_coords >= start[long_axis] - cap_tolerance) & (
+        long_coords <= end[long_axis] + cap_tolerance
+    )
     has_negative_side = bool(
         np.any(
             middle_mask & (short_coords <= center[short_axis] - radius + side_tolerance)

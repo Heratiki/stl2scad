@@ -73,6 +73,21 @@ def test_feature_graph_parser_accepts_scad_preview():
     assert args.scad_preview == "preview.scad"
 
 
+def test_feature_graph_from_inventory_parser_accepts_scad_preview_dir():
+    """Feature-graph-from-inventory should accept SCAD preview output dir."""
+    parser = cli.build_parser()
+    args = parser.parse_args(
+        [
+            "feature-graph-from-inventory",
+            "inventory.json",
+            "--scad-preview-dir",
+            "preview_dir",
+        ]
+    )
+    assert isinstance(args, argparse.Namespace)
+    assert args.scad_preview_dir == "preview_dir"
+
+
 from unittest.mock import patch, MagicMock
 
 
@@ -251,3 +266,46 @@ def test_feature_graph_file_command_writes_json_and_preview(
         "plate_like_solid"
     )
     assert preview_file.read_text(encoding="utf-8") == "difference() {}"
+
+
+@patch("stl2scad.cli.emit_feature_graph_scad_preview")
+@patch("stl2scad.cli.build_feature_graphs_from_inventory")
+def test_feature_graph_from_inventory_writes_scad_previews(
+    mock_build_graphs, mock_emit_scad, test_output_dir
+):
+    """Inventory graph command should emit per-file SCAD previews when requested."""
+    output_file = test_output_dir / "graphs_from_inventory.json"
+    preview_dir = test_output_dir / "preview"
+
+    mock_build_graphs.return_value = {
+        "summary": {"error_count": 0, "feature_counts": {"plate_like_solid": 1}},
+        "selection": {
+            "inventory_file_count": 2,
+            "mechanical_candidate_count": 2,
+            "skipped_non_mechanical_count": 0,
+            "skipped_error_count": 0,
+        },
+        "graphs": [
+            {"source_file": "parts/plate_a.stl", "features": [{"type": "plate_like_solid"}]},
+            {"source_file": "parts/plate_b.stl", "features": [{"type": "plate_like_solid"}]},
+        ],
+    }
+    mock_emit_scad.side_effect = ["difference() {}", None]
+
+    exit_code = cli.main(
+        [
+            "feature-graph-from-inventory",
+            "inventory.json",
+            "--output",
+            str(output_file),
+            "--workers",
+            "2",
+            "--scad-preview-dir",
+            str(preview_dir),
+        ]
+    )
+
+    assert exit_code == 0
+    mock_build_graphs.assert_called_once()
+    assert (preview_dir / "parts" / "plate_a.preview.scad").read_text(encoding="utf-8") == "difference() {}"
+    assert not (preview_dir / "parts" / "plate_b.preview.scad").exists()

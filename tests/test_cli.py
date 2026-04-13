@@ -79,6 +79,7 @@ def test_convert_command_execution(mock_stl2scad, test_output_dir):
         True,
         False,
         recognition_backend="native",
+        compute_backend="auto",
     )
 
 

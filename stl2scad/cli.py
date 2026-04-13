@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from stl2scad.core.converter import ConversionStats, STLValidationError, stl2scad
+from stl2scad.core.acceleration import get_acceleration_report
 from stl2scad.core.recognition import SUPPORTED_RECOGNITION_BACKENDS
 from stl2scad.core.verification import (
     generate_comparison_visualization,
@@ -91,6 +92,12 @@ def build_parser() -> argparse.ArgumentParser:
         default="native",
         help="Recognition backend for parametric mode (default: native)",
     )
+    convert_parser.add_argument(
+        "--compute-backend",
+        choices=["auto", "cpu", "gpu"],
+        default="auto",
+        help="Compute backend for heavy array ops (default: auto)",
+    )
     convert_parser.set_defaults(handler=convert_command)
 
     verify_parser = subparsers.add_parser(
@@ -149,6 +156,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Seed for deterministic sampling-based verification metrics",
     )
+    verify_parser.add_argument(
+        "--compute-backend",
+        choices=["auto", "cpu", "gpu"],
+        default="auto",
+        help="Compute backend for conversion step when SCAD must be generated (default: auto)",
+    )
     verify_parser.set_defaults(handler=verify_command)
 
     batch_parser = subparsers.add_parser(
@@ -197,7 +210,24 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Seed for deterministic sampling-based verification metrics",
     )
+    batch_parser.add_argument(
+        "--compute-backend",
+        choices=["auto", "cpu", "gpu"],
+        default="auto",
+        help="Compute backend for conversion step (default: auto)",
+    )
     batch_parser.set_defaults(handler=batch_command)
+
+    accel_parser = subparsers.add_parser(
+        "acceleration",
+        help="Inspect GPU availability and acceleration recommendations",
+    )
+    accel_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print full acceleration report as JSON",
+    )
+    accel_parser.set_defaults(handler=acceleration_command)
 
     return parser
 
@@ -296,6 +326,39 @@ def print_verification_result(result: Any) -> None:
                     )
 
 
+def acceleration_command(args: argparse.Namespace) -> int:
+    """Inspect hardware acceleration support and recommendations."""
+    report = get_acceleration_report()
+    if args.json:
+        print(json.dumps(report, indent=2))
+        return 0
+
+    print("Acceleration Report")
+    print(f"  GPU detected: {report.get('gpu_detected')}")
+    print(f"  GPU compute ready: {report.get('gpu_compute_ready')}")
+    print(f"  GPU compute library: {report.get('gpu_compute_backend')}")
+    print(f"  Compute reason: {report.get('gpu_compute_reason')}")
+
+    devices = report.get("devices", [])
+    if devices:
+        print("  Devices:")
+        for device in devices:
+            name = device.get("name", "unknown")
+            vendor = device.get("vendor", "unknown")
+            mem = device.get("memory_total", "")
+            line = f"    - {vendor}: {name}"
+            if mem:
+                line += f" ({mem})"
+            print(line)
+
+    recs = report.get("recommendations", [])
+    if recs:
+        print("  Recommendations:")
+        for rec in recs:
+            print(f"    - {rec}")
+    return 0
+
+
 def convert_command(args: argparse.Namespace) -> int:
     """
     Execute the convert command.
@@ -322,6 +385,7 @@ def convert_command(args: argparse.Namespace) -> int:
             args.debug,
             getattr(args, "parametric", False),
             recognition_backend=getattr(args, "recognition_backend", "native"),
+            compute_backend=getattr(args, "compute_backend", "auto"),
         )
         print_stats(stats)
         return 0
@@ -374,6 +438,7 @@ def verify_command(args: argparse.Namespace) -> int:
                 scad_file_to_use,
                 parametric=getattr(args, "parametric", False),
                 recognition_backend=getattr(args, "recognition_backend", "native"),
+                compute_backend=getattr(args, "compute_backend", "auto"),
             )
 
         print("Tolerance settings:")
@@ -497,6 +562,7 @@ def batch_command(args: argparse.Namespace) -> int:
                     str(scad_file),
                     parametric=getattr(args, "parametric", False),
                     recognition_backend=getattr(args, "recognition_backend", "native"),
+                    compute_backend=getattr(args, "compute_backend", "auto"),
                 )
                 result = verify_conversion(
                     stl_file,

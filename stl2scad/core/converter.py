@@ -80,6 +80,7 @@ def run_openscad(
 
 
 from . import config
+from .acceleration import get_acceleration_report, resolve_compute_backend
 from .cgal_backend import detect_primitive_with_cgal
 from .recognition import (
     detect_primitive_with_diagnostics,
@@ -325,6 +326,70 @@ def find_unique_vertices(
     return unique_points, vertex_map
 
 
+def find_unique_vertices_gpu(
+    points: NDArray[np.float64], tolerance: float = 1e-6
+) -> Tuple[NDArray[np.float64], Dict[int, int]]:
+    """Deduplicate vertices on GPU via CuPy when available."""
+    try:
+        import cupy as cp  # type: ignore
+    except Exception as exc:
+        raise RuntimeError("CuPy is not available") from exc
+
+    scale = 1.0 / tolerance
+    points_gpu = cp.asarray(points)
+    rounded = cp.rint(points_gpu * scale).astype(cp.int64)
+
+    try:
+        _, first_occurrence, inverse = cp.unique(
+            rounded, axis=0, return_index=True, return_inverse=True
+        )
+    except Exception as exc:
+        raise RuntimeError("GPU row-wise unique operation failed") from exc
+
+    unique_points_gpu = points_gpu[first_occurrence]
+    unique_points = cp.asnumpy(unique_points_gpu)
+    inverse_cpu = cp.asnumpy(inverse)
+    vertex_map: Dict[int, int] = {i: int(inverse_cpu[i]) for i in range(len(points))}
+    return unique_points, vertex_map
+
+
+def find_unique_vertices_gpu_torch(
+    points: NDArray[np.float64], tolerance: float = 1e-6
+) -> Tuple[NDArray[np.float64], Dict[int, int]]:
+    """Deduplicate vertices on GPU using PyTorch (CUDA/ROCm/Vulkan)."""
+    try:
+        import torch  # type: ignore
+    except Exception as exc:
+        raise RuntimeError("PyTorch is not available") from exc
+
+    device: Any
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        vulkan_backend = getattr(getattr(torch, "backends", None), "vulkan", None)
+        if vulkan_backend is not None and bool(vulkan_backend.is_available()):
+            # Not all torch ops are supported on Vulkan. This path attempts
+            # Vulkan first and falls back to CPU if unsupported ops are hit.
+            device = torch.device("vulkan")
+        else:
+            raise RuntimeError("PyTorch GPU backend is not available")
+    scale = 1.0 / tolerance
+
+    points_tensor = torch.from_numpy(points).to(device=device, dtype=torch.float64)
+    rounded = torch.round(points_tensor * scale).to(dtype=torch.int64)
+
+    unique_rows, inverse = torch.unique(rounded, dim=0, return_inverse=True)
+    inverse_cpu = inverse.detach().cpu().numpy()
+
+    # Compute first occurrence per unique id on CPU for broad backend
+    # compatibility (ROCm/Vulkan may not support scatter_reduce variants).
+    first_occurrence = np.full(unique_rows.shape[0], len(points), dtype=np.int64)
+    np.minimum.at(first_occurrence, inverse_cpu, np.arange(len(points), dtype=np.int64))
+    unique_points = points[first_occurrence]
+    vertex_map: Dict[int, int] = {i: int(inverse_cpu[i]) for i in range(len(points))}
+    return unique_points, vertex_map
+
+
 def optimize_scad(
     points: NDArray[np.float64], faces: List[List[int]]
 ) -> Tuple[NDArray[np.float64], List[List[int]]]:
@@ -427,6 +492,7 @@ def stl2scad(
     debug: bool = False,
     parametric: bool = False,
     recognition_backend: str = "native",
+    compute_backend: str = "auto",
 ) -> ConversionStats:
     """
     Convert STL to SCAD with improved handling and optimization.
@@ -438,6 +504,7 @@ def stl2scad(
         debug: Enable debug mode (renders comparison previews)
         parametric: Try to detect and write primitives instead of a flat polyhedron
         recognition_backend: Primitive recognition backend id (`native`, `trimesh_manifold`, `cgal`)
+        compute_backend: Compute backend selection (`auto`, `cpu`, `gpu`)
 
     Returns:
         ConversionStats: Object with conversion statistics
@@ -464,9 +531,39 @@ def stl2scad(
     metadata = extract_metadata(stl_mesh)
     original_vertex_count = len(stl_mesh.points.reshape(-1, 3))
 
+    compute_selection = resolve_compute_backend(compute_backend)
+    metadata["compute_backend_requested"] = compute_selection["requested"]
+    metadata["compute_backend_used"] = compute_selection["used"]
+    metadata["compute_backend_reason"] = compute_selection["reason"]
+
     # Deduplicate vertices
     points = stl_mesh.points.reshape(-1, 3)
-    unique_points, vertex_map = find_unique_vertices(points, tolerance)
+    if compute_selection["used"] == "gpu":
+        try:
+            accel_report = get_acceleration_report()
+            gpu_backend = str(accel_report.get("gpu_compute_backend", "none"))
+            metadata["compute_backend_gpu_library"] = gpu_backend
+            if gpu_backend == "cupy":
+                unique_points, vertex_map = find_unique_vertices_gpu(points, tolerance)
+            elif gpu_backend in {"torch", "torch_vulkan"}:
+                unique_points, vertex_map = find_unique_vertices_gpu_torch(
+                    points, tolerance
+                )
+            else:
+                raise RuntimeError("No supported GPU compute library is available")
+        except Exception as exc:
+            logging.warning(
+                "GPU deduplication failed; falling back to CPU (%s: %s)",
+                type(exc).__name__,
+                str(exc),
+            )
+            unique_points, vertex_map = find_unique_vertices(points, tolerance)
+            metadata["compute_backend_used"] = "cpu"
+            metadata["compute_backend_reason"] = (
+                f"gpu_fallback_cpu:{type(exc).__name__}:{str(exc)}"
+            )
+    else:
+        unique_points, vertex_map = find_unique_vertices(points, tolerance)
 
     # Create faces using mapped vertices and filter degenerate triangles that
     # collapse during vertex snapping.

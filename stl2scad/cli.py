@@ -497,12 +497,24 @@ def feature_graph_command(args: argparse.Namespace) -> int:
 
         if input_path.is_dir():
             workers = _resolve_workers(args.workers)
+
+            def _progress(done: int, total: int, path: str) -> None:
+                print(
+                    f"\r[{done}/{total}] {Path(path).name}",
+                    end="",
+                    flush=True,
+                    file=sys.stderr,
+                )
+                if done == total:
+                    print(file=sys.stderr)
+
             report = build_feature_graph_for_folder(
                 input_path,
                 output_path,
                 recursive=not args.no_recursive,
                 max_files=args.max_files,
                 workers=workers,
+                progress_callback=_progress,
             )
             summary = report["summary"]
             print(f"Feature graph report written to: {output_path}")

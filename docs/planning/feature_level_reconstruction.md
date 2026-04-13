@@ -61,11 +61,11 @@ python scripts/build_feature_graph.py input.stl --output artifacts/input_feature
 
 ## Current State Assessment (2026-04-13)
 
-Three interconnected systems are now in place: feature inventory, feature graph, and manifest-driven feature fixtures. All 26 related tests pass. CLI commands `feature-inventory` and `feature-graph` are wired up with parallel worker support and progress reporting.
+Three interconnected systems are now in place: feature inventory, feature graph, and manifest-driven feature fixtures. The focused feature test slice currently passes in the project virtualenv across `test_feature_inventory.py`, `test_feature_graph.py`, `test_feature_fixtures.py`, and the feature-specific CLI coverage in `test_cli.py`. CLI commands `feature-inventory` and `feature-graph` are wired up with parallel worker support and progress reporting for directory scans.
 
 ### Feature Fixtures (`stl2scad/core/feature_fixtures.py`) — High value
 
-Manifest-driven system that generates known-geometry OpenSCAD plates (with holes, slots, linear/grid patterns), renders them to STL via OpenSCAD, then runs the feature graph detector on the result to verify it finds exactly what was defined. This is a closed-loop ground-truth validation pipeline.
+Manifest-driven system that generates known-geometry OpenSCAD plates (with holes, slots, linear/grid patterns), renders them to STL via OpenSCAD, then runs the feature graph detector on the result to verify it finds exactly what was defined. This is a closed-loop ground-truth validation pipeline for feature-graph detection, and it also provides controlled inputs that can be used to tune feature-inventory heuristics.
 
 **Strengths:**
 

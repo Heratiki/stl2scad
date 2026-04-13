@@ -2,6 +2,8 @@
 Tests for intermediate feature graph extraction.
 """
 
+from pathlib import Path
+
 import numpy as np
 from stl.mesh import Mesh
 
@@ -44,6 +46,34 @@ def test_feature_graph_folder_report_writes_summary(test_data_dir, test_output_d
     assert report["summary"]["file_count"] == 3
     assert report["summary"]["error_count"] == 0
     assert report["summary"]["feature_counts"]
+
+
+def test_feature_graph_folder_reports_progress(test_data_dir, test_output_dir):
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+
+    output_json = test_output_dir / "feature_graph_progress.json"
+    progress_events = []
+
+    report = build_feature_graph_for_folder(
+        fixtures_dir,
+        output_json,
+        max_files=3,
+        workers=2,
+        progress_callback=lambda done, total, path: progress_events.append(
+            (done, total, Path(path).name)
+        ),
+    )
+
+    assert report["summary"]["file_count"] == 3
+    assert len(progress_events) == 3
+    assert progress_events[-1][0] == 3
+    assert progress_events[-1][1] == 3
+    assert {event[2] for event in progress_events} == {
+        "composite_cylinder_beside_box.stl",
+        "composite_disconnected_dual_box.stl",
+        "composite_overlapping_dual_box.stl",
+    }
 
 
 def test_feature_graph_folder_includes_uppercase_stl_extension(test_output_dir):

@@ -207,13 +207,13 @@ def test_feature_graph_directory_command_execution(mock_build_graph, test_output
     )
 
     assert exit_code == 0
-    mock_build_graph.assert_called_once_with(
-        test_output_dir,
-        Path(output_file),
-        recursive=True,
-        max_files=3,
-        workers=2,
-    )
+    mock_build_graph.assert_called_once()
+    args, kwargs = mock_build_graph.call_args
+    assert args == (test_output_dir, Path(output_file))
+    assert kwargs["recursive"] is True
+    assert kwargs["max_files"] == 3
+    assert kwargs["workers"] == 2
+    assert callable(kwargs["progress_callback"])
 
 
 @patch("stl2scad.cli.emit_feature_graph_scad_preview")

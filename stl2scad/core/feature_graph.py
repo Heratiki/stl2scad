@@ -7,11 +7,11 @@ feature candidates without committing to SCAD generation yet.
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 import json
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 import numpy as np
 from stl.mesh import Mesh
@@ -75,6 +75,7 @@ def build_feature_graph_for_folder(
     recursive: bool = True,
     max_files: Optional[int] = None,
     workers: int = 1,
+    progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> dict[str, Any]:
     """
     Build feature graphs for STL files in a folder and write a JSON report.
@@ -96,17 +97,27 @@ def build_feature_graph_for_folder(
 
     worker_count = max(1, int(workers))
     if worker_count == 1 or len(files) <= 1:
-        graphs = [
-            _build_feature_graph_for_folder_file(path, input_path) for path in files
-        ]
+        graphs = []
+        for idx, path in enumerate(files, 1):
+            graph = _build_feature_graph_for_folder_file(path, input_path)
+            graphs.append(graph)
+            if progress_callback is not None:
+                progress_callback(idx, len(files), str(path))
     else:
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
-            graphs = list(
-                executor.map(
-                    _build_feature_graph_for_folder_worker,
-                    [(path, input_path) for path in files],
-                )
-            )
+            future_to_path = {
+                executor.submit(_build_feature_graph_for_folder_worker, (path, input_path)): path
+                for path in files
+            }
+            graph_map: dict[Path, dict[str, Any]] = {}
+            done_count = 0
+            for future in as_completed(future_to_path):
+                path = future_to_path[future]
+                graph_map[path] = future.result()
+                done_count += 1
+                if progress_callback is not None:
+                    progress_callback(done_count, len(files), str(path))
+            graphs = [graph_map[path] for path in files]
 
     report = {
         "schema_version": 1,

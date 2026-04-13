@@ -24,9 +24,26 @@ REASON_BACKEND_UNAVAILABLE = "backend_unavailable"
 REASON_NO_CANDIDATE_NATIVE = "no_candidate_native"
 REASON_NO_COMPONENTS = "no_components_after_preprocess"
 REASON_MULTI_COMPONENT_OVERLAP = "multi_component_overlap"
+REASON_MULTI_COMPONENT_VOLUME_MISMATCH = "multi_component_volume_mismatch"
 REASON_NO_COMPONENT_PRIMITIVE = "no_component_primitive_candidate"
 REASON_CGAL_NO_CANDIDATE = "cgal_no_candidate"
 REASON_CGAL_FALLBACK_FAILED = "cgal_fallback_failed"
+
+# Tuning surface: overlap and volume verification thresholds.
+# These control when multi-component assemblies are rejected.
+#
+# OVERLAP_CONTAINMENT_THRESHOLD: Maximum AABB containment ratio (overlap_volume /
+# smaller_bbox_volume) before a component pair is flagged as "high containment".
+# Lower values are more conservative (reject more overlaps).
+# Range: 0.0 (reject any overlap) to 1.0 (allow full containment).
+OVERLAP_CONTAINMENT_THRESHOLD = 0.50
+#
+# VOLUME_MISMATCH_THRESHOLD: Maximum allowed ratio of (sum_of_primitive_volumes /
+# mesh_volume) before rejecting a multi-component union. Values significantly > 1.0
+# indicate that primitives overlap volumetrically (e.g. subtraction shells produce
+# sum >> mesh because the inner box is counted twice).
+# Range: 1.0 (strict) to infinity (permissive).
+VOLUME_MISMATCH_THRESHOLD = 1.15
 
 
 @dataclass
@@ -202,17 +219,35 @@ def _detect_primitive_trimesh_manifold_with_reason(
             return primitive, ""
         return None, REASON_NO_COMPONENTS
 
-    # Reject overlapping/nested component layouts (e.g. shell-like subtraction
-    # surfaces). Current Phase 1 assembly supports only disjoint unions.
-    if len(components) > 1 and _components_have_overlapping_bboxes(components):
-        return None, REASON_MULTI_COMPONENT_OVERLAP
+    # Compute overlap diagnostics for multi-component meshes (informational).
+    overlap_info: Optional[dict] = None
+    if len(components) > 1:
+        overlap_info = _classify_component_overlap(components)
+        logging.debug(
+            "Overlap classification for %d components: %s",
+            len(components),
+            {k: v for k, v in overlap_info.items() if k != "pair_details"},
+        )
 
+    # Attempt per-component primitive fitting regardless of overlap.
+    candidates: list[_PrimitiveCandidate] = []
     snippets: list[str] = []
     for component in components:
         candidate = _detect_component_primitive(component, tolerance)
         if candidate is None:
             return None, REASON_NO_COMPONENT_PRIMITIVE
+        candidates.append(candidate)
         snippets.append(candidate.scad.strip())
+
+    # For multi-component unions with overlapping bboxes, verify the union
+    # makes volumetric sense. This catches subtraction shells where both
+    # the outer and inner surfaces are individually valid primitives but
+    # their union is geometrically wrong.
+    if len(components) > 1 and overlap_info and overlap_info["has_high_containment"]:
+        vol_valid, vol_diag = _verify_union_volume(components, candidates)
+        logging.debug("Volume verification: valid=%s, %s", vol_valid, vol_diag)
+        if not vol_valid:
+            return None, REASON_MULTI_COMPONENT_VOLUME_MISMATCH
 
     if len(snippets) == 1:
         return snippets[0] + "\n", ""
@@ -683,20 +718,129 @@ def _shape_priority(shape: str) -> int:
     }.get(shape, 0)
 
 
-def _components_have_overlapping_bboxes(
+def _classify_component_overlap(
     components: list[_ComponentMesh],
+    containment_threshold: float = OVERLAP_CONTAINMENT_THRESHOLD,
     epsilon: float = 1e-9,
-) -> bool:
+) -> dict:
+    """Compute overlap metrics for all component pairs.
+
+    Returns a diagnostics dict with:
+      - has_overlap: bool — any AABB overlap exists
+      - has_high_containment: bool — any pair exceeds containment_threshold
+      - max_containment: float — highest containment ratio across all pairs
+      - pair_details: list of per-pair overlap records
+    """
     bboxes: list[Tuple[np.ndarray, np.ndarray]] = []
     for component in components:
         pts = component.vertices
         bboxes.append((pts.min(axis=0), pts.max(axis=0)))
 
+    has_overlap = False
+    has_high_containment = False
+    max_containment = 0.0
+    pair_details: list[dict] = []
+
     for i in range(len(bboxes)):
         min_a, max_a = bboxes[i]
+        vol_a = float(np.prod(np.maximum(max_a - min_a, 0.0)))
         for j in range(i + 1, len(bboxes)):
             min_b, max_b = bboxes[j]
+            vol_b = float(np.prod(np.maximum(max_b - min_b, 0.0)))
             overlap_dims = np.minimum(max_a, max_b) - np.maximum(min_a, min_b)
-            if np.all(overlap_dims > epsilon):
-                return True
-    return False
+
+            if not np.all(overlap_dims > epsilon):
+                continue
+
+            has_overlap = True
+            overlap_vol = float(np.prod(overlap_dims))
+            min_vol = min(vol_a, vol_b)
+            containment = overlap_vol / min_vol if min_vol > epsilon else 0.0
+            max_containment = max(max_containment, containment)
+            if containment > containment_threshold:
+                has_high_containment = True
+
+            pair_details.append(
+                {
+                    "pair": [i, j],
+                    "overlap_volume": round(overlap_vol, 6),
+                    "containment_ratio": round(containment, 6),
+                    "bbox_vol_a": round(vol_a, 6),
+                    "bbox_vol_b": round(vol_b, 6),
+                }
+            )
+
+    return {
+        "has_overlap": has_overlap,
+        "has_high_containment": has_high_containment,
+        "max_containment": round(max_containment, 6),
+        "containment_threshold": containment_threshold,
+        "pair_count": len(pair_details),
+        "pair_details": pair_details,
+    }
+
+
+def _components_have_overlapping_bboxes(
+    components: list[_ComponentMesh],
+    epsilon: float = 1e-9,
+) -> bool:
+    """Legacy API: returns True if any pair of component AABBs overlap."""
+    result = _classify_component_overlap(components, containment_threshold=0.0,
+                                         epsilon=epsilon)
+    return result["has_overlap"]
+
+
+def _verify_union_volume(
+    components: list[_ComponentMesh],
+    candidates: list[_PrimitiveCandidate],
+    threshold: float = VOLUME_MISMATCH_THRESHOLD,
+) -> Tuple[bool, dict]:
+    """Check whether the sum of component volumes is plausible for a union.
+
+    Returns (is_valid, diagnostics).
+
+    For disjoint components, sum_of_component_volumes ≈ total_mesh_volume
+    (ratio ≈ 1.0). For a subtraction shell (outer box minus inner cavity),
+    the outer surface has signed volume +V_outer and the inner has +V_inner
+    (abs), so sum = V_outer + V_inner. But the total mesh volume (all
+    triangles together, signed) = V_outer - V_inner. The ratio
+    (V_outer+V_inner)/(V_outer-V_inner) is always > 1.0 for any non-trivial
+    inner volume, which signals overlapping/nested geometry.
+    """
+    sum_component_vol = sum(
+        _signed_mesh_volume(c.vertices, c.faces) for c in components
+    )
+
+    # Reconstruct total mesh volume from all component triangles together.
+    # We concatenate all vertices/faces with proper index offsets so the
+    # signed volume calculation captures cancellation from inward normals.
+    all_verts_list = []
+    all_faces_list = []
+    offset = 0
+    for c in components:
+        all_verts_list.append(c.vertices)
+        all_faces_list.append(c.faces + offset)
+        offset += len(c.vertices)
+    all_verts = np.concatenate(all_verts_list, axis=0)
+    all_faces = np.concatenate(all_faces_list, axis=0)
+    total_mesh_vol = _signed_mesh_volume(all_verts, all_faces)
+
+    if total_mesh_vol <= 1e-12:
+        return True, {
+            "total_mesh_volume": 0.0,
+            "sum_component_volume": round(sum_component_vol, 6),
+            "volume_ratio": 0.0,
+            "threshold": threshold,
+        }
+
+    ratio = sum_component_vol / total_mesh_vol
+
+    diagnostics = {
+        "total_mesh_volume": round(total_mesh_vol, 6),
+        "sum_component_volume": round(sum_component_vol, 6),
+        "volume_ratio": round(ratio, 6),
+        "threshold": threshold,
+    }
+
+    is_valid = ratio <= threshold
+    return is_valid, diagnostics

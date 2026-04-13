@@ -80,7 +80,11 @@ def run_openscad(
 
 
 from . import config
-from .acceleration import get_acceleration_report, resolve_compute_backend
+from .acceleration import (
+    get_acceleration_report,
+    register_gpu_runtime_failure,
+    resolve_compute_backend,
+)
 from .cgal_backend import detect_primitive_with_cgal
 from .recognition import (
     detect_primitive_with_diagnostics,
@@ -557,6 +561,12 @@ def stl2scad(
                 type(exc).__name__,
                 str(exc),
             )
+            try:
+                register_gpu_runtime_failure(
+                    str(metadata.get("compute_backend_gpu_library", "gpu")), str(exc)
+                )
+            except Exception:
+                pass
             unique_points, vertex_map = find_unique_vertices(points, tolerance)
             metadata["compute_backend_used"] = "cpu"
             metadata["compute_backend_reason"] = (

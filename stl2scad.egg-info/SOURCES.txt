@@ -10,6 +10,7 @@ stl2scad.egg-info/entry_points.txt
 stl2scad.egg-info/requires.txt
 stl2scad.egg-info/top_level.txt
 stl2scad/core/__init__.py
+stl2scad/core/acceleration.py
 stl2scad/core/benchmark_fixtures.py
 stl2scad/core/cgal_backend.py
 stl2scad/core/config.py

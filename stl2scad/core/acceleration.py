@@ -13,6 +13,9 @@ import subprocess
 from typing import Any, Dict, List
 
 
+_GPU_RUNTIME_FAILURES: Dict[str, str] = {}
+
+
 def _has_module(module_name: str) -> bool:
     return importlib.util.find_spec(module_name) is not None
 
@@ -342,5 +345,21 @@ def resolve_compute_backend(requested: str = "auto") -> Dict[str, str]:
 
     # auto
     if ready:
+        backend = str(report.get("gpu_compute_backend", "none"))
+        if backend in _GPU_RUNTIME_FAILURES:
+            cached_reason = _GPU_RUNTIME_FAILURES[backend]
+            return {
+                "requested": mode,
+                "used": "cpu",
+                "reason": f"auto_cpu:cached_gpu_failure:{backend}:{cached_reason}",
+            }
         return {"requested": mode, "used": "gpu", "reason": "auto_gpu_ready"}
     return {"requested": mode, "used": "cpu", "reason": f"auto_cpu:{reason}"}
+
+
+def register_gpu_runtime_failure(backend: str, reason: str) -> None:
+    """Remember a backend-specific GPU runtime failure for this process."""
+    key = backend.strip().lower()
+    if not key:
+        return
+    _GPU_RUNTIME_FAILURES[key] = reason.strip()[:240]

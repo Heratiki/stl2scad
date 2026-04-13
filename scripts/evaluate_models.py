@@ -41,6 +41,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Recognition backend used for parametric mode.",
     )
     parser.add_argument(
+        "--compute-backend",
+        default="cpu",
+        choices=["auto", "cpu", "gpu"],
+        help="Compute backend for conversion runs (default: cpu for stable benchmarking).",
+    )
+    parser.add_argument(
         "--modes",
         default="poly,parametric",
         help="Comma-separated modes: poly,parametric",
@@ -153,6 +159,7 @@ def main() -> int:
                     str(scad_path),
                     parametric=is_parametric,
                     recognition_backend=args.backend,
+                    compute_backend=args.compute_backend,
                 )
                 elapsed = perf_counter() - t0
 
@@ -222,6 +229,7 @@ def main() -> int:
         "models_dir": str(models_dir),
         "output_dir": str(output_dir),
         "backend": args.backend,
+        "compute_backend": args.compute_backend,
         "modes": modes,
         "count_total": len(results),
         "count_errors": sum(1 for r in results if r.get("error")),

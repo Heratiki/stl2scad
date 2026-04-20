@@ -17,6 +17,30 @@ from stl2scad.core.feature_fixtures import (
 from stl2scad.core.feature_graph import build_feature_graph_for_stl
 
 
+def _iter_plate_fixture_holes(fixture):
+    for hole in fixture.get("holes", []):
+        yield hole["center"], float(hole["diameter"])
+
+    for pattern in fixture.get("linear_hole_patterns", []):
+        origin_x, origin_y = pattern["origin"]
+        step_x, step_y = pattern["step"]
+        diameter = float(pattern["diameter"])
+        for item_index in range(int(pattern["count"])):
+            yield [origin_x + step_x * item_index, origin_y + step_y * item_index], diameter
+
+    for pattern in fixture.get("grid_hole_patterns", []):
+        origin_x, origin_y = pattern["origin"]
+        row_step_x, row_step_y = pattern["row_step"]
+        col_step_x, col_step_y = pattern["col_step"]
+        diameter = float(pattern["diameter"])
+        for row in range(int(pattern["rows"])):
+            for col in range(int(pattern["cols"])):
+                yield [
+                    origin_x + row_step_x * row + col_step_x * col,
+                    origin_y + row_step_y * row + col_step_y * col,
+                ], diameter
+
+
 def test_feature_fixture_manifest_matches_checked_in_scad(test_data_dir, test_output_dir):
     manifest_path = test_data_dir / "feature_fixtures_manifest.json"
     checked_in_dir = test_data_dir / "feature_fixtures_scad"
@@ -83,6 +107,49 @@ def test_feature_fixture_validation_rejects_invalid_counterbore_geometry():
 
     with pytest.raises(ValueError, match="bore_diameter must be larger than through_diameter"):
         validate_feature_fixture_spec(invalid_fixture)
+
+
+def test_feature_fixture_manifest_covers_roadmap_stress_cases(test_data_dir):
+    manifest_path = test_data_dir / "feature_fixtures_manifest.json"
+    fixtures = load_feature_fixture_manifest(manifest_path)
+
+    plate_fixtures = [fixture for fixture in fixtures if fixture["fixture_type"] == "plate"]
+    fixture_types = {fixture["fixture_type"] for fixture in fixtures}
+
+    assert {"box", "l_bracket"}.issubset(fixture_types)
+    assert any(
+        fixture["slots"]
+        and (
+            fixture["holes"]
+            or fixture["linear_hole_patterns"]
+            or fixture["grid_hole_patterns"]
+        )
+        for fixture in plate_fixtures
+    )
+    assert any(
+        max(fixture["plate_size"][:2]) / min(fixture["plate_size"][:2]) >= 4.0
+        and fixture["explicit_hole_count"] >= 3
+        for fixture in plate_fixtures
+    )
+    assert any(
+        min(diameter for _center, diameter in _iter_plate_fixture_holes(fixture)) <= 1.2
+        for fixture in plate_fixtures
+        if fixture["explicit_hole_count"] > 0
+    )
+    assert any(
+        max(diameter for _center, diameter in _iter_plate_fixture_holes(fixture)) >= 8.0
+        for fixture in plate_fixtures
+        if fixture["explicit_hole_count"] > 0
+    )
+    assert any(
+        min(
+            fixture["plate_size"][0] * 0.5 - abs(center[0]) - diameter * 0.5,
+            fixture["plate_size"][1] * 0.5 - abs(center[1]) - diameter * 0.5,
+        )
+        <= 0.5
+        for fixture in plate_fixtures
+        for center, diameter in _iter_plate_fixture_holes(fixture)
+    )
 
 
 def test_feature_fixture_generation_supports_box_and_l_bracket():

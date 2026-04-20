@@ -1,0 +1,279 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-04-20T00:00:00+00:00",
+  "fixtures": [
+    {
+      "name": "plate_plain",
+      "fixture_type": "plate",
+      "description": "Baseline plain plate with no cutouts.",
+      "output_filename": "plate_plain.scad",
+      "plate_size": [20.0, 10.0, 2.0],
+      "expected_detection": {
+        "plate_like_solid": true,
+        "box_like_solid": false,
+        "hole_count": 0,
+        "slot_count": 0,
+        "linear_pattern_count": 0,
+        "grid_pattern_count": 0,
+        "counterbore_count": 0
+      }
+    },
+    {
+      "name": "plate_linear_two_holes",
+      "fixture_type": "plate",
+      "description": "Simple two-hole plate used as the baseline linear pattern case.",
+      "output_filename": "plate_linear_two_holes.scad",
+      "plate_size": [20.0, 10.0, 2.0],
+      "holes": [
+        { "center": [-3.0, 0.0], "diameter": 4.0 },
+        { "center": [3.0, 0.0], "diameter": 4.0 }
+      ],
+      "expected_detection": {
+        "plate_like_solid": true,
+        "box_like_solid": false,
+        "hole_count": 2,
+        "slot_count": 0,
+        "linear_pattern_count": 1,
+        "grid_pattern_count": 0,
+        "counterbore_count": 0
+      }
+    },
+    {
+      "name": "plate_grid_two_by_three",
+      "fixture_type": "plate",
+      "description": "Rectangular 2x3 hole grid for nested loop emission coverage.",
+      "output_filename": "plate_grid_two_by_three.scad",
+      "plate_size": [20.0, 12.0, 2.0],
+      "grid_hole_patterns": [
+        {
+          "origin": [-6.0, -3.0],
+          "row_step": [0.0, 6.0],
+          "col_step": [6.0, 0.0],
+          "rows": 2,
+          "cols": 3,
+          "diameter": 2.0
+        }
+      ],
+      "expected_detection": {
+        "plate_like_solid": true,
+        "box_like_solid": false,
+        "hole_count": 6,
+        "slot_count": 0,
+        "linear_pattern_count": 0,
+        "grid_pattern_count": 1,
+        "counterbore_count": 0
+      }
+    },
+    {
+      "name": "plate_single_slot",
+      "fixture_type": "plate",
+      "description": "Single rounded slot in a compact plate.",
+      "output_filename": "plate_single_slot.scad",
+      "plate_size": [18.0, 8.0, 2.0],
+      "slots": [
+        { "start": [-3.5, 0.0], "end": [3.5, 0.0], "width": 3.0 }
+      ],
+      "expected_detection": {
+        "plate_like_solid": true,
+        "box_like_solid": false,
+        "hole_count": 0,
+        "slot_count": 1,
+        "linear_pattern_count": 0,
+        "grid_pattern_count": 0,
+        "counterbore_count": 0
+      }
+    },
+    {
+      "name": "plate_single_counterbore",
+      "fixture_type": "plate",
+      "description": "One stepped counterbore hole in a thicker plate.",
+      "output_filename": "plate_single_counterbore.scad",
+      "plate_size": [40.0, 24.0, 6.0],
+      "counterbores": [
+        {
+          "center": [0.0, 0.0],
+          "through_diameter": 4.0,
+          "bore_diameter": 8.0,
+          "bore_depth": 3.0
+        }
+      ],
+      "expected_detection": {
+        "plate_like_solid": true,
+        "box_like_solid": false,
+        "hole_count": 0,
+        "slot_count": 0,
+        "linear_pattern_count": 0,
+        "grid_pattern_count": 0,
+        "counterbore_count": 1
+      }
+    },
+    {
+      "name": "plate_mixed_linear_and_slot",
+      "fixture_type": "plate",
+      "description": "Mixed-feature plate with both repeated holes and a rounded slot.",
+      "output_filename": "plate_mixed_linear_and_slot.scad",
+      "plate_size": [30.0, 14.0, 2.0],
+      "holes": [
+        { "center": [-7.0, -2.5], "diameter": 4.0 },
+        { "center": [7.0, -2.5], "diameter": 4.0 }
+      ],
+      "slots": [
+        { "start": [-4.0, 3.5], "end": [4.0, 3.5], "width": 3.0 }
+      ],
+      "expected_detection": {
+        "plate_like_solid": true,
+        "box_like_solid": false,
+        "hole_count": 2,
+        "slot_count": 1,
+        "linear_pattern_count": 1,
+        "grid_pattern_count": 0,
+        "counterbore_count": 0
+      }
+    },
+    {
+      "name": "plate_near_boundary_linear",
+      "fixture_type": "plate",
+      "description": "Linear hole pair placed near the outer plate boundary without crossing it.",
+      "output_filename": "plate_near_boundary_linear.scad",
+      "plate_size": [28.0, 16.0, 2.0],
+      "holes": [
+        { "center": [-7.5, 5.5], "diameter": 4.0 },
+        { "center": [7.5, 5.5], "diameter": 4.0 }
+      ],
+      "expected_detection": {
+        "plate_like_solid": true,
+        "box_like_solid": false,
+        "hole_count": 2,
+        "slot_count": 0,
+        "linear_pattern_count": 1,
+        "grid_pattern_count": 0,
+        "counterbore_count": 0
+      }
+    },
+    {
+      "name": "plate_long_aspect_linear",
+      "fixture_type": "plate",
+      "description": "High-aspect-ratio plate with a three-hole linear pattern.",
+      "output_filename": "plate_long_aspect_linear.scad",
+      "plate_size": [60.0, 12.0, 2.0],
+      "linear_hole_patterns": [
+        {
+          "origin": [-18.0, 0.0],
+          "step": [18.0, 0.0],
+          "count": 3,
+          "diameter": 3.0
+        }
+      ],
+      "expected_detection": {
+        "plate_like_solid": true,
+        "box_like_solid": false,
+        "hole_count": 3,
+        "slot_count": 0,
+        "linear_pattern_count": 1,
+        "grid_pattern_count": 0,
+        "counterbore_count": 0
+      }
+    },
+    {
+      "name": "plate_small_hole_grid",
+      "fixture_type": "plate",
+      "description": "Small-diameter hole grid to exercise detector scale tolerance.",
+      "output_filename": "plate_small_hole_grid.scad",
+      "plate_size": [24.0, 16.0, 2.0],
+      "grid_hole_patterns": [
+        {
+          "origin": [-4.0, -4.0],
+          "row_step": [0.0, 8.0],
+          "col_step": [8.0, 0.0],
+          "rows": 2,
+          "cols": 2,
+          "diameter": 1.2
+        }
+      ],
+      "expected_detection": {
+        "plate_like_solid": true,
+        "box_like_solid": false,
+        "hole_count": 4,
+        "slot_count": 0,
+        "linear_pattern_count": 0,
+        "grid_pattern_count": 1,
+        "counterbore_count": 0
+      }
+    },
+    {
+      "name": "plate_large_hole_pair",
+      "fixture_type": "plate",
+      "description": "Large-diameter hole pair to exercise detector radius limits.",
+      "output_filename": "plate_large_hole_pair.scad",
+      "plate_size": [36.0, 24.0, 2.0],
+      "holes": [
+        { "center": [-10.0, 0.0], "diameter": 8.0 },
+        { "center": [10.0, 0.0], "diameter": 8.0 }
+      ],
+      "expected_detection": {
+        "plate_like_solid": true,
+        "box_like_solid": false,
+        "hole_count": 2,
+        "slot_count": 0,
+        "linear_pattern_count": 1,
+        "grid_pattern_count": 0,
+        "counterbore_count": 0
+      }
+    },
+    {
+      "name": "box_z_through_hole",
+      "fixture_type": "box",
+      "description": "Centered box with one through-hole along the z axis.",
+      "output_filename": "box_z_through_hole.scad",
+      "box_size": [18.0, 12.0, 10.0],
+      "holes": [
+        { "axis": "z", "center": [0.0, 0.0, 0.0], "diameter": 4.0 }
+      ],
+      "expected_detection": {
+        "plate_like_solid": false,
+        "box_like_solid": true,
+        "hole_count": 1,
+        "slot_count": 0,
+        "linear_pattern_count": 0,
+        "grid_pattern_count": 0,
+        "counterbore_count": 0
+      }
+    },
+    {
+      "name": "box_x_through_hole",
+      "fixture_type": "box",
+      "description": "Centered box with one through-hole along the x axis.",
+      "output_filename": "box_x_through_hole.scad",
+      "box_size": [18.0, 12.0, 10.0],
+      "holes": [
+        { "axis": "x", "center": [0.0, 0.0, 0.0], "diameter": 4.0 }
+      ],
+      "expected_detection": {
+        "plate_like_solid": false,
+        "box_like_solid": true,
+        "hole_count": 1,
+        "slot_count": 0,
+        "linear_pattern_count": 0,
+        "grid_pattern_count": 0,
+        "counterbore_count": 0
+      }
+    },
+    {
+      "name": "l_bracket_plain",
+      "fixture_type": "l_bracket",
+      "description": "Plain L-bracket baseline for non-plate, non-box geometry.",
+      "output_filename": "l_bracket_plain.scad",
+      "bracket_size": [24.0, 12.0, 20.0],
+      "leg_thickness": 4.0,
+      "expected_detection": {
+        "plate_like_solid": false,
+        "box_like_solid": false,
+        "hole_count": 0,
+        "slot_count": 0,
+        "linear_pattern_count": 0,
+        "grid_pattern_count": 0,
+        "counterbore_count": 0
+      }
+    }
+  ]
+}

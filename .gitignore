@@ -59,6 +59,9 @@ tests/data/Cube_3d_printing_sample_debug.echo
 !tests/data/benchmark_fixtures/
 !tests/data/benchmark_fixtures/**/*.stl
 !tests/data/benchmark_fixtures/manifest.json
+!tests/data/feature_fixtures_manifest.json
+!tests/data/feature_fixtures_scad/
+!tests/data/feature_fixtures_scad/*.scad
 
 # Ignore debug folder
 debug/

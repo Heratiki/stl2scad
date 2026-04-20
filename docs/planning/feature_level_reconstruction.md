@@ -71,12 +71,12 @@ Manifest-driven system that generates known-geometry OpenSCAD plates (with holes
 
 - Thorough input validation — bounds checking, duplicate detection, geometry-in-plate constraints
 - Round-trip test (`test_feature_fixtures.py::test_feature_fixture_round_trip_detection`) is the real payoff: manifest -> SCAD -> STL -> feature graph -> assert counts match. Catches regressions in the detector without relying on hand-labeled data.
-- 5 fixture cases: plain plate, single hole, 2-hole linear pattern, 2x3 grid, slot
+- 13 checked-in fixture cases spanning plain plates, linear/grid holes, slots, counterbores, mixed-feature plates, near-boundary holes, high-aspect-ratio plates, small/large hole diameters, boxes with holes, and an L-bracket baseline
 
 **Limitations:**
 
-- Only supports `plate` fixture type — no boxes, cylinders, or freeform composites
-- 5 test cases are a good start but thin — no edge cases like very small holes, oblique slots, mixed patterns on one plate, or tolerance-boundary geometry
+- Coverage is broader but still focused on conservative axis-aligned solids; rotated features, box cutouts, and more complex composite brackets are still absent
+- The current set now covers the first round of edge cases, but it still needs tougher tolerance-boundary geometry and mixed multi-pattern cases on the same plate
 - `expected_detection` counts are manually authored, so they're only as good as the author's understanding of what the detector should find
 
 ### Feature Inventory (`stl2scad/core/feature_inventory.py`) — Moderate value
@@ -114,9 +114,9 @@ Detects axis-aligned boxes, through-holes, slots, and repeated hole patterns (li
 
 ### Immediate priorities
 
-1. **Expand fixture variety** — the 5 current plate cases don't stress the detector much. Add mixed-feature plates (holes + slots on one plate), near-boundary holes, varying plate aspect ratios, and very small/large hole diameters.
-2. **Non-plate fixture types** — extend beyond plates to boxes-with-holes, L-brackets, etc. to exercise the feature graph's box detection path.
-3. **Connect inventory -> graph** — the inventory and feature graph are currently independent pipelines. Have the inventory pre-filter files and feed likely-mechanical candidates into the feature graph to complete the workflow.
+1. **Connect inventory -> graph** — the inventory and feature graph are currently independent pipelines. Have the inventory pre-filter files and feed likely-mechanical candidates into the feature graph to complete the workflow.
+2. **Expand beyond axis-aligned fixtures** — add rotated and more composite non-plate fixtures once the conservative baseline remains stable.
+3. **Tighten edge-case coverage** — keep adding tolerance-boundary geometry and multi-pattern plates that mirror real-world noisy CAD exports.
 
 ### Ongoing
 

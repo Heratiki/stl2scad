@@ -78,9 +78,7 @@ Manifest-driven system that generates known-geometry OpenSCAD plates (with holes
 - Coverage is broader but still focused on conservative axis-aligned solids; rotated features, box cutouts, and more complex composite brackets are still absent
 - The current set now covers the first round of edge cases, but it still needs tougher tolerance-boundary geometry and mixed multi-pattern cases on the same plate
 - `expected_detection` counts are manually authored, so they're only as good as the author's understanding of what the detector should find
-- Round-trip assertions are count-only: a swapped bore/through diameter, wrong slot width, or off-by-epsilon hole diameter still passes as long as the type-count matches. This is the main ceiling holding back the move toward parametric SCAD output.
-- `test_feature_fixture_round_trip_detection` silently skips when OpenSCAD is missing, so CI runners without OpenSCAD provide no regression signal.
-- Known generator defect: counterbore depth is 0.1mm shallow because the `-0.1` through-hole z-offset and `+0.2` height padding compound into the bore start; harmless with today's single counterbore fixture but will mask/produce bogus detector dimensions once depth is asserted.
+- Round-trip now checks dimensions, but the tolerances (`_CENTER_TOL`, `_DIAMETER_TOL`, etc. in `tests/test_feature_fixtures.py`) are hand-picked; they'll need revisiting as the detector precision improves or as noisier real-world STLs are added.
 
 ### Feature Inventory (`stl2scad/core/feature_inventory.py`) — Moderate value
 
@@ -115,14 +113,18 @@ Detects axis-aligned boxes, through-holes, slots, and repeated hole patterns (li
 
 ## Next Milestones
 
+### Recently completed (2026-04-20)
+
+- **Dimensional round-trip assertions** — `test_feature_fixture_round_trip_detection` now compares detected feature dimensions against the manifest within per-field tolerances (hole diameter/center, slot width/length, counterbore through/bore/depth, plate and box extents, linear/grid pattern origin/step/spacing).
+- **Counterbore depth generator fix** — `counterbore_hole` module now takes explicit `plate_thickness` and anchors the bore at `plate_thickness - bore_depth`, eliminating the compounded 0.1mm offset. All 11 affected `.scad` fixtures were regenerated.
+- **CI-hard-fail for missing OpenSCAD** — `test_feature_fixture_round_trip_detection` fails (no longer silently skips) when `CI=true` and the OpenSCAD binary is unavailable.
+- **Manifest `schema_version` enforcement** — `load_feature_fixture_manifest` rejects any manifest whose schema_version is not 1, with a dedicated negative test.
+
 ### Immediate priorities
 
-1. **Strengthen round-trip assertions from counts to dimensions** — the existing count-only check is the ceiling on fidelity. Extend `test_feature_fixture_round_trip_detection` so each detected feature must also match the manifest's declared dimensions within a tolerance (hole diameter, slot width/length, counterbore through/bore/depth, plate and box extents). This is the prerequisite for any move toward parametric SCAD output: if the detector can't be pinned to correct numbers, it can't be trusted to emit correct variables.
-2. **Fix the 0.1mm counterbore depth bug in `_generate_plate_fixture_scad`** before dimensional assertions land, otherwise the first depth check will fail against a generator defect rather than a detector defect.
-3. **Make the OpenSCAD round-trip a hard CI gate** — either require OpenSCAD on the CI image or convert the skip into `xfail(strict=True)` when the binary is unexpectedly missing, so the safety net can't quietly evaporate.
-4. **Connect inventory -> graph** — the inventory and feature graph are currently independent pipelines. Have the inventory pre-filter files and feed likely-mechanical candidates into the feature graph to complete the workflow.
-5. **Expand beyond axis-aligned fixtures** — add rotated and more composite non-plate fixtures once the conservative baseline remains stable.
-6. **Tighten edge-case coverage** — keep adding tolerance-boundary geometry and multi-pattern plates that mirror real-world noisy CAD exports.
+1. **Connect inventory -> graph** — the inventory and feature graph are currently independent pipelines. Have the inventory pre-filter files and feed likely-mechanical candidates into the feature graph to complete the workflow.
+2. **Expand beyond axis-aligned fixtures** — add rotated and more composite non-plate fixtures once the conservative baseline remains stable.
+3. **Tighten edge-case coverage** — keep adding tolerance-boundary geometry and multi-pattern plates that mirror real-world noisy CAD exports.
 
 ### Beyond dimensional parity
 

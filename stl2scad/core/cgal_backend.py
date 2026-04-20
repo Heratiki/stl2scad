@@ -269,6 +269,139 @@ def detect_primitive_with_cgal(
     )
 
 
+def _split_mesh_into_components(
+    mesh: stl.mesh.Mesh,
+    vertex_tolerance: float = 1e-4,
+) -> list[stl.mesh.Mesh]:
+    """Split a mesh into vertex-connected components via Union-Find.
+
+    Two triangles are in the same component if they share a vertex (within
+    ``vertex_tolerance``).  Completely disjoint sub-meshes (e.g. a sphere and
+    a translated cylinder merged into one STL) are split into separate entries.
+    Returns a list of sub-meshes ordered by descending triangle count.
+    """
+    vectors = np.asarray(mesh.vectors, dtype=np.float64)
+    n = len(vectors)
+    if n == 0:
+        return []
+
+    scale = 1.0 / max(vertex_tolerance, 1e-12)
+    vertex_to_tris: dict[tuple, list[int]] = {}
+    for i, tri in enumerate(vectors):
+        for v in tri:
+            key = (
+                int(round(float(v[0]) * scale)),
+                int(round(float(v[1]) * scale)),
+                int(round(float(v[2]) * scale)),
+            )
+            vertex_to_tris.setdefault(key, []).append(i)
+
+    parent = list(range(n))
+
+    def _find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for tri_list in vertex_to_tris.values():
+        root = _find(tri_list[0])
+        for j in range(1, len(tri_list)):
+            r = _find(tri_list[j])
+            if r != root:
+                parent[r] = root
+
+    groups: dict[int, list[int]] = {}
+    for i in range(n):
+        groups.setdefault(_find(i), []).append(i)
+
+    if len(groups) <= 1:
+        return [mesh]
+
+    result: list[stl.mesh.Mesh] = []
+    for tri_indices in sorted(groups.values(), key=len, reverse=True):
+        idx = np.array(tri_indices, dtype=np.intp)
+        sub = stl.mesh.Mesh(np.zeros(len(idx), dtype=stl.mesh.Mesh.dtype))
+        sub.vectors = vectors[idx]
+        if hasattr(sub, "update_normals"):
+            sub.update_normals()
+        result.append(sub)
+    return result
+
+
+def _cgal_ransac_best_shape_for_component(
+    mesh: stl.mesh.Mesh,
+    tolerance: float,
+    cgal_kernel: Any,
+    cgal_point_set: Any,
+    cgal_shape_detection: Any,
+) -> Optional[dict[str, Any]]:
+    """Run RANSAC on a single mesh component and return the best detected shape.
+
+    ``min_points`` is based only on this component's point count so smaller
+    components (e.g. a cylinder beside a much larger sphere) are not excluded.
+    """
+    points, normals = _mesh_triangle_centroids_and_normals(mesh)
+    if len(points) < 10:
+        return None
+
+    point_set = cgal_point_set.Point_set_3()
+    normal_map = point_set.add_normal_map()
+    for point, normal in zip(points, normals):
+        index = point_set.insert(
+            cgal_kernel.Point_3(float(point[0]), float(point[1]), float(point[2]))
+        )
+        normal_map.set(
+            index,
+            cgal_kernel.Vector_3(float(normal[0]), float(normal[1]), float(normal[2])),
+        )
+
+    shape_map = point_set.add_int_map("shape", -1)
+    bbox_diag = float(np.linalg.norm(points.max(axis=0) - points.min(axis=0)))
+    epsilon = max(float(tolerance) * max(bbox_diag, 1.0), bbox_diag * 0.02, 0.01)
+    cluster_epsilon = max(epsilon * 2.0, 0.01)
+
+    # Run a few deterministic-ish retries because CGAL RANSAC can be
+    # probabilistic and small components are sensitive to sampling.
+    for min_points_ratio in (0.05, 0.03, 0.02):
+        for probability in (0.01, 0.05):
+            try:
+                shapes = cgal_shape_detection.efficient_RANSAC(
+                    point_set,
+                    shape_map,
+                    min_points=max(10, int(len(points) * min_points_ratio)),
+                    epsilon=epsilon,
+                    cluster_epsilon=cluster_epsilon,
+                    normal_threshold=0.75,
+                    probability=probability,
+                    planes=True,
+                    cones=True,
+                    cylinders=True,
+                    spheres=True,
+                    tori=False,
+                )
+            except Exception:
+                logging.debug("CGAL RANSAC failed for component.", exc_info=True)
+                continue
+
+            parsed = [
+                _enrich_shape_geometry_from_points(
+                    _parse_cgal_shape_description(str(shape), len(points)),
+                    points,
+                )
+                for shape in shapes
+            ]
+            good = [
+                s
+                for s in parsed
+                if s is not None
+                and s.get("primitive_type") in {"sphere", "cylinder", "cone"}
+            ]
+            if good:
+                return max(good, key=lambda s: float(s.get("coverage", 0.0)))
+    return None
+
+
 def _detect_primitive_with_cgal_python_bindings(
     mesh: stl.mesh.Mesh,
     tolerance: float,
@@ -284,6 +417,50 @@ def _detect_primitive_with_cgal_python_bindings(
         logging.debug("CGAL Python binding import failed.", exc_info=True)
         return None
 
+    # --- per-component path for disconnected meshes ---
+    # When the mesh contains N geometrically separate bodies (e.g. a sphere and
+    # a translated cylinder), running RANSAC on the merged point cloud lets the
+    # dominant primitive absorb enough points to cross the single-shape coverage
+    # threshold before the smaller primitive is detected.  Splitting first and
+    # running RANSAC per component avoids that collapse.
+    components = _split_mesh_into_components(mesh)
+    if len(components) >= 2:
+        component_shapes: list[dict[str, Any]] = []
+        for comp in components[: _MAX_CGAL_MULTI_COMPONENTS]:
+            best = _cgal_ransac_best_shape_for_component(
+                comp, tolerance, cgal_kernel, cgal_point_set, cgal_shape_detection
+            )
+            if best is not None:
+                component_shapes.append(best)
+        if len(component_shapes) >= 2:
+            multi_scad, multi_confidence, multi_shapes, multi_reason = (
+                _try_assemble_multi_shape_union(component_shapes)
+            )
+            all_points, _ = _mesh_triangle_centroids_and_normals(mesh)
+            comp_diagnostics: dict[str, Any] = {
+                "engine": "cgal_python_bindings",
+                "cgal_bindings_available": True,
+                "triangle_count": int(len(mesh.vectors)),
+                "sample_point_count": int(len(all_points)),
+                "component_count": len(components),
+                "multi_shape_attempted": True,
+                "shapes": component_shapes,
+            }
+            if multi_shapes is not None:
+                comp_diagnostics["multi_shape_selected_count"] = len(multi_shapes)
+                comp_diagnostics["multi_shape_selected"] = multi_shapes
+            if multi_reason:
+                comp_diagnostics["multi_shape_reason"] = multi_reason
+            if multi_scad is not None:
+                return CgalDetectionResult(
+                    detected=True,
+                    scad=multi_scad,
+                    primitive_type="composite_union",
+                    confidence=multi_confidence,
+                    diagnostics=comp_diagnostics,
+                )
+
+    # --- full-mesh RANSAC fallback (existing logic) ---
     points, normals = _mesh_triangle_centroids_and_normals(mesh)
     if len(points) < 10:
         return None
@@ -312,7 +489,7 @@ def _detect_primitive_with_cgal_python_bindings(
             epsilon=epsilon,
             cluster_epsilon=cluster_epsilon,
             normal_threshold=0.75,
-            probability=0.05,
+            probability=0.01,
             planes=True,
             cones=True,
             cylinders=True,
@@ -356,6 +533,35 @@ def _detect_primitive_with_cgal_python_bindings(
             confidence=float(best["coverage"]),
             diagnostics=diagnostics,
         )
+
+    # When multiple shapes each meet the per-component threshold, prefer the
+    # composite_union path so a sphere + cylinder mesh is not collapsed to just
+    # the sphere (which alone can exceed the single-shape coverage threshold).
+    multi_candidates = [
+        shape
+        for shape in parsed_shapes
+        if shape.get("primitive_type") in {"sphere", "cylinder", "cone"}
+        and float(shape.get("coverage", 0.0)) >= _MIN_CGAL_MULTI_COMPONENT_COVERAGE
+    ]
+    if len(multi_candidates) >= 2:
+        multi_scad, multi_confidence, multi_shapes, multi_reason = (
+            _try_assemble_multi_shape_union(parsed_shapes)
+        )
+        diagnostics["multi_shape_attempted"] = True
+        if multi_shapes is not None:
+            diagnostics["multi_shape_selected_count"] = len(multi_shapes)
+            diagnostics["multi_shape_selected"] = multi_shapes
+        if multi_reason:
+            diagnostics["multi_shape_reason"] = multi_reason
+        if multi_scad is not None:
+            return CgalDetectionResult(
+                detected=True,
+                scad=multi_scad,
+                primitive_type="composite_union",
+                confidence=multi_confidence,
+                diagnostics=diagnostics,
+            )
+
     if float(best["coverage"]) >= _MIN_CGAL_PYTHON_COVERAGE:
         scad = _shape_description_to_scad(best)
         if scad is not None:
@@ -368,27 +574,27 @@ def _detect_primitive_with_cgal_python_bindings(
             )
         diagnostics["single_shape_scad_failed"] = True
 
-    multi_scad, multi_confidence, multi_shapes, multi_reason = (
-        _try_assemble_multi_shape_union(parsed_shapes)
-    )
-    diagnostics["multi_shape_attempted"] = True
-    if multi_shapes is not None:
-        diagnostics["multi_shape_selected_count"] = len(multi_shapes)
-        diagnostics["multi_shape_selected"] = multi_shapes
-    if multi_reason:
-        diagnostics["multi_shape_reason"] = multi_reason
-
-    if multi_scad is not None:
-        return CgalDetectionResult(
-            detected=True,
-            scad=multi_scad,
-            primitive_type="composite_union",
-            confidence=multi_confidence,
-            diagnostics=diagnostics,
+    if not diagnostics.get("multi_shape_attempted"):
+        multi_scad, multi_confidence, multi_shapes, multi_reason = (
+            _try_assemble_multi_shape_union(parsed_shapes)
         )
+        diagnostics["multi_shape_attempted"] = True
+        if multi_shapes is not None:
+            diagnostics["multi_shape_selected_count"] = len(multi_shapes)
+            diagnostics["multi_shape_selected"] = multi_shapes
+        if multi_reason:
+            diagnostics["multi_shape_reason"] = multi_reason
+        if multi_scad is not None:
+            return CgalDetectionResult(
+                detected=True,
+                scad=multi_scad,
+                primitive_type="composite_union",
+                confidence=multi_confidence,
+                diagnostics=diagnostics,
+            )
 
     diagnostics["reason"] = (
-        multi_reason if multi_reason else "low_shape_coverage"
+        diagnostics.get("multi_shape_reason") or "low_shape_coverage"
     )
     return CgalDetectionResult(
         detected=False,

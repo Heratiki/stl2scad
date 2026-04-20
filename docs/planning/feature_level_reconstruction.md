@@ -78,6 +78,9 @@ Manifest-driven system that generates known-geometry OpenSCAD plates (with holes
 - Coverage is broader but still focused on conservative axis-aligned solids; rotated features, box cutouts, and more complex composite brackets are still absent
 - The current set now covers the first round of edge cases, but it still needs tougher tolerance-boundary geometry and mixed multi-pattern cases on the same plate
 - `expected_detection` counts are manually authored, so they're only as good as the author's understanding of what the detector should find
+- Round-trip assertions are count-only: a swapped bore/through diameter, wrong slot width, or off-by-epsilon hole diameter still passes as long as the type-count matches. This is the main ceiling holding back the move toward parametric SCAD output.
+- `test_feature_fixture_round_trip_detection` silently skips when OpenSCAD is missing, so CI runners without OpenSCAD provide no regression signal.
+- Known generator defect: counterbore depth is 0.1mm shallow because the `-0.1` through-hole z-offset and `+0.2` height padding compound into the bore start; harmless with today's single counterbore fixture but will mask/produce bogus detector dimensions once depth is asserted.
 
 ### Feature Inventory (`stl2scad/core/feature_inventory.py`) — Moderate value
 
@@ -114,9 +117,22 @@ Detects axis-aligned boxes, through-holes, slots, and repeated hole patterns (li
 
 ### Immediate priorities
 
-1. **Connect inventory -> graph** — the inventory and feature graph are currently independent pipelines. Have the inventory pre-filter files and feed likely-mechanical candidates into the feature graph to complete the workflow.
-2. **Expand beyond axis-aligned fixtures** — add rotated and more composite non-plate fixtures once the conservative baseline remains stable.
-3. **Tighten edge-case coverage** — keep adding tolerance-boundary geometry and multi-pattern plates that mirror real-world noisy CAD exports.
+1. **Strengthen round-trip assertions from counts to dimensions** — the existing count-only check is the ceiling on fidelity. Extend `test_feature_fixture_round_trip_detection` so each detected feature must also match the manifest's declared dimensions within a tolerance (hole diameter, slot width/length, counterbore through/bore/depth, plate and box extents). This is the prerequisite for any move toward parametric SCAD output: if the detector can't be pinned to correct numbers, it can't be trusted to emit correct variables.
+2. **Fix the 0.1mm counterbore depth bug in `_generate_plate_fixture_scad`** before dimensional assertions land, otherwise the first depth check will fail against a generator defect rather than a detector defect.
+3. **Make the OpenSCAD round-trip a hard CI gate** — either require OpenSCAD on the CI image or convert the skip into `xfail(strict=True)` when the binary is unexpectedly missing, so the safety net can't quietly evaporate.
+4. **Connect inventory -> graph** — the inventory and feature graph are currently independent pipelines. Have the inventory pre-filter files and feed likely-mechanical candidates into the feature graph to complete the workflow.
+5. **Expand beyond axis-aligned fixtures** — add rotated and more composite non-plate fixtures once the conservative baseline remains stable.
+6. **Tighten edge-case coverage** — keep adding tolerance-boundary geometry and multi-pattern plates that mirror real-world noisy CAD exports.
+
+### Beyond dimensional parity
+
+Once the round-trip is asserting dimensions, the fixture pipeline becomes the backbone for the parametric-SCAD work. The natural follow-ons:
+
+1. **Parametric-variable round-trip** — assert not just that the detector found the right dimensions, but that the SCAD preview it emits declares named variables (`hole_diameter`, `pattern_count`, `counterbore_bore_depth`, …) carrying those values. Re-render the emitted SCAD to STL and confirm it matches the original manifest STL within tolerance. This is the end-to-end check for "editable SCAD, not just a mesh dump."
+2. **Confidence-scored candidate fixtures** — introduce manifest entries that declare *multiple* valid interpretations (e.g., hollow box = one `difference()` of two cubes OR six wall slabs) and an expected ranking. The detector's ranked output must put the intended interpretation at the top with a confidence above threshold. This turns the fixture system into the ground truth for the interactive-selection modes already described in the long-term vision.
+3. **Negative-class fixtures** — add deliberately non-mechanical and ambiguous shapes (organic blobs, near-primitives that should NOT classify as primitives, L-brackets with and without a bracket primitive implemented) and assert the detector stays silent or falls through to polyhedron. Guards against detector over-reach as new primitives come online.
+4. **Noise-injection fixtures** — generate the manifest STLs with controlled perturbation (vertex jitter, normal flipping on a fraction of triangles, small non-manifold gaps) and assert the detector still produces the right feature graph. Real CAD-exported STLs aren't pristine; this closes the gap between synthetic fixtures and field data.
+5. **Promote the manifest schema to a versioned contract** — `schema_version` already exists; start enforcing it on load and document the schema so third-party fixture authors (or future detectors) have a stable target.
 
 ### Ongoing
 

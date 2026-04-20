@@ -212,19 +212,21 @@ def _assert_counterbore_dimensions(fixture, features):
 
 
 def _assert_linear_pattern_dimensions(fixture, features):
-    expected_patterns = fixture.get("linear_hole_patterns", [])
-    if not expected_patterns:
+    explicit_patterns = fixture.get("linear_hole_patterns", [])
+    expected_total = int(fixture["expected_detection"].get("linear_pattern_count", 0))
+    inferred_patterns = _expected_inferred_linear_patterns(fixture)
+    if expected_total == 0 and not explicit_patterns and not inferred_patterns:
         return
     patterns = [
         feature
         for feature in features
         if feature.get("type") == "linear_hole_pattern" and feature.get("axis") == "z"
     ]
-    assert len(patterns) >= len(expected_patterns)
+    assert len(patterns) >= len(explicit_patterns) + len(inferred_patterns)
 
     unmatched = list(patterns)
     z_center = fixture["plate_size"][2] * 0.5
-    for expected in expected_patterns:
+    for expected in explicit_patterns:
         expected_origin = [expected["origin"][0], expected["origin"][1], z_center]
         expected_step = [expected["step"][0], expected["step"][1], 0.0]
         match = _pop_best_match(
@@ -248,6 +250,75 @@ def _assert_linear_pattern_dimensions(fixture, features):
             _PATTERN_SPACING_TOL,
             f"{fixture['name']} linear pattern spacing",
         )
+
+    for expected in inferred_patterns:
+        expected_origin = [expected["origin"][0], expected["origin"][1], z_center]
+        expected_step = [expected["step"][0], expected["step"][1], 0.0]
+        match = _pop_best_match(
+            unmatched,
+            lambda candidate: dist(candidate["pattern_origin"], expected_origin),
+        )
+        assert match is not None, f"{fixture['name']} missing expected inferred linear pattern"
+        assert int(match.get("pattern_count", 0)) == int(expected["count"])
+        assert dist(match["pattern_origin"], expected_origin) <= _CENTER_TOL
+        assert dist(match["pattern_step"], expected_step) <= _PATTERN_STEP_TOL
+        _assert_close(
+            match["diameter"],
+            expected["diameter"],
+            _DIAMETER_TOL,
+            f"{fixture['name']} inferred linear pattern diameter",
+        )
+        expected_spacing = dist([0.0, 0.0], expected["step"])
+        _assert_close(
+            match["pattern_spacing"],
+            expected_spacing,
+            _PATTERN_SPACING_TOL,
+            f"{fixture['name']} inferred linear pattern spacing",
+        )
+
+
+def _expected_inferred_linear_patterns(fixture):
+    expected_total = int(fixture["expected_detection"].get("linear_pattern_count", 0))
+    explicit_patterns = fixture.get("linear_hole_patterns", [])
+    inferred_needed = max(0, expected_total - len(explicit_patterns))
+    if inferred_needed == 0:
+        return []
+
+    grouped: dict[float, list[list[float]]] = {}
+    for hole in fixture.get("holes", []):
+        diameter = float(hole["diameter"])
+        grouped.setdefault(diameter, []).append([float(value) for value in hole["center"]])
+
+    inferred_patterns = []
+    for diameter, centers in grouped.items():
+        if len(centers) != 2:
+            continue
+        dx = abs(centers[1][0] - centers[0][0])
+        dy = abs(centers[1][1] - centers[0][1])
+        if dx <= 1e-9 and dy <= 1e-9:
+            continue
+        if dx >= dy:
+            ordered = sorted(centers, key=lambda center: (center[0], center[1]))
+        else:
+            ordered = sorted(centers, key=lambda center: (center[1], center[0]))
+        step = [ordered[1][0] - ordered[0][0], ordered[1][1] - ordered[0][1]]
+        inferred_patterns.append(
+            {
+                "origin": ordered[0],
+                "step": step,
+                "count": 2,
+                "diameter": float(diameter),
+            }
+        )
+
+    inferred_patterns.sort(
+        key=lambda pattern: (
+            pattern["origin"][0],
+            pattern["origin"][1],
+            pattern["diameter"],
+        )
+    )
+    return inferred_patterns[:inferred_needed]
 
 
 def _assert_grid_pattern_dimensions(fixture, features):

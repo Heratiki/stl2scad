@@ -18,13 +18,14 @@ module through_slot(start, end, width, height) {
   }
 }
 
-module counterbore_hole(center, through_d, bore_d, bore_depth, height) {
-  translate(center) cylinder(d=through_d, h=height, center=false);
-  translate([center[0], center[1], center[2] + height - bore_depth])
+module counterbore_hole(center, through_d, bore_d, bore_depth, plate_thickness) {
+  translate([center[0], center[1], -0.1])
+    cylinder(d=through_d, h=plate_thickness + 0.2, center=false);
+  translate([center[0], center[1], plate_thickness - bore_depth])
     cylinder(d=bore_d, h=bore_depth + 0.1, center=false);
 }
 
 difference() {
   translate(plate_origin) cube(plate_size);
-  counterbore_hole([0.000000, 0.000000, -0.100000], 4.000000, 8.000000, 3.000000, 6.200000);  // counterbore_0
+  counterbore_hole([0.000000, 0.000000, 0.000000], 4.000000, 8.000000, 3.000000, 6.000000);  // counterbore_0
 }

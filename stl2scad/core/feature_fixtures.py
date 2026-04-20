@@ -18,6 +18,11 @@ def load_feature_fixture_manifest(
     """Load and validate feature fixtures from a JSON manifest."""
     path = Path(manifest_path)
     payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = payload.get("schema_version")
+    if schema_version != 1:
+        raise ValueError(
+            f"Unsupported feature fixture manifest schema_version '{schema_version}'. Expected 1"
+        )
     fixtures = payload.get("fixtures")
     if not isinstance(fixtures, list) or not fixtures:
         raise ValueError("Feature fixture manifest must contain a non-empty fixtures list")
@@ -276,9 +281,10 @@ def _generate_plate_fixture_scad(fixture: dict[str, Any]) -> str:
             "  }",
             "}",
             "",
-            "module counterbore_hole(center, through_d, bore_d, bore_depth, height) {",
-            "  translate(center) cylinder(d=through_d, h=height, center=false);",
-            "  translate([center[0], center[1], center[2] + height - bore_depth])",
+            "module counterbore_hole(center, through_d, bore_d, bore_depth, plate_thickness) {",
+            "  translate([center[0], center[1], -0.1])",
+            "    cylinder(d=through_d, h=plate_thickness + 0.2, center=false);",
+            "  translate([center[0], center[1], plate_thickness - bore_depth])",
             "    cylinder(d=bore_d, h=bore_depth + 0.1, center=false);",
             "}",
             "",
@@ -319,9 +325,9 @@ def _generate_plate_fixture_scad(fixture: dict[str, Any]) -> str:
         )
 
     for index, counterbore in enumerate(fixture["counterbores"]):
-        center = [counterbore["center"][0], counterbore["center"][1], z_offset]
+        center = [counterbore["center"][0], counterbore["center"][1], 0.0]
         lines.append(
-            f"  counterbore_hole({_format_vector(center)}, {counterbore['through_diameter']:.6f}, {counterbore['bore_diameter']:.6f}, {counterbore['bore_depth']:.6f}, {cut_height:.6f});  // counterbore_{index}"
+            f"  counterbore_hole({_format_vector(center)}, {counterbore['through_diameter']:.6f}, {counterbore['bore_diameter']:.6f}, {counterbore['bore_depth']:.6f}, {thickness:.6f});  // counterbore_{index}"
         )
 
     for index, slot in enumerate(fixture["slots"]):

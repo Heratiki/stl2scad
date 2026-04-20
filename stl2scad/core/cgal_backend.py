@@ -42,6 +42,9 @@ _CONE_RE = re.compile(
     rf"Type:\s*cone\s+apex:\s*{_VECTOR_RE}\s+axis:\s*{_VECTOR_RE}\s+angle:\s*({_FLOAT_RE})\s+#Pts:\s*(\d+)"
 )
 _MIN_CGAL_PYTHON_COVERAGE = 0.85
+_MIN_CGAL_MULTI_COMPONENT_COVERAGE = 0.20
+_MIN_CGAL_MULTI_TOTAL_COVERAGE = 0.85
+_MAX_CGAL_MULTI_COMPONENTS = 6
 
 
 @dataclass
@@ -110,18 +113,24 @@ def get_cgal_backend_capabilities(
                 helper_mode=None,
                 cgal_bindings_available=True,
                 operations=["detect_primitive"],
-                supported_primitives=["sphere", "cylinder", "cone"],
+                supported_primitives=["sphere", "cylinder", "cone", "composite_union"],
                 engines=["cgal_python_bindings"],
                 raw={
                     "schema_version": 1,
                     "helper_mode": None,
                     "cgal_bindings_available": True,
                     "operations": ["detect_primitive"],
-                    "supported_primitives": ["sphere", "cylinder", "cone"],
+                    "supported_primitives": [
+                        "sphere",
+                        "cylinder",
+                        "cone",
+                        "composite_union",
+                    ],
                     "engines": ["cgal_python_bindings"],
                     "notes": (
                         "Direct Python binding path accepts high-coverage "
-                        "sphere, cylinder, and cone detections; other shapes fall back."
+                        "sphere/cylinder/cone detections and conservative non-overlapping "
+                        "multi-shape unions; other shapes fall back."
                     ),
                 },
             )
@@ -347,28 +356,42 @@ def _detect_primitive_with_cgal_python_bindings(
             confidence=float(best["coverage"]),
             diagnostics=diagnostics,
         )
-    if float(best["coverage"]) < _MIN_CGAL_PYTHON_COVERAGE:
-        diagnostics["reason"] = "low_shape_coverage"
+    if float(best["coverage"]) >= _MIN_CGAL_PYTHON_COVERAGE:
+        scad = _shape_description_to_scad(best)
+        if scad is not None:
+            return CgalDetectionResult(
+                detected=True,
+                scad=scad,
+                primitive_type=str(best["primitive_type"]),
+                confidence=float(best["coverage"]),
+                diagnostics=diagnostics,
+            )
+        diagnostics["single_shape_scad_failed"] = True
+
+    multi_scad, multi_confidence, multi_shapes, multi_reason = (
+        _try_assemble_multi_shape_union(parsed_shapes)
+    )
+    diagnostics["multi_shape_attempted"] = True
+    if multi_shapes is not None:
+        diagnostics["multi_shape_selected_count"] = len(multi_shapes)
+        diagnostics["multi_shape_selected"] = multi_shapes
+    if multi_reason:
+        diagnostics["multi_shape_reason"] = multi_reason
+
+    if multi_scad is not None:
         return CgalDetectionResult(
-            detected=False,
-            primitive_type=str(best["primitive_type"]),
-            confidence=float(best["coverage"]),
+            detected=True,
+            scad=multi_scad,
+            primitive_type="composite_union",
+            confidence=multi_confidence,
             diagnostics=diagnostics,
         )
 
-    scad = _shape_description_to_scad(best)
-    if scad is None:
-        diagnostics["reason"] = "shape_to_scad_failed"
-        return CgalDetectionResult(
-            detected=False,
-            primitive_type=str(best["primitive_type"]),
-            confidence=float(best["coverage"]),
-            diagnostics=diagnostics,
-        )
-
+    diagnostics["reason"] = (
+        multi_reason if multi_reason else "low_shape_coverage"
+    )
     return CgalDetectionResult(
-        detected=True,
-        scad=scad,
+        detected=False,
         primitive_type=str(best["primitive_type"]),
         confidence=float(best["coverage"]),
         diagnostics=diagnostics,
@@ -488,6 +511,103 @@ def _shape_description_to_scad(shape: dict[str, Any]) -> Optional[str]:
         )
 
     return None
+
+
+def _try_assemble_multi_shape_union(
+    parsed_shapes: list[dict[str, Any]],
+) -> tuple[Optional[str], Optional[float], Optional[list[dict[str, Any]]], Optional[str]]:
+    supported: list[dict[str, Any]] = []
+    for shape in parsed_shapes:
+        primitive_type = shape.get("primitive_type")
+        if primitive_type not in {"sphere", "cylinder", "cone"}:
+            continue
+        if float(shape.get("coverage", 0.0)) < _MIN_CGAL_MULTI_COMPONENT_COVERAGE:
+            continue
+        supported.append(shape)
+
+    if len(supported) < 2:
+        return None, None, None, "insufficient_multi_shape_components"
+
+    if len(supported) > _MAX_CGAL_MULTI_COMPONENTS:
+        return None, None, None, "too_many_multi_shape_components"
+
+    coverage_sum = float(sum(float(shape.get("coverage", 0.0)) for shape in supported))
+    if coverage_sum < _MIN_CGAL_MULTI_TOTAL_COVERAGE:
+        return None, None, None, "low_multi_shape_coverage"
+
+    shaped_entries: list[tuple[tuple[np.ndarray, np.ndarray], dict[str, Any], str]] = []
+    for shape in supported:
+        bbox = _shape_axis_aligned_bbox(shape)
+        if bbox is None:
+            return None, None, None, "multi_shape_bbox_unavailable"
+        snippet = _shape_description_to_scad(shape)
+        if snippet is None:
+            return None, None, None, "multi_shape_component_scad_failed"
+        shaped_entries.append((bbox, shape, snippet.strip()))
+
+    for i in range(len(shaped_entries)):
+        for j in range(i + 1, len(shaped_entries)):
+            if _bboxes_overlap(shaped_entries[i][0], shaped_entries[j][0]):
+                return None, None, None, "overlapping_component_bboxes"
+
+    shaped_entries.sort(key=lambda item: tuple(float(v) for v in item[0][0]))
+    snippets = [entry[2] for entry in shaped_entries]
+    selected_shapes = [dict(entry[1]) for entry in shaped_entries]
+    union_scad = "union() {\n" + "\n".join(f"    {snippet}" for snippet in snippets) + "\n}"
+    return union_scad, min(1.0, coverage_sum), selected_shapes, None
+
+
+def _shape_axis_aligned_bbox(
+    shape: dict[str, Any],
+) -> Optional[tuple[np.ndarray, np.ndarray]]:
+    primitive_type = shape.get("primitive_type")
+    if primitive_type == "sphere":
+        center = np.asarray(shape.get("center"), dtype=np.float64)
+        radius = float(shape.get("radius", 0.0))
+        if center.shape != (3,) or radius <= 1e-9:
+            return None
+        half = np.array([radius, radius, radius], dtype=np.float64)
+        return center - half, center + half
+
+    if primitive_type not in {"cylinder", "cone"}:
+        return None
+
+    center = np.asarray(shape.get("finite_center"), dtype=np.float64)
+    axis = np.asarray(shape.get("axis"), dtype=np.float64)
+    height = float(shape.get("height", 0.0))
+    if center.shape != (3,) or axis.shape != (3,) or height <= 1e-9:
+        return None
+
+    axis_norm = float(np.linalg.norm(axis))
+    if axis_norm <= 1e-12:
+        return None
+    axis = np.asarray(axis / axis_norm, dtype=np.float64)
+
+    if primitive_type == "cylinder":
+        radial = float(shape.get("radius", 0.0))
+    else:
+        radial = max(
+            float(shape.get("radius_start", 0.0)),
+            float(shape.get("radius_end", 0.0)),
+        )
+    if radial <= 1e-9:
+        return None
+
+    half_h = 0.5 * height
+    perp = np.sqrt(np.clip(1.0 - np.square(axis), 0.0, 1.0))
+    half_extents = np.abs(axis) * half_h + perp * radial
+    return center - half_extents, center + half_extents
+
+
+def _bboxes_overlap(
+    bbox_a: tuple[np.ndarray, np.ndarray],
+    bbox_b: tuple[np.ndarray, np.ndarray],
+    eps: float = 1e-9,
+) -> bool:
+    min_a, max_a = bbox_a
+    min_b, max_b = bbox_b
+    overlap = np.minimum(max_a, max_b) - np.maximum(min_a, min_b)
+    return bool(np.all(overlap > eps))
 
 
 def _enrich_shape_geometry_from_points(

@@ -183,6 +183,7 @@ def test_cgal_capabilities_reports_python_bindings_without_helper(monkeypatch):
     assert "sphere" in capabilities.supported_primitives
     assert "cylinder" in capabilities.supported_primitives
     assert "cone" in capabilities.supported_primitives
+    assert "composite_union" in capabilities.supported_primitives
 
 
 def test_parse_cgal_shape_description_parses_cone():
@@ -277,6 +278,59 @@ def test_shape_description_to_scad_emits_oriented_cone_frustum():
     assert "cylinder(h=4.000000, r1=0.500000, r2=2.500000, center=true, $fn=96);" in scad
 
 
+def test_try_assemble_multi_shape_union_accepts_disjoint_shapes():
+    shapes = [
+        {
+            "primitive_type": "sphere",
+            "center": (0.0, 0.0, 0.0),
+            "radius": 1.0,
+            "coverage": 0.46,
+        },
+        {
+            "primitive_type": "sphere",
+            "center": (4.0, 0.0, 0.0),
+            "radius": 1.0,
+            "coverage": 0.45,
+        },
+    ]
+
+    scad, confidence, selected, reason = cgal_backend._try_assemble_multi_shape_union(
+        shapes
+    )
+    assert scad is not None
+    assert "union()" in scad
+    assert "sphere(" in scad
+    assert confidence == pytest.approx(0.91)
+    assert selected is not None
+    assert len(selected) == 2
+    assert reason is None
+
+
+def test_try_assemble_multi_shape_union_rejects_overlapping_shapes():
+    shapes = [
+        {
+            "primitive_type": "sphere",
+            "center": (0.0, 0.0, 0.0),
+            "radius": 2.0,
+            "coverage": 0.5,
+        },
+        {
+            "primitive_type": "sphere",
+            "center": (1.0, 0.0, 0.0),
+            "radius": 2.0,
+            "coverage": 0.45,
+        },
+    ]
+
+    scad, confidence, selected, reason = cgal_backend._try_assemble_multi_shape_union(
+        shapes
+    )
+    assert scad is None
+    assert confidence is None
+    assert selected is None
+    assert reason == "overlapping_component_bboxes"
+
+
 def test_cgal_python_bindings_detect_sphere_when_available(test_data_dir):
     if not cgal_backend.has_cgal_python_bindings():
         return
@@ -294,6 +348,48 @@ def test_cgal_python_bindings_detect_sphere_when_available(test_data_dir):
     assert result.scad is not None and "sphere(" in result.scad
     assert result.diagnostics is not None
     assert result.diagnostics["engine"] == "cgal_python_bindings"
+
+
+def test_cgal_python_bindings_detect_composite_union_when_available(test_data_dir):
+    if not cgal_backend.has_cgal_python_bindings():
+        return
+
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+
+    sphere_mesh = stl.mesh.Mesh.from_file(str(fixtures_dir / "primitive_sphere.stl"))
+    translated = stl.mesh.Mesh(
+        np.zeros(len(sphere_mesh.vectors), dtype=stl.mesh.Mesh.dtype)
+    )
+    translated.vectors = np.asarray(sphere_mesh.vectors, dtype=np.float64)
+    translated.vectors += np.array([30.0, 0.0, 0.0], dtype=np.float64)
+
+    merged_vectors = np.concatenate(
+        [
+            np.asarray(sphere_mesh.vectors, dtype=np.float64),
+            np.asarray(translated.vectors, dtype=np.float64),
+        ],
+        axis=0,
+    )
+    merged_mesh = stl.mesh.Mesh(
+        np.zeros(len(merged_vectors), dtype=stl.mesh.Mesh.dtype)
+    )
+    merged_mesh.vectors = merged_vectors
+    if hasattr(merged_mesh, "update_normals"):
+        merged_mesh.update_normals()
+
+    result = cgal_backend.detect_primitive_with_cgal(
+        merged_mesh,
+        helper_path="not-needed-for-python-bindings",
+    )
+    assert result is not None
+    assert result.detected is True
+    assert result.primitive_type == "composite_union"
+    assert result.scad is not None
+    assert "union()" in result.scad
+    assert result.diagnostics is not None
+    assert result.diagnostics["engine"] == "cgal_python_bindings"
+    assert result.diagnostics.get("multi_shape_attempted") is True
 
 
 def test_recognition_cgal_fallbacks_to_trimesh_when_no_cgal_detection(monkeypatch):
@@ -380,6 +476,45 @@ def test_cgal_helper_command_detects_rotated_cylinder_fixture(test_data_dir):
         assert diagnostics["assigned_component_count"] == 1
     else:
         assert diagnostics["sample_point_count"] > 0
+
+
+def test_cgal_helper_command_detects_cone_fixture(test_data_dir):
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+    helper_path = (
+        Path(__file__).resolve().parents[1] / "scripts" / "stl2scad-cgal-helper.py"
+    ).resolve()
+    mesh = stl.mesh.Mesh.from_file(str(fixtures_dir / "primitive_cone.stl"))
+
+    result = subprocess.run(
+        [sys.executable, str(helper_path), "detect-primitive", "--format", "json"],
+        input=json.dumps(
+            {
+                "operation": "detect_primitive",
+                "tolerance": 0.01,
+                "mesh": {"triangles": mesh.vectors.tolist()},
+            }
+        ),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["detected"] is True
+    assert payload["primitive_type"] == "cone"
+    assert "cylinder(" in payload["scad"]
+    assert "r1=" in payload["scad"]
+    assert "r2=" in payload["scad"]
+
+    diagnostics = payload["diagnostics"]
+    assert diagnostics["engine"] in {"cgal_python_bindings", "geometric_region_fallback"}
+    if diagnostics["engine"] == "cgal_python_bindings":
+        assert diagnostics["sample_point_count"] > 0
+    else:
+        assert diagnostics["component_count"] == 1
+        assert diagnostics["assigned_component_count"] == 1
 
 
 def test_converter_cgal_backend_uses_helper_and_emits_metadata(

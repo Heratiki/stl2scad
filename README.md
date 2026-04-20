@@ -82,9 +82,9 @@ set STL2SCAD_CGAL_HELPER=C:\path\to\stl2scad-cgal-helper.exe
 # set STL2SCAD_CGAL_HELPER=C:\path\to\stl2scad\scripts\stl2scad-cgal-helper.py
 ```
 
-The direct Python binding path currently accepts high-coverage sphere and
-cylinder detections and falls back for shapes where the SWIG wrapper does not
-expose enough extent data for safe SCAD emission.
+The direct Python binding path currently accepts high-coverage sphere,
+cylinder, and cone/frustum detections and falls back for shapes where the SWIG
+wrapper does not expose enough extent data for safe SCAD emission.
 
 ## CLI Usage
 
@@ -215,6 +215,28 @@ Run Phase 1 backend baseline (polyhedron + parametric modes with `trimesh_manifo
 
 ```bash
 python scripts/run_perf_baseline.py --fixtures-dir tests/data/benchmark_fixtures --output artifacts/perf_phase1_trimesh.json --repeat 3 --recognition-backend trimesh_manifold
+```
+
+Run recognition coverage sweep and emit a JSON artifact:
+
+```bash
+python scripts/run_recognition_sweep.py --fixtures-dir tests/data/benchmark_fixtures --output artifacts/recognition_sweep.json --backends native,trimesh_manifold,cgal
+```
+
+Use gating thresholds for CI regression checks (multi-feature, not single-fixture):
+
+```bash
+python scripts/run_recognition_sweep.py --fixtures-dir tests/data/benchmark_fixtures --fixture-categories primitive --backends trimesh_manifold,cgal --min-detection-rate 0.75 --require-primitives box,sphere,cylinder,cone --max-errors 0
+```
+
+When optional backend dependencies are missing, the sweep report and gate output
+explicitly include `backend_unavailable` so environment/setup failures are not
+mistaken for recognition-regression data.
+
+Use additional hard-sample globs in the same run:
+
+```bash
+python scripts/run_recognition_sweep.py --fixtures-dir tests/data --extra-glob "*sample*.stl" --extra-glob "*sample*.STL" --backends cgal --output artifacts/recognition_sweep_samples.json
 ```
 
 Generate manifest-driven OpenSCAD feature fixtures used for ground-truth

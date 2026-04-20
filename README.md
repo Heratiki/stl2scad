@@ -169,10 +169,17 @@ python -m stl2scad
 - `Select Verify SCAD`: choose the SCAD file used when `Use Existing SCAD` is enabled
 - `Debug`: generate debug artifacts during conversion
 - `Parametric`: enable primitive recognition path
+- `Backend`: choose the parametric recognition backend (`native`, `trimesh_manifold`, or `cgal`) when parametric mode is enabled
+- `Compute`: choose the conversion compute backend (`auto`, `cpu`, or `gpu`)
+- `Deterministic sampling`: fix the verification sampling seed for reproducible Hausdorff and normal-deviation metrics
 - `Visualize`: generate verification visualization images
 - `HTML Report`: generate verification HTML report
 - `Convert Tol`: conversion tolerance control
 - `Verify Tol %`: volume/surface/bounding-box verification tolerance controls
+
+When `Use Existing SCAD` is enabled, verification uses the selected SCAD file directly; conversion-specific options such as parametric backend and compute backend only apply when the GUI regenerates SCAD from the STL.
+
+The backend selector tooltip shows which recognition backends are currently available in the active Python environment.
 
 ## Development
 

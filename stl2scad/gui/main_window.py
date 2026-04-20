@@ -17,10 +17,12 @@ from PyQt5.QtCore import (
 )
 from PyQt5.QtGui import QColor, QPixmap, QFont, QPalette, QIcon
 from PyQt5.QtWidgets import (
+    QComboBox,
     QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
     QFrame,
@@ -39,6 +41,10 @@ import pyqtgraph.opengl as gl
 from stl import mesh
 
 from stl2scad.core.converter import ConversionStats, stl2scad
+from stl2scad.core.recognition import (
+    SUPPORTED_RECOGNITION_BACKENDS,
+    get_available_recognition_backends,
+)
 from stl2scad.core.verification import (
     generate_comparison_visualization,
     generate_verification_report_html,
@@ -161,7 +167,7 @@ QPushButton#overlay:hover {{
 }}
 
 /* ── Spin boxes ── */
-QDoubleSpinBox {{
+QDoubleSpinBox, QSpinBox, QComboBox {{
     background-color: {PALETTE["bg"]};
     color: {PALETTE["text"]};
     border: 1px solid {PALETTE["border"]};
@@ -170,13 +176,24 @@ QDoubleSpinBox {{
     font-family: "Consolas", monospace;
     font-size: 11px;
 }}
-QDoubleSpinBox:focus {{
+QDoubleSpinBox:focus, QSpinBox:focus, QComboBox:focus {{
     border-color: {PALETTE["accent"]};
 }}
-QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
+QDoubleSpinBox::up-button, QDoubleSpinBox::down-button, QSpinBox::up-button, QSpinBox::down-button {{
     background-color: {PALETTE["panel_alt"]};
     border: none;
     width: 14px;
+}}
+QComboBox::drop-down {{
+    border: none;
+    width: 18px;
+}}
+QComboBox QAbstractItemView {{
+    background-color: {PALETTE["panel_alt"]};
+    color: {PALETTE["text"]};
+    border: 1px solid {PALETTE["border"]};
+    selection-background-color: {PALETTE["highlight"]};
+    selection-color: {PALETTE["accent"]};
 }}
 
 /* ── Checkboxes ── */
@@ -283,7 +300,14 @@ class ConversionWorker(QThread):
     error = pyqtSignal(str)
 
     def __init__(
-        self, input_file, output_file, tolerance=1e-6, debug=False, parametric=False
+        self,
+        input_file,
+        output_file,
+        tolerance=1e-6,
+        debug=False,
+        parametric=False,
+        recognition_backend="native",
+        compute_backend="auto",
     ):
         super().__init__()
         self.input_file = input_file
@@ -291,6 +315,8 @@ class ConversionWorker(QThread):
         self.tolerance = tolerance
         self.debug = debug
         self.parametric = parametric
+        self.recognition_backend = recognition_backend
+        self.compute_backend = compute_backend
 
     def run(self):
         try:
@@ -301,6 +327,8 @@ class ConversionWorker(QThread):
                 self.tolerance,
                 self.debug,
                 self.parametric,
+                recognition_backend=self.recognition_backend,
+                compute_backend=self.compute_backend,
             )
             self.finished.emit(stats)
         except Exception as exc:
@@ -319,9 +347,12 @@ class VerificationWorker(QThread):
         tolerance,
         conversion_tolerance,
         parametric,
+        recognition_backend,
+        compute_backend,
         regenerate_scad,
         visualize,
         html_report,
+        sample_seed,
     ):
         super().__init__()
         self.stl_file = stl_file
@@ -329,9 +360,12 @@ class VerificationWorker(QThread):
         self.tolerance = tolerance
         self.conversion_tolerance = conversion_tolerance
         self.parametric = parametric
+        self.recognition_backend = recognition_backend
+        self.compute_backend = compute_backend
         self.regenerate_scad = regenerate_scad
         self.visualize = visualize
         self.html_report = html_report
+        self.sample_seed = sample_seed
 
     def run(self):
         try:
@@ -342,13 +376,19 @@ class VerificationWorker(QThread):
                     self.scad_file,
                     tolerance=self.conversion_tolerance,
                     parametric=self.parametric,
+                    recognition_backend=self.recognition_backend,
+                    compute_backend=self.compute_backend,
                 )
             elif not os.path.exists(self.scad_file):
                 raise FileNotFoundError(f"SCAD file not found: {self.scad_file}")
 
             self.progress.emit("Running geometric verification…")
             result = verify_conversion(
-                self.stl_file, self.scad_file, self.tolerance, debug=False
+                self.stl_file,
+                self.scad_file,
+                self.tolerance,
+                debug=False,
+                sample_seed=self.sample_seed,
             )
 
             report_dir = os.path.dirname(self.scad_file) or os.path.dirname(
@@ -428,6 +468,22 @@ def _spinbox(default, decimals=3, lo=0.0, hi=9999.0, step=0.1, width=100):
     return sb
 
 
+def _int_spinbox(default, lo=0, hi=999999999, step=1, width=100):
+    sb = QSpinBox()
+    sb.setRange(lo, hi)
+    sb.setValue(default)
+    sb.setSingleStep(step)
+    sb.setFixedWidth(width)
+    return sb
+
+
+def _combo(items, width=132):
+    combo = QComboBox()
+    combo.addItems(list(items))
+    combo.setFixedWidth(width)
+    return combo
+
+
 # ---------------------------------------------------------------------------
 # Main Window
 # ---------------------------------------------------------------------------
@@ -445,6 +501,7 @@ class MainWindow(QMainWindow):
         self.mesh_item: Optional[gl.GLMeshItem] = None
         self.worker: Optional[QThread] = None
         self._busy = False
+        self._available_recognition_backends = tuple(get_available_recognition_backends())
         self.setup_ui()
 
     # ------------------------------------------------------------------
@@ -668,6 +725,24 @@ class MainWindow(QMainWindow):
         # Options
         self.parametric_check = QCheckBox("Primitive detection (parametric)")
         self.parametric_check.setToolTip("Detect cubes, cylinders and other primitives")
+        self.parametric_check.toggled.connect(self._toggle_parametric_options)
+
+        backend_row = QHBoxLayout()
+        backend_row.addWidget(_label("Backend:", "metric"))
+        backend_row.addStretch(1)
+        self.recognition_backend_combo = _combo(SUPPORTED_RECOGNITION_BACKENDS, width=150)
+        self.recognition_backend_combo.setCurrentText("native")
+        self.recognition_backend_combo.setEnabled(False)
+        self._update_recognition_backend_tooltip()
+        backend_row.addWidget(self.recognition_backend_combo)
+
+        compute_row = QHBoxLayout()
+        compute_row.addWidget(_label("Compute:", "metric"))
+        compute_row.addStretch(1)
+        self.compute_backend_combo = _combo(("auto", "cpu", "gpu"), width=110)
+        self.compute_backend_combo.setCurrentText("auto")
+        compute_row.addWidget(self.compute_backend_combo)
+
         self.debug_check = QCheckBox("Debug mode")
         self.debug_check.toggled.connect(self._toggle_debug)
 
@@ -679,6 +754,8 @@ class MainWindow(QMainWindow):
         g2.addLayout(out_row)
         g2.addLayout(tol_row)
         g2.addWidget(self.parametric_check)
+        g2.addLayout(backend_row)
+        g2.addLayout(compute_row)
         g2.addWidget(self.debug_check)
         g2.addWidget(self._convert_btn)
         grp2.setLayout(g2)
@@ -720,6 +797,18 @@ class MainWindow(QMainWindow):
         self.visualize_check = QCheckBox("Generate visualizations")
         self.html_report_check = QCheckBox("Generate HTML report")
 
+        seed_row = QHBoxLayout()
+        self.sample_seed_check = QCheckBox("Deterministic sampling")
+        self.sample_seed_check.setToolTip(
+            "Use a fixed seed for reproducible Hausdorff and normal-deviation sampling"
+        )
+        self.sample_seed_check.toggled.connect(self._toggle_sample_seed)
+        self.sample_seed_spin = _int_spinbox(123, width=110)
+        self.sample_seed_spin.setEnabled(False)
+        seed_row.addWidget(self.sample_seed_check)
+        seed_row.addStretch(1)
+        seed_row.addWidget(self.sample_seed_spin)
+
         self._verify_btn = _btn("Verify Conversion", "primary")
         self._verify_btn.setEnabled(False)
         self._verify_btn.clicked.connect(self.verify_current_model)
@@ -733,6 +822,7 @@ class MainWindow(QMainWindow):
         g3.addLayout(tol_grid)
         g3.addLayout(bbox_row)
         g3.addWidget(_hsep())
+        g3.addLayout(seed_row)
         g3.addWidget(self.visualize_check)
         g3.addWidget(self.html_report_check)
         g3.addWidget(self._verify_btn)
@@ -828,6 +918,28 @@ class MainWindow(QMainWindow):
             self.image_label.clear()
             self.image_label.setVisible(False)
 
+    def _toggle_parametric_options(self, checked):
+        self.recognition_backend_combo.setEnabled(checked)
+        if checked:
+            backend = self.recognition_backend_combo.currentText()
+            self._set_status(f"Parametric mode enabled ({backend} backend).")
+        else:
+            self._set_status("Parametric mode disabled; polyhedron output only.")
+
+    def _toggle_sample_seed(self, checked):
+        self.sample_seed_spin.setEnabled(checked)
+        if checked:
+            self._set_status(
+                f"Deterministic verification sampling enabled (seed {self.sample_seed_spin.value()})."
+            )
+
+    def _update_recognition_backend_tooltip(self):
+        available = ", ".join(self._available_recognition_backends)
+        self.recognition_backend_combo.setToolTip(
+            "Recognition backend for parametric conversion. "
+            f"Available in this environment: {available}"
+        )
+
     def _toggle_use_existing(self, checked):
         self._select_verify_btn.setEnabled(checked)
         mode = "existing SCAD" if checked else "regenerate from STL"
@@ -917,6 +1029,8 @@ class MainWindow(QMainWindow):
             tolerance=float(self.convert_tol_spin.value()),
             debug=self.debug_mode,
             parametric=self.parametric_check.isChecked(),
+            recognition_backend=self.recognition_backend_combo.currentText(),
+            compute_backend=self.compute_backend_combo.currentText(),
         )
         self.worker.progress.connect(self.update_status)
         self.worker.finished.connect(self.conversion_finished)
@@ -964,9 +1078,16 @@ class MainWindow(QMainWindow):
             tolerance=tolerance,
             conversion_tolerance=float(self.convert_tol_spin.value()),
             parametric=self.parametric_check.isChecked(),
+            recognition_backend=self.recognition_backend_combo.currentText(),
+            compute_backend=self.compute_backend_combo.currentText(),
             regenerate_scad=not use_existing,
             visualize=visualize,
             html_report=self.html_report_check.isChecked(),
+            sample_seed=(
+                int(self.sample_seed_spin.value())
+                if self.sample_seed_check.isChecked()
+                else None
+            ),
         )
         self.worker.progress.connect(self.update_status)
         self.worker.finished.connect(self.verification_finished)

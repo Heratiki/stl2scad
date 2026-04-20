@@ -670,7 +670,11 @@ def _extract_axis_aligned_through_holes(
                 and min_radius <= cbore["bore_radius"] <= max_radius
                 and min_radius <= cbore["through_radius"] <= max_radius
                 and not _center_near_outer_boundary(
-                    cbore["center_2d"], bbox, plane_axes, cbore["bore_radius"]
+                    cbore["center_2d"],
+                    bbox,
+                    plane_axes,
+                    cbore["bore_radius"],
+                    edge_factor=0.05,
                 )
             ):
                 center = [0.0, 0.0, 0.0]
@@ -1003,24 +1007,32 @@ def _try_counterbore_fit(
     if h_span < height_span * 0.5:
         return None
 
-    # Fit circles on thin top/bottom slices first. This is more robust than
-    # histogram gap splitting for meshes with quantized Z levels.
-    slice_thickness = max(h_span * 0.20, 1e-9)
-    lower_mask = height_values <= (h_min + slice_thickness)
-    upper_mask = height_values >= (h_max - slice_thickness)
+    # Fit circles on endpoint slices first. Try thinner slices before thicker
+    # ones so near-through counterbores do not blur one side with two radii.
+    endpoint_fit = None
+    for slice_ratio in (0.10, 0.15, 0.20):
+        slice_thickness = max(h_span * slice_ratio, 1e-9)
+        lower_mask = height_values <= (h_min + slice_thickness)
+        upper_mask = height_values >= (h_max - slice_thickness)
 
-    lower_pts = component_vertices[lower_mask][:, plane_axes]
-    upper_pts = component_vertices[upper_mask][:, plane_axes]
-    if len(lower_pts) < 8 or len(upper_pts) < 8:
+        lower_pts = component_vertices[lower_mask][:, plane_axes]
+        upper_pts = component_vertices[upper_mask][:, plane_axes]
+        if len(lower_pts) < 8 or len(upper_pts) < 8:
+            continue
+
+        lower_fit = _fit_circle_2d(lower_pts)
+        upper_fit = _fit_circle_2d(upper_pts)
+        if lower_fit is None or upper_fit is None:
+            continue
+
+        endpoint_fit = (lower_fit, upper_fit)
+        break
+
+    if endpoint_fit is None:
         return None
 
-    lower_fit = _fit_circle_2d(lower_pts)
-    upper_fit = _fit_circle_2d(upper_pts)
-    if lower_fit is None or upper_fit is None:
-        return None
-
-    lower_center, lower_radius, lower_error, lower_coverage = lower_fit
-    upper_center, upper_radius, upper_error, upper_coverage = upper_fit
+    lower_center, lower_radius, lower_error, lower_coverage = endpoint_fit[0]
+    upper_center, upper_radius, upper_error, upper_coverage = endpoint_fit[1]
 
     # Both fits must be reasonable.
     if lower_error > 0.12 or upper_error > 0.12:
@@ -1246,14 +1258,15 @@ def _center_near_outer_boundary(
     bbox: dict[str, float],
     plane_axes: list[int],
     radius: float,
+    edge_factor: float = 0.1,
 ) -> bool:
     labels = ("x", "y", "z")
     for value, axis_index in zip(center_2d, plane_axes):
         min_coord = float(bbox[f"min_{labels[axis_index]}"])
         max_coord = float(bbox[f"max_{labels[axis_index]}"])
-        if value - radius <= min_coord + radius * 0.1:
+        if value - radius <= min_coord + radius * edge_factor:
             return True
-        if value + radius >= max_coord - radius * 0.1:
+        if value + radius >= max_coord - radius * edge_factor:
             return True
     return False
 

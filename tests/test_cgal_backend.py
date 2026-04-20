@@ -89,6 +89,27 @@ def _sample_cone_points(
     return np.asarray(points, dtype=np.float64)
 
 
+def _translated_mesh(mesh: stl.mesh.Mesh, offset: np.ndarray) -> stl.mesh.Mesh:
+    out = stl.mesh.Mesh(np.zeros(len(mesh.vectors), dtype=stl.mesh.Mesh.dtype))
+    out.vectors = np.asarray(mesh.vectors, dtype=np.float64)
+    out.vectors += np.asarray(offset, dtype=np.float64)
+    if hasattr(out, "update_normals"):
+        out.update_normals()
+    return out
+
+
+def _merge_meshes(meshes: list[stl.mesh.Mesh]) -> stl.mesh.Mesh:
+    vectors = np.concatenate(
+        [np.asarray(mesh.vectors, dtype=np.float64) for mesh in meshes],
+        axis=0,
+    )
+    merged = stl.mesh.Mesh(np.zeros(len(vectors), dtype=stl.mesh.Mesh.dtype))
+    merged.vectors = vectors
+    if hasattr(merged, "update_normals"):
+        merged.update_normals()
+    return merged
+
+
 def test_resolve_cgal_helper_path_from_env(monkeypatch, test_output_dir):
     helper_file = test_output_dir / "cgal_helper.exe"
     helper_file.write_text("placeholder")
@@ -331,6 +352,126 @@ def test_try_assemble_multi_shape_union_rejects_overlapping_shapes():
     assert reason == "overlapping_component_bboxes"
 
 
+def test_try_assemble_multi_shape_union_accepts_mixed_disjoint_shapes():
+    shapes = [
+        {
+            "primitive_type": "sphere",
+            "center": (0.0, 0.0, 0.0),
+            "radius": 1.0,
+            "coverage": 0.45,
+        },
+        {
+            "primitive_type": "cylinder",
+            "axis": (0.0, 0.0, 1.0),
+            "radius": 0.75,
+            "height": 2.0,
+            "finite_center": (4.0, 0.0, 0.0),
+            "coverage": 0.45,
+        },
+    ]
+
+    scad, confidence, selected, reason = cgal_backend._try_assemble_multi_shape_union(
+        shapes
+    )
+    assert scad is not None
+    assert "union()" in scad
+    assert "sphere(" in scad
+    assert "cylinder(" in scad
+    assert confidence == pytest.approx(0.9)
+    assert selected is not None
+    assert len(selected) == 2
+    assert reason is None
+
+
+def test_try_assemble_multi_shape_union_rejects_low_total_coverage():
+    shapes = [
+        {
+            "primitive_type": "sphere",
+            "center": (0.0, 0.0, 0.0),
+            "radius": 1.0,
+            "coverage": 0.30,
+        },
+        {
+            "primitive_type": "sphere",
+            "center": (4.0, 0.0, 0.0),
+            "radius": 1.0,
+            "coverage": 0.30,
+        },
+    ]
+
+    scad, confidence, selected, reason = cgal_backend._try_assemble_multi_shape_union(
+        shapes
+    )
+    assert scad is None
+    assert confidence is None
+    assert selected is None
+    assert reason == "low_multi_shape_coverage"
+
+
+def test_try_assemble_multi_shape_union_rejects_too_many_components():
+    shapes = []
+    for i in range(7):
+        shapes.append(
+            {
+                "primitive_type": "sphere",
+                "center": (float(i * 4), 0.0, 0.0),
+                "radius": 1.0,
+                "coverage": 0.20,
+            }
+        )
+
+    scad, confidence, selected, reason = cgal_backend._try_assemble_multi_shape_union(
+        shapes
+    )
+    assert scad is None
+    assert confidence is None
+    assert selected is None
+    assert reason == "too_many_multi_shape_components"
+
+
+def test_try_assemble_multi_shape_union_rejects_missing_component_geometry():
+    shapes = [
+        {
+            "primitive_type": "sphere",
+            "center": (0.0, 0.0, 0.0),
+            "radius": 1.0,
+            "coverage": 0.45,
+        },
+        {
+            "primitive_type": "cylinder",
+            "axis": (0.0, 0.0, 1.0),
+            "radius": 0.75,
+            "coverage": 0.45,
+        },
+    ]
+
+    scad, confidence, selected, reason = cgal_backend._try_assemble_multi_shape_union(
+        shapes
+    )
+    assert scad is None
+    assert confidence is None
+    assert selected is None
+    assert reason == "multi_shape_bbox_unavailable"
+
+
+def test_shape_axis_aligned_bbox_handles_touching_disjoint_components():
+    sphere_a = {
+        "primitive_type": "sphere",
+        "center": (0.0, 0.0, 0.0),
+        "radius": 1.0,
+    }
+    sphere_b = {
+        "primitive_type": "sphere",
+        "center": (2.0, 0.0, 0.0),
+        "radius": 1.0,
+    }
+    bbox_a = cgal_backend._shape_axis_aligned_bbox(sphere_a)
+    bbox_b = cgal_backend._shape_axis_aligned_bbox(sphere_b)
+    assert bbox_a is not None
+    assert bbox_b is not None
+    assert cgal_backend._bboxes_overlap(bbox_a, bbox_b) is False
+
+
 def test_cgal_python_bindings_detect_sphere_when_available(test_data_dir):
     if not cgal_backend.has_cgal_python_bindings():
         return
@@ -387,6 +528,37 @@ def test_cgal_python_bindings_detect_composite_union_when_available(test_data_di
     assert result.primitive_type == "composite_union"
     assert result.scad is not None
     assert "union()" in result.scad
+    assert result.diagnostics is not None
+    assert result.diagnostics["engine"] == "cgal_python_bindings"
+    assert result.diagnostics.get("multi_shape_attempted") is True
+
+
+def test_cgal_python_bindings_detect_mixed_composite_union_when_available(test_data_dir):
+    if not cgal_backend.has_cgal_python_bindings():
+        return
+
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+
+    sphere_mesh = stl.mesh.Mesh.from_file(str(fixtures_dir / "primitive_sphere.stl"))
+    cylinder_mesh = stl.mesh.Mesh.from_file(
+        str(fixtures_dir / "primitive_cylinder_axis_aligned.stl")
+    )
+
+    moved_cylinder = _translated_mesh(cylinder_mesh, np.array([30.0, 0.0, 0.0]))
+    merged_mesh = _merge_meshes([sphere_mesh, moved_cylinder])
+
+    result = cgal_backend.detect_primitive_with_cgal(
+        merged_mesh,
+        helper_path="not-needed-for-python-bindings",
+    )
+    assert result is not None
+    assert result.detected is True
+    assert result.primitive_type == "composite_union"
+    assert result.scad is not None
+    assert "union()" in result.scad
+    assert "sphere(" in result.scad
+    assert "cylinder(" in result.scad
     assert result.diagnostics is not None
     assert result.diagnostics["engine"] == "cgal_python_bindings"
     assert result.diagnostics.get("multi_shape_attempted") is True

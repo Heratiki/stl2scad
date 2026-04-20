@@ -28,6 +28,7 @@ from stl2scad.core.recognition import (
     _detect_primitive_native,
     _preprocess_components,
 )
+from stl2scad.core import cgal_backend
 
 SUPPORTED_PRIMITIVES = ("box", "sphere", "cylinder", "cone", "composite_union")
 
@@ -90,20 +91,54 @@ def _capabilities_payload() -> dict[str, Any]:
         "operations": ["detect_primitive"],
         "supported_primitives": list(SUPPORTED_PRIMITIVES),
         "engines": (
-            ["cgal_shape_detection", "geometric_region_fallback"]
+            ["cgal_python_bindings", "geometric_region_fallback"]
             if cgal_modules
             else ["geometric_region_fallback"]
         ),
         "notes": (
-            "CGAL bindings detected, but helper still uses fallback until "
-            "shape-detection integration is implemented."
+            "CGAL bindings detected; helper attempts CGAL-backed shape detection "
+            "before geometric fallback."
             if cgal_modules
             else "CGAL bindings not available; helper uses geometric region fallback."
         ),
     }
 
 
-def _analyze_regions(mesh: stl.mesh.Mesh, tolerance: float) -> dict[str, Any]:
+def _attempt_cgal_binding_detection(
+    mesh: stl.mesh.Mesh, tolerance: float
+) -> dict[str, Any] | None:
+    result = cgal_backend._detect_primitive_with_cgal_python_bindings(
+        mesh,
+        tolerance=tolerance,
+    )
+    if result is None:
+        return None
+
+    diagnostics = dict(result.diagnostics or {})
+    diagnostics["helper_mode"] = "prototype"
+    diagnostics["helper_binding_attempted"] = True
+    if result.detected and result.scad:
+        return {
+            "detected": True,
+            "scad": result.scad,
+            "primitive_type": result.primitive_type,
+            "confidence": result.confidence,
+            "diagnostics": diagnostics,
+        }
+
+    return {
+        "detected": False,
+        "primitive_type": result.primitive_type,
+        "confidence": result.confidence,
+        "diagnostics": diagnostics,
+    }
+
+
+def _analyze_regions(
+    mesh: stl.mesh.Mesh,
+    tolerance: float,
+    base_diagnostics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     cgal_modules = _available_cgal_modules()
     diagnostics: dict[str, Any] = {
         "helper_mode": "prototype",
@@ -111,12 +146,14 @@ def _analyze_regions(mesh: stl.mesh.Mesh, tolerance: float) -> dict[str, Any]:
         "cgal_bindings_available": bool(cgal_modules),
         "cgal_modules": cgal_modules,
         "cgal_status": (
-            "bindings_detected_engine_not_implemented"
+            "bindings_detected_helper_fallback"
             if cgal_modules
             else "bindings_not_available"
         ),
         "triangle_count": int(len(mesh.vectors)),
     }
+    if base_diagnostics:
+        diagnostics["cgal_binding_attempt"] = base_diagnostics
 
     components = _preprocess_components(mesh)
     diagnostics["component_count"] = len(components)
@@ -233,7 +270,15 @@ def main() -> int:
             }
         )
 
-    result = _analyze_regions(mesh, tolerance)
+    cgal_binding_result = _attempt_cgal_binding_detection(mesh, tolerance)
+    if cgal_binding_result and cgal_binding_result["detected"]:
+        return _emit(cgal_binding_result)
+
+    fallback_base_diagnostics = None
+    if cgal_binding_result is not None:
+        fallback_base_diagnostics = dict(cgal_binding_result.get("diagnostics") or {})
+
+    result = _analyze_regions(mesh, tolerance, base_diagnostics=fallback_base_diagnostics)
     if result["detected"]:
         return _emit(result)
 

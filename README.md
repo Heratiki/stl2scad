@@ -174,12 +174,14 @@ python -m stl2scad
 - `Deterministic sampling`: fix the verification sampling seed for reproducible Hausdorff and normal-deviation metrics
 - `Visualize`: generate verification visualization images
 - `HTML Report`: generate verification HTML report
+- `Diagnostics`: inspect recognition backend choice, confidence, primitive type, raw diagnostics, and fallback reasons after conversion or verification
 - `Convert Tol`: conversion tolerance control
 - `Verify Tol %`: volume/surface/bounding-box verification tolerance controls
 
 When `Use Existing SCAD` is enabled, verification uses the selected SCAD file directly; conversion-specific options such as parametric backend and compute backend only apply when the GUI regenerates SCAD from the STL.
 
 The backend selector tooltip shows which recognition backends are currently available in the active Python environment.
+The diagnostics panel reads metadata from generated SCAD headers and from verification reports when available, so existing SCAD files without conversion metadata may show limited diagnostics.
 
 ## Development
 

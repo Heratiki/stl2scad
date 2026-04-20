@@ -2,9 +2,26 @@
 Focused tests for GUI worker plumbing.
 """
 
+import os
 from pathlib import Path
 
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from PyQt5 import QtWidgets
+
 from stl2scad.gui import main_window
+
+
+_APP = None
+
+
+def _get_qapplication():
+    global _APP
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        app = QtWidgets.QApplication(["test-stl2scad-gui"])
+    _APP = app
+    return app
 
 
 def test_conversion_worker_passes_backend_options(monkeypatch, test_output_dir):
@@ -136,3 +153,124 @@ def test_verification_worker_skips_regeneration_for_existing_scad(
 
     assert verify_calls["args"][:2] == ("input.stl", str(scad_file))
     assert verify_calls["kwargs"] == {"debug": False, "sample_seed": None}
+
+
+def test_load_scad_conversion_metadata_parses_recognition_fields(test_output_dir):
+    scad_file = test_output_dir / "diagnostics.scad"
+    scad_file.write_text(
+        "//\n"
+        "// STL to SCAD Conversion\n"
+        "// recognition_backend_requested: cgal\n"
+        "// recognition_backend_used: trimesh_manifold_fallback\n"
+        "// recognized_primitive_type: cylinder\n"
+        "// recognition_confidence: 0.987654\n"
+        "// recognition_fallback_reason: cgal_declined_detection\n"
+        "// recognition_diagnostics: {\"engine\": \"geometric_region_fallback\", \"component_count\": 1}\n"
+        "//\n\n"
+        "cylinder(h=10, r=2);\n",
+        encoding="utf-8",
+    )
+
+    metadata = main_window._load_scad_conversion_metadata(str(scad_file))
+
+    assert metadata["recognition_backend_requested"] == "cgal"
+    assert metadata["recognition_backend_used"] == "trimesh_manifold_fallback"
+    assert metadata["recognized_primitive_type"] == "cylinder"
+    assert metadata["recognition_confidence"] == 0.987654
+    assert metadata["recognition_fallback_reason"] == "cgal_declined_detection"
+    assert metadata["recognition_diagnostics"] == {
+        "engine": "geometric_region_fallback",
+        "component_count": 1,
+    }
+
+
+def test_format_recognition_diagnostics_renders_summary_and_json():
+    text = main_window._format_recognition_diagnostics(
+        {
+            "recognition_backend_requested": "cgal",
+            "recognition_backend_used": "cgal",
+            "recognition_attempted": "true",
+            "recognized_primitive_type": "sphere",
+            "recognition_confidence": 0.95,
+            "recognition_diagnostics": {"engine": "cgal_python_bindings", "sample_point_count": 128},
+        }
+    )
+
+    assert "Requested backend: cgal" in text
+    assert "Used backend: cgal" in text
+    assert "Recognition attempted: true" in text
+    assert "Primitive type: sphere" in text
+    assert "Confidence: 0.950" in text
+    assert '"engine": "cgal_python_bindings"' in text
+
+
+def test_main_window_updates_recognition_diagnostics_from_conversion_metadata(
+    monkeypatch, test_output_dir
+):
+    _get_qapplication()
+    window = main_window.MainWindow()
+    try:
+        scad_file = test_output_dir / "converted.scad"
+        scad_file.write_text(
+            "//\n"
+            "// STL to SCAD Conversion\n"
+            "// recognition_backend_requested: native\n"
+            "// recognition_backend_used: native\n"
+            "// recognized_primitive_type: box\n"
+            "//\n\n"
+            "cube([1, 2, 3]);\n",
+            encoding="utf-8",
+        )
+        window.current_scad_file = str(scad_file)
+
+        stats = main_window.ConversionStats(
+            original_vertices=12,
+            deduplicated_vertices=8,
+            faces=12,
+            metadata={},
+        )
+
+        monkeypatch.setattr(QtWidgets.QMessageBox, "information", lambda *args, **kwargs: None)
+        window.conversion_finished(stats)
+
+        text = window.recognition_diagnostics_view.toPlainText()
+        assert "Requested backend: native" in text
+        assert "Primitive type: box" in text
+    finally:
+        window.close()
+
+
+def test_main_window_updates_recognition_diagnostics_from_verification_report(monkeypatch):
+    _get_qapplication()
+    window = main_window.MainWindow()
+    try:
+        result = type(
+            "FakeVerificationResult",
+            (),
+            {
+                "passed": True,
+                "report": {
+                    "conversion_metadata": {
+                        "recognition_backend_requested": "cgal",
+                        "recognition_backend_used": "trimesh_manifold_fallback",
+                        "recognition_fallback_reason": "cgal_declined_detection",
+                    }
+                },
+            },
+        )()
+        payload = {
+            "result": result,
+            "report_file": "verification.json",
+            "html_file": None,
+            "scad_file": "converted.scad",
+        }
+
+        monkeypatch.setattr(QtWidgets.QMessageBox, "information", lambda *args, **kwargs: None)
+        window.verification_finished(payload)
+
+        text = window.recognition_diagnostics_view.toPlainText()
+        assert "Requested backend: cgal" in text
+        assert "Used backend: trimesh_manifold_fallback" in text
+        assert "Fallback reason: cgal_declined_detection" in text
+    finally:
+        window.close()

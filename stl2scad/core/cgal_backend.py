@@ -38,6 +38,9 @@ _SPHERE_RE = re.compile(
 _CYLINDER_RE = re.compile(
     rf"Type:\s*cylinder\s+center:\s*{_VECTOR_RE}\s+axis:\s*{_VECTOR_RE}\s+radius:\s*({_FLOAT_RE})\s+#Pts:\s*(\d+)"
 )
+_CONE_RE = re.compile(
+    rf"Type:\s*cone\s+apex:\s*{_VECTOR_RE}\s+axis:\s*{_VECTOR_RE}\s+angle:\s*({_FLOAT_RE})\s+#Pts:\s*(\d+)"
+)
 _MIN_CGAL_PYTHON_COVERAGE = 0.85
 
 
@@ -107,18 +110,18 @@ def get_cgal_backend_capabilities(
                 helper_mode=None,
                 cgal_bindings_available=True,
                 operations=["detect_primitive"],
-                supported_primitives=["sphere", "cylinder"],
+                supported_primitives=["sphere", "cylinder", "cone"],
                 engines=["cgal_python_bindings"],
                 raw={
                     "schema_version": 1,
                     "helper_mode": None,
                     "cgal_bindings_available": True,
                     "operations": ["detect_primitive"],
-                    "supported_primitives": ["sphere", "cylinder"],
+                    "supported_primitives": ["sphere", "cylinder", "cone"],
                     "engines": ["cgal_python_bindings"],
                     "notes": (
                         "Direct Python binding path accepts high-coverage "
-                        "sphere and cylinder detections; other shapes fall back."
+                        "sphere, cylinder, and cone detections; other shapes fall back."
                     ),
                 },
             )
@@ -336,7 +339,7 @@ def _detect_primitive_with_cgal_python_bindings(
 
     parsed_shapes.sort(key=lambda item: float(item["coverage"]), reverse=True)
     best = parsed_shapes[0]
-    if best["primitive_type"] not in {"sphere", "cylinder"}:
+    if best["primitive_type"] not in {"sphere", "cylinder", "cone"}:
         diagnostics["reason"] = "unsupported_best_shape"
         return CgalDetectionResult(
             detected=False,
@@ -420,6 +423,23 @@ def _parse_cgal_shape_description(
             "raw": description,
         }
 
+    cone = _CONE_RE.search(description)
+    if cone:
+        groups = cone.groups()
+        apex = _float_tuple(groups[0:3])
+        axis = _normalize_tuple(_float_tuple(groups[3:6]))
+        angle = float(groups[6])
+        point_count = int(groups[7])
+        return {
+            "primitive_type": "cone",
+            "apex": apex,
+            "axis": axis,
+            "angle": angle,
+            "point_count": point_count,
+            "coverage": point_count / max(total_points, 1),
+            "raw": description,
+        }
+
     return None
 
 
@@ -447,6 +467,26 @@ def _shape_description_to_scad(shape: dict[str, Any]) -> Optional[str]:
             np.asarray(center, dtype=np.float64), axis, primitive
         )
 
+    if primitive_type == "cone":
+        axis = shape["axis"]
+        center = shape.get("finite_center")
+        height = shape.get("height")
+        radius_start = shape.get("radius_start")
+        radius_end = shape.get("radius_end")
+        if center is None or height is None or radius_start is None or radius_end is None:
+            return None
+        if float(height) <= 1e-6:
+            return None
+        if max(float(radius_start), float(radius_end)) <= 1e-6:
+            return None
+        primitive = (
+            f"cylinder(h={float(height):.6f}, r1={float(radius_start):.6f}, "
+            f"r2={float(radius_end):.6f}, center=true, $fn=96);"
+        )
+        return _wrap_oriented_primitive(
+            np.asarray(center, dtype=np.float64), axis, primitive
+        )
+
     return None
 
 
@@ -456,14 +496,54 @@ def _enrich_shape_geometry_from_points(
 ) -> Optional[dict[str, Any]]:
     if shape is None:
         return None
-    if shape.get("primitive_type") != "cylinder":
+    primitive_type = shape.get("primitive_type")
+    if primitive_type == "cylinder":
+        center = np.asarray(shape.get("center"), dtype=np.float64)
+        axis_vec: np.ndarray = np.asarray(shape.get("axis"), dtype=np.float64)
+        radius = float(shape.get("radius", 0.0))
+
+        if center.shape != (3,) or axis_vec.shape != (3,) or radius <= 1e-6:
+            return shape
+
+        axis_norm = float(np.linalg.norm(axis_vec))
+        if axis_norm <= 1e-12:
+            return shape
+        axis_vec = np.asarray(axis_vec / axis_norm, dtype=np.float64)
+
+        relative = points - center
+        t_values = relative @ axis_vec
+        if len(t_values) == 0:
+            return shape
+
+        if len(t_values) >= 50:
+            t_min = float(np.percentile(t_values, 2.0))
+            t_max = float(np.percentile(t_values, 98.0))
+        else:
+            t_min = float(np.min(t_values))
+            t_max = float(np.max(t_values))
+
+        height = t_max - t_min
+        if height <= 1e-6:
+            return shape
+
+        finite_center = center + axis_vec * ((t_min + t_max) * 0.5)
+        enriched = dict(shape)
+        enriched["axis"] = _normalize_tuple(tuple(float(value) for value in axis_vec))
+        enriched["finite_center"] = tuple(float(value) for value in finite_center)
+        enriched["height"] = float(height)
+        enriched["axis_min"] = t_min
+        enriched["axis_max"] = t_max
+        enriched["estimated_from_sample_points"] = True
+        return enriched
+
+    if primitive_type != "cone":
         return shape
 
-    center = np.asarray(shape.get("center"), dtype=np.float64)
-    axis_vec: np.ndarray = np.asarray(shape.get("axis"), dtype=np.float64)
-    radius = float(shape.get("radius", 0.0))
+    apex = np.asarray(shape.get("apex"), dtype=np.float64)
+    axis_vec = np.asarray(shape.get("axis"), dtype=np.float64)
+    angle_raw = shape.get("angle")
 
-    if center.shape != (3,) or axis_vec.shape != (3,) or radius <= 1e-6:
+    if apex.shape != (3,) or axis_vec.shape != (3,) or angle_raw is None:
         return shape
 
     axis_norm = float(np.linalg.norm(axis_vec))
@@ -471,7 +551,20 @@ def _enrich_shape_geometry_from_points(
         return shape
     axis_vec = np.asarray(axis_vec / axis_norm, dtype=np.float64)
 
-    relative = points - center
+    try:
+        angle = float(angle_raw)
+    except (TypeError, ValueError):
+        return shape
+
+    angle_radians = angle
+    if angle_radians > (math.pi / 2.0) and angle_radians <= 180.0:
+        angle_radians = math.radians(angle_radians)
+
+    tan_angle = math.tan(angle_radians)
+    if not math.isfinite(tan_angle) or tan_angle <= 1e-9:
+        return shape
+
+    relative = points - apex
     t_values = relative @ axis_vec
     if len(t_values) == 0:
         return shape
@@ -483,17 +576,22 @@ def _enrich_shape_geometry_from_points(
         t_min = float(np.min(t_values))
         t_max = float(np.max(t_values))
 
-    height = t_max - t_min
+    height = abs(t_max - t_min)
     if height <= 1e-6:
         return shape
 
-    finite_center = center + axis_vec * ((t_min + t_max) * 0.5)
+    radius_start = abs(tan_angle * t_min)
+    radius_end = abs(tan_angle * t_max)
+    finite_center = apex + axis_vec * ((t_min + t_max) * 0.5)
+
     enriched = dict(shape)
     enriched["axis"] = _normalize_tuple(tuple(float(value) for value in axis_vec))
     enriched["finite_center"] = tuple(float(value) for value in finite_center)
     enriched["height"] = float(height)
     enriched["axis_min"] = t_min
     enriched["axis_max"] = t_max
+    enriched["radius_start"] = float(radius_start)
+    enriched["radius_end"] = float(radius_end)
     enriched["estimated_from_sample_points"] = True
     return enriched
 

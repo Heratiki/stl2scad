@@ -116,3 +116,8 @@ Use this checklist as an execution board:
 1. Milestone A: Foundations + deterministic verification.
 2. Milestone B: Trimesh+Manifold primitive expansion in production behind `--parametric`.
 3. Milestone C: Optional CGAL advanced backend validated on hard fixtures.
+
+## Follow-On Roadmap Items
+- [x] Upgrade the CGAL helper from protocol-compatible prototype internals to real CGAL-backed detection where bindings/tooling are available, while preserving conservative fallback behavior.
+- [x] Surface recognition diagnostics in the GUI so users can inspect backend choice, confidence, primitive type, and fallback reasons from conversion/verification workflows.
+- [x] Extend CGAL Python-binding primitive support beyond sphere/cylinder by accepting cone/frustum detections when finite geometry can be reconstructed conservatively from sampled mesh points.

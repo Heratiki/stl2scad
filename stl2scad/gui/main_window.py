@@ -2,7 +2,9 @@
 Main window implementation for the STL to OpenSCAD converter GUI.
 """
 
+import json
 import os
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import numpy as np
@@ -19,6 +21,7 @@ from PyQt5.QtGui import QColor, QPixmap, QFont, QPalette, QIcon
 from PyQt5.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
+    QPlainTextEdit,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -484,6 +487,91 @@ def _combo(items, width=132):
     return combo
 
 
+def _load_scad_conversion_metadata(scad_file: str) -> Dict[str, Any]:
+    metadata: Dict[str, Any] = {}
+    path = Path(scad_file)
+    if not path.exists():
+        return metadata
+
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            for raw_line in handle:
+                line = raw_line.strip()
+                if not line:
+                    if metadata:
+                        break
+                    continue
+                if not line.startswith("//"):
+                    break
+
+                comment = line[2:].strip()
+                if not comment or comment == "STL to SCAD Conversion" or ":" not in comment:
+                    continue
+
+                key, value = comment.split(":", 1)
+                key = key.strip()
+                value = value.strip()
+                if key:
+                    metadata[key] = value
+    except OSError:
+        return {}
+
+    confidence_text = metadata.get("recognition_confidence")
+    if isinstance(confidence_text, str):
+        try:
+            metadata["recognition_confidence"] = float(confidence_text)
+        except ValueError:
+            pass
+
+    diagnostics_text = metadata.get("recognition_diagnostics")
+    if isinstance(diagnostics_text, str):
+        try:
+            metadata["recognition_diagnostics"] = json.loads(diagnostics_text)
+        except json.JSONDecodeError:
+            pass
+
+    return metadata
+
+
+def _format_recognition_diagnostics(metadata: Optional[Dict[str, Any]]) -> str:
+    if not metadata:
+        return "No recognition diagnostics available yet."
+
+    lines = []
+    requested = metadata.get("recognition_backend_requested")
+    used = metadata.get("recognition_backend_used")
+    primitive_type = metadata.get("recognized_primitive_type")
+    confidence = metadata.get("recognition_confidence")
+    fallback_reason = metadata.get("recognition_fallback_reason")
+    attempted = metadata.get("recognition_attempted")
+
+    if requested:
+        lines.append(f"Requested backend: {requested}")
+    if used:
+        lines.append(f"Used backend: {used}")
+    if attempted is not None:
+        lines.append(f"Recognition attempted: {attempted}")
+    if primitive_type:
+        lines.append(f"Primitive type: {primitive_type}")
+    if confidence is not None:
+        if isinstance(confidence, (int, float)):
+            lines.append(f"Confidence: {float(confidence):.3f}")
+        else:
+            lines.append(f"Confidence: {confidence}")
+    if fallback_reason:
+        lines.append(f"Fallback reason: {fallback_reason}")
+
+    diagnostics = metadata.get("recognition_diagnostics")
+    if diagnostics:
+        lines.append("Diagnostics:")
+        if isinstance(diagnostics, dict):
+            lines.append(json.dumps(diagnostics, indent=2, sort_keys=True))
+        else:
+            lines.append(str(diagnostics))
+
+    return "\n".join(lines) if lines else "No recognition diagnostics available."
+
+
 # ---------------------------------------------------------------------------
 # Main Window
 # ---------------------------------------------------------------------------
@@ -502,6 +590,7 @@ class MainWindow(QMainWindow):
         self.worker: Optional[QThread] = None
         self._busy = False
         self._available_recognition_backends = tuple(get_available_recognition_backends())
+        self._last_recognition_metadata: Dict[str, Any] = {}
         self.setup_ui()
 
     # ------------------------------------------------------------------
@@ -829,6 +918,31 @@ class MainWindow(QMainWindow):
         grp3.setLayout(g3)
         layout.addWidget(grp3)
 
+        grp4 = self._section_group("04  DIAGNOSTICS")
+        g4 = QVBoxLayout()
+        g4.setSpacing(6)
+
+        diagnostics_label = _label("Recognition diagnostics:", "metric")
+        self.recognition_diagnostics_view = QPlainTextEdit()
+        self.recognition_diagnostics_view.setReadOnly(True)
+        self.recognition_diagnostics_view.setMinimumHeight(160)
+        self.recognition_diagnostics_view.setPlainText(
+            "No recognition diagnostics available yet."
+        )
+        self.recognition_diagnostics_view.setStyleSheet(
+            f"background-color: {PALETTE['bg']};"
+            f"border: 1px solid {PALETTE['border']};"
+            "border-radius: 2px;"
+            f"color: {PALETTE['text']};"
+            'font-family: "Consolas", "Courier New", monospace;'
+            "font-size: 11px;"
+        )
+
+        g4.addWidget(diagnostics_label)
+        g4.addWidget(self.recognition_diagnostics_view)
+        grp4.setLayout(g4)
+        layout.addWidget(grp4)
+
         layout.addStretch(1)
 
         # Version label at bottom
@@ -945,6 +1059,12 @@ class MainWindow(QMainWindow):
         mode = "existing SCAD" if checked else "regenerate from STL"
         self._set_status(f"Verification mode: {mode}")
 
+    def _set_recognition_diagnostics(self, metadata: Optional[Dict[str, Any]]):
+        self._last_recognition_metadata = dict(metadata or {})
+        self.recognition_diagnostics_view.setPlainText(
+            _format_recognition_diagnostics(self._last_recognition_metadata)
+        )
+
     def load_stl_file(self):
         file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, "Open STL File", "", "STL Files (*.stl)"
@@ -965,6 +1085,7 @@ class MainWindow(QMainWindow):
         self._select_verify_btn.setEnabled(False)
         self.image_label.setVisible(False)
         self.image_label.clear()
+        self._set_recognition_diagnostics({})
 
         # Update labels
         self._stl_path_label.setText(os.path.basename(file_path))
@@ -1137,6 +1258,10 @@ class MainWindow(QMainWindow):
     def conversion_finished(self, stats: ConversionStats):
         self._stop_busy()
         reduction = 100 * (1 - stats.deduplicated_vertices / stats.original_vertices)
+        recognition_metadata = {}
+        if self.current_scad_file:
+            recognition_metadata = _load_scad_conversion_metadata(self.current_scad_file)
+        self._set_recognition_diagnostics(recognition_metadata)
         self._set_status(
             f"Converted  ·  {stats.deduplicated_vertices:,} vertices ({reduction:.1f}% reduction)  ·  "
             f"{stats.faces:,} faces  ·  → {self.current_scad_file}",
@@ -1169,6 +1294,10 @@ class MainWindow(QMainWindow):
         result = payload["result"]
         report_file = payload["report_file"]
         html_file = payload.get("html_file")
+        recognition_metadata = dict(result.report.get("conversion_metadata") or {})
+        if not recognition_metadata and payload.get("scad_file"):
+            recognition_metadata = _load_scad_conversion_metadata(payload["scad_file"])
+        self._set_recognition_diagnostics(recognition_metadata)
         passed = result.passed
         color = PALETTE["success"] if passed else PALETTE["error"]
         badge = "PASS" if passed else "FAIL"

@@ -88,8 +88,9 @@ If no reliable primitive is found:
 1. `--recognition-backend cgal` attempts direct CGAL Python binding detection first when `CGAL.CGAL_Shape_detection` is importable.
 2. Direct Python binding detection currently accepts high-coverage sphere and cylinder output; partial/unsupported shapes decline.
 3. If direct Python bindings decline or are unavailable, the backend attempts CGAL helper detection.
-4. If CGAL helper declines or fails, current implementation falls back to `trimesh_manifold` backend when available.
-5. If neither yields a confident primitive, converter falls back to polyhedron output.
+4. The helper now attempts CGAL Python binding detection internally when available in the helper environment before dropping to geometric fallback logic.
+5. If CGAL helper declines or fails, current implementation falls back to `trimesh_manifold` backend when available.
+6. If neither yields a confident primitive, converter falls back to polyhedron output.
 
 ## Phase 2 Status
 1. Minimal helper prototype implemented (`scripts/stl2scad-cgal-helper.py`).
@@ -98,6 +99,7 @@ If no reliable primitive is found:
 4. Helper capability reporting now makes CGAL binding availability explicit.
 
 ## Remaining Work (Post-Phase 2)
-1. Replace prototype helper internals with true CGAL shape-detection implementation.
+1. Extend helper-side CGAL detection coverage beyond the current sphere/cylinder-safe path and validate it on harder fixtures.
 2. Add CI job/profile that runs against a packaged helper binary/toolchain.
 3. Expand boolean/topology-aware reconstruction for complex multi-primitive models.
+4. Surface recognition diagnostics directly in the GUI for interactive inspection.

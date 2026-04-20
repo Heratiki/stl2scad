@@ -5,6 +5,7 @@ Tests for Phase 2 CGAL backend adapter boundary.
 import json
 from pathlib import Path
 import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -51,6 +52,36 @@ def _sample_cylinder_points(
             ring = (
                 center
                 + axis * z
+                + basis_u * (radius * np.cos(angle))
+                + basis_v * (radius * np.sin(angle))
+            )
+            points.append(ring)
+    return np.asarray(points, dtype=np.float64)
+
+
+def _sample_cone_points(
+    apex: np.ndarray,
+    axis: np.ndarray,
+    angle_radians: float,
+    t_start: float,
+    t_end: float,
+) -> np.ndarray:
+    axis = axis / np.linalg.norm(axis)
+    if abs(float(np.dot(axis, np.array([1.0, 0.0, 0.0])))) < 0.9:
+        basis_seed = np.array([1.0, 0.0, 0.0])
+    else:
+        basis_seed = np.array([0.0, 1.0, 0.0])
+    basis_u = np.cross(axis, basis_seed)
+    basis_u = basis_u / np.linalg.norm(basis_u)
+    basis_v = np.cross(axis, basis_u)
+
+    points = []
+    for t in np.linspace(t_start, t_end, 8):
+        radius = abs(np.tan(angle_radians) * t)
+        for angle in np.linspace(0.0, 2.0 * np.pi, 24, endpoint=False):
+            ring = (
+                apex
+                + axis * t
                 + basis_u * (radius * np.cos(angle))
                 + basis_v * (radius * np.sin(angle))
             )
@@ -136,6 +167,8 @@ def test_cgal_helper_capabilities_end_to_end():
     assert capabilities.helper_mode == "prototype"
     assert "detect_primitive" in capabilities.operations
     assert "geometric_region_fallback" in capabilities.engines
+    if cgal_backend.has_cgal_python_bindings():
+        assert "cgal_python_bindings" in capabilities.engines
     assert "sphere" in capabilities.supported_primitives
 
 
@@ -149,6 +182,24 @@ def test_cgal_capabilities_reports_python_bindings_without_helper(monkeypatch):
     assert "cgal_python_bindings" in capabilities.engines
     assert "sphere" in capabilities.supported_primitives
     assert "cylinder" in capabilities.supported_primitives
+    assert "cone" in capabilities.supported_primitives
+
+
+def test_parse_cgal_shape_description_parses_cone():
+    description = (
+        "Type: cone "
+        "apex: (0.0, 0.0, 0.0) "
+        "axis: (0.0, 0.0, 1.0) "
+        "angle: 0.5235987756 "
+        "#Pts: 90"
+    )
+    parsed = cgal_backend._parse_cgal_shape_description(description, total_points=100)
+    assert parsed is not None
+    assert parsed["primitive_type"] == "cone"
+    assert parsed["apex"] == pytest.approx((0.0, 0.0, 0.0))
+    assert parsed["axis"] == pytest.approx((0.0, 0.0, 1.0))
+    assert parsed["angle"] == pytest.approx(0.5235987756)
+    assert parsed["coverage"] == pytest.approx(0.9)
 
 
 def test_cgal_cylinder_geometry_is_enriched_from_sample_points():
@@ -172,6 +223,29 @@ def test_cgal_cylinder_geometry_is_enriched_from_sample_points():
     assert np.asarray(enriched["finite_center"]) == pytest.approx(center, rel=1e-6)
 
 
+def test_cgal_cone_geometry_is_enriched_from_sample_points():
+    apex = np.array([1.5, -0.5, 2.0], dtype=np.float64)
+    axis = np.array([0.0, 1.0, 1.0], dtype=np.float64)
+    axis = axis / np.linalg.norm(axis)
+    angle = np.deg2rad(30.0)
+    points = _sample_cone_points(apex, axis, angle, t_start=1.0, t_end=5.0)
+
+    shape = {
+        "primitive_type": "cone",
+        "apex": tuple(apex),
+        "axis": tuple(axis),
+        "angle": float(angle),
+        "coverage": 0.92,
+    }
+    enriched = cgal_backend._enrich_shape_geometry_from_points(shape, points)
+
+    assert enriched is not None
+    assert enriched["primitive_type"] == "cone"
+    assert enriched["height"] == pytest.approx(4.0, rel=0.08)
+    assert enriched["radius_start"] == pytest.approx(np.tan(angle) * 1.0, rel=0.1)
+    assert enriched["radius_end"] == pytest.approx(np.tan(angle) * 5.0, rel=0.1)
+
+
 def test_shape_description_to_scad_emits_oriented_cylinder():
     shape = {
         "primitive_type": "cylinder",
@@ -186,6 +260,21 @@ def test_shape_description_to_scad_emits_oriented_cylinder():
     assert "cylinder(h=6.000000, r=2.000000, center=true, $fn=96);" in scad
     assert "translate([1.000000, 2.000000, 3.000000])" in scad
     assert "rotate(" in scad
+
+
+def test_shape_description_to_scad_emits_oriented_cone_frustum():
+    shape = {
+        "primitive_type": "cone",
+        "axis": (0.0, 0.0, 1.0),
+        "height": 4.0,
+        "radius_start": 0.5,
+        "radius_end": 2.5,
+        "finite_center": (0.0, 0.0, 0.0),
+    }
+
+    scad = cgal_backend._shape_description_to_scad(shape)
+    assert scad is not None
+    assert "cylinder(h=4.000000, r1=0.500000, r2=2.500000, center=true, $fn=96);" in scad
 
 
 def test_cgal_python_bindings_detect_sphere_when_available(test_data_dir):
@@ -255,6 +344,42 @@ def test_cgal_helper_prototype_end_to_end(test_data_dir):
     else:
         assert result.diagnostics["component_count"] == 1
         assert result.diagnostics["assigned_component_count"] == 1
+
+
+def test_cgal_helper_command_detects_rotated_cylinder_fixture(test_data_dir):
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+    helper_path = (
+        Path(__file__).resolve().parents[1] / "scripts" / "stl2scad-cgal-helper.py"
+    ).resolve()
+    mesh = stl.mesh.Mesh.from_file(str(fixtures_dir / "primitive_cylinder_rotated.stl"))
+
+    result = subprocess.run(
+        [sys.executable, str(helper_path), "detect-primitive", "--format", "json"],
+        input=json.dumps(
+            {
+                "operation": "detect_primitive",
+                "tolerance": 0.01,
+                "mesh": {"triangles": mesh.vectors.tolist()},
+            }
+        ),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["detected"] is True
+    assert payload["primitive_type"] == "cylinder"
+    assert "cylinder(" in payload["scad"]
+    diagnostics = payload["diagnostics"]
+    assert diagnostics["engine"] in {"cgal_python_bindings", "geometric_region_fallback"}
+    if diagnostics["engine"] == "geometric_region_fallback":
+        assert diagnostics["component_count"] == 1
+        assert diagnostics["assigned_component_count"] == 1
+    else:
+        assert diagnostics["sample_point_count"] > 0
 
 
 def test_converter_cgal_backend_uses_helper_and_emits_metadata(

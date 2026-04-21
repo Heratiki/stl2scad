@@ -10,6 +10,7 @@ from stl2scad.core.feature_inventory import (
     InventoryConfig,
     analyze_stl_file,
     analyze_stl_folder,
+    analyze_stl_folder_for_feature_graphs,
     build_feature_graphs_from_inventory,
 )
 
@@ -90,6 +91,52 @@ def test_build_feature_graphs_from_inventory_filters_mechanical_candidates(
     assert report["graphs"][0]["source_file"] == "primitive_box_axis_aligned.stl"
     feature_types = {feature["type"] for feature in report["graphs"][0]["features"]}
     assert "box_like_solid" in feature_types
+
+
+def test_analyze_stl_folder_for_feature_graphs_prefilters_mechanical_candidates(
+    test_data_dir, test_output_dir
+):
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+
+    input_dir = test_output_dir / "prefilter_input"
+    input_dir.mkdir()
+    for fixture_name in ("primitive_box_axis_aligned.stl", "primitive_sphere.stl"):
+        source = fixtures_dir / fixture_name
+        destination = input_dir / fixture_name
+        destination.write_bytes(source.read_bytes())
+
+    inventory_events = []
+    graph_events = []
+    inventory_json = test_output_dir / "feature_inventory_prefilter.json"
+    output_json = test_output_dir / "feature_graph_prefilter.json"
+
+    report = analyze_stl_folder_for_feature_graphs(
+        input_dir=input_dir,
+        output_json=output_json,
+        inventory_config=InventoryConfig(recursive=False, workers=1),
+        graph_workers=1,
+        inventory_output_json=inventory_json,
+        inventory_progress_callback=lambda done, total, path: inventory_events.append(
+            (done, total, path)
+        ),
+        graph_progress_callback=lambda done, total, path: graph_events.append(
+            (done, total, path)
+        ),
+    )
+
+    assert output_json.exists()
+    assert inventory_json.exists()
+    assert report["inventory_summary"]["file_count"] == 2
+    assert report["selection"]["filter_mode"] == "inventory_mechanical_candidates"
+    assert report["selection"]["mechanical_candidate_count"] == 1
+    assert report["selection"]["skipped_non_mechanical_count"] == 1
+    assert report["summary"]["file_count"] == 1
+    assert report["graphs"][0]["source_file"] == "primitive_box_axis_aligned.stl"
+    assert len(inventory_events) == 2
+    assert inventory_events[-1][0] == 2
+    assert len(graph_events) == 1
+    assert graph_events[-1][0] == 1
 
 
 def test_feature_graph_from_inventory_command_execution(test_data_dir, test_output_dir):

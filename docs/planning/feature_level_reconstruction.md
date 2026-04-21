@@ -53,15 +53,22 @@ Example:
 python scripts/build_feature_graph.py "C:\Users\herat\OneDrive\3D Files" --output artifacts/feature_graph_onedrive.json --max-files 100
 ```
 
+For directory inputs, the graph builder can now run inventory first and only
+process likely mechanical candidates:
+
+```bash
+python scripts/build_feature_graph.py "C:\Users\herat\OneDrive\3D Files" --output artifacts/feature_graph_onedrive.json --inventory-prefilter --inventory-output artifacts/feature_inventory_onedrive.json
+```
+
 For a single STL with a high-confidence plate/hole graph, the script can also write an experimental SCAD preview:
 
 ```bash
 python scripts/build_feature_graph.py input.stl --output artifacts/input_feature_graph.json --scad-preview artifacts/input_feature_preview.scad
 ```
 
-## Current State Assessment (2026-04-13)
+## Current State Assessment (2026-04-20)
 
-Three interconnected systems are now in place: feature inventory, feature graph, and manifest-driven feature fixtures. The focused feature test slice currently passes in the project virtualenv across `test_feature_inventory.py`, `test_feature_graph.py`, `test_feature_fixtures.py`, and the feature-specific CLI coverage in `test_cli.py`. CLI commands `feature-inventory` and `feature-graph` are wired up with parallel worker support and progress reporting for directory scans.
+Three interconnected systems are now in place: feature inventory, feature graph, and manifest-driven feature fixtures. The focused feature test slice currently passes in the project virtualenv across `test_feature_inventory.py`, `test_feature_graph.py`, `test_feature_fixtures.py`, and the feature-specific CLI coverage in `test_cli.py`. CLI commands `feature-inventory`, `feature-graph`, and `feature-graph-from-inventory` are wired up with parallel worker support and progress reporting for directory scans, and `feature-graph` directory mode can now optionally inventory-prefilter before graph construction.
 
 ### Feature Fixtures (`stl2scad/core/feature_fixtures.py`) — High value
 
@@ -94,7 +101,7 @@ Batch-analyzes STL folders and produces JSON reports with geometry signals (boun
 
 - Mechanical/organic scoring is coarse (weighted sum of 3-4 signals) — works for obvious cases, struggles with ambiguous models
 - Classification is per-file, not per-region — a model with both mechanical and organic features gets one label
-- No integration yet with the feature graph or reconstruction pipeline — informational only
+- Integration now exists as a whole-file prefilter into the feature graph, but the handoff is still binary and coarse; inventory does not yet provide region-level hints or richer detector guidance
 
 ### Feature Graph (`stl2scad/core/feature_graph.py`) — High value
 
@@ -115,6 +122,7 @@ Detects axis-aligned boxes, through-holes, slots, and repeated hole patterns (li
 
 ### Recently completed (2026-04-20)
 
+- **Single-step inventory-prefiltered graph workflow** — folder-level feature graph generation can now run inventory first, persist the inventory optionally, and build graphs only for files classified as `mechanical_candidate`. This is exposed in both `scripts/build_feature_graph.py` and `python -m stl2scad feature-graph --inventory-prefilter`.
 - **Dimensional round-trip assertions** — `test_feature_fixture_round_trip_detection` now compares detected feature dimensions against the manifest within per-field tolerances (hole diameter/center, slot width/length, counterbore through/bore/depth, plate and box extents, linear/grid pattern origin/step/spacing).
 - **Counterbore depth generator fix** — `counterbore_hole` module now takes explicit `plate_thickness` and anchors the bore at `plate_thickness - bore_depth`, eliminating the compounded 0.1mm offset. All 11 affected `.scad` fixtures were regenerated.
 - **CI-hard-fail for missing OpenSCAD** — `test_feature_fixture_round_trip_detection` fails (no longer silently skips) when `CI=true` and the OpenSCAD binary is unavailable.
@@ -123,9 +131,9 @@ Detects axis-aligned boxes, through-holes, slots, and repeated hole patterns (li
 
 ### Immediate priorities
 
-1. **Connect inventory -> graph** — the inventory and feature graph are currently independent pipelines. Have the inventory pre-filter files and feed likely-mechanical candidates into the feature graph to complete the workflow.
-2. **Expand beyond axis-aligned fixtures** — add rotated and more composite non-plate fixtures once the conservative baseline remains stable.
-3. **Tighten edge-case coverage** — keep adding tolerance-boundary geometry and multi-pattern plates that mirror real-world noisy CAD exports.
+1. **Expand beyond axis-aligned fixtures** — add rotated and more composite non-plate fixtures once the conservative baseline remains stable.
+2. **Tighten edge-case coverage** — keep adding tolerance-boundary geometry and multi-pattern plates that mirror real-world noisy CAD exports.
+3. **Improve inventory-guided selection quality** — move beyond a binary whole-file mechanical/organic gate so inventory can contribute richer, detector-relevant prioritization.
 
 ### Beyond dimensional parity
 

@@ -19,6 +19,10 @@ from stl2scad.core.feature_graph import (
     build_feature_graph_for_stl,
     emit_feature_graph_scad_preview,
 )
+from stl2scad.core.feature_inventory import (
+    InventoryConfig,
+    analyze_stl_folder_for_feature_graphs,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -51,6 +55,16 @@ def _build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Parallel workers for directory scans. Use 0 for auto, 1 for serial.",
     )
+    parser.add_argument(
+        "--inventory-prefilter",
+        action="store_true",
+        help="For directory inputs, run inventory first and graph only likely mechanical candidates.",
+    )
+    parser.add_argument(
+        "--inventory-output",
+        default=None,
+        help="Optional inventory JSON output path when using --inventory-prefilter.",
+    )
     return parser
 
 
@@ -68,6 +82,10 @@ def main() -> int:
 
     input_path = Path(args.input_path)
     output_path = Path(args.output)
+    if not input_path.is_dir() and (args.inventory_prefilter or args.inventory_output):
+        raise ValueError(
+            "--inventory-prefilter and --inventory-output require a directory input."
+        )
     if input_path.is_dir():
         workers = _resolve_workers(args.workers)
 
@@ -81,17 +99,70 @@ def main() -> int:
             if done == total:
                 print(file=sys.stderr)
 
-        report = build_feature_graph_for_folder(
-            input_path,
-            output_path,
-            recursive=not args.no_recursive,
-            max_files=args.max_files,
-            workers=workers,
-            progress_callback=_progress,
-        )
+        if args.inventory_prefilter:
+
+            def _inventory_progress(done: int, total: int, path: str) -> None:
+                print(
+                    f"\r[inventory {done}/{total}] {Path(path).name}",
+                    end="",
+                    flush=True,
+                    file=sys.stderr,
+                )
+                if done == total:
+                    print(file=sys.stderr)
+
+            def _graph_progress(done: int, total: int, path: str) -> None:
+                print(
+                    f"\r[graph {done}/{total}] {Path(path).name}",
+                    end="",
+                    flush=True,
+                    file=sys.stderr,
+                )
+                if done == total:
+                    print(file=sys.stderr)
+
+            report = analyze_stl_folder_for_feature_graphs(
+                input_dir=input_path,
+                output_json=output_path,
+                inventory_config=InventoryConfig(
+                    recursive=not args.no_recursive,
+                    max_files=args.max_files,
+                    workers=workers,
+                ),
+                graph_workers=workers,
+                inventory_output_json=(
+                    Path(args.inventory_output)
+                    if args.inventory_output is not None
+                    else None
+                ),
+                inventory_progress_callback=_inventory_progress,
+                graph_progress_callback=_graph_progress,
+            )
+        else:
+            report = build_feature_graph_for_folder(
+                input_path,
+                output_path,
+                recursive=not args.no_recursive,
+                max_files=args.max_files,
+                workers=workers,
+                progress_callback=_progress,
+            )
         summary = report["summary"]
         print(f"Feature graph report written to: {output_path}")
-        print(f"Files analyzed: {summary['file_count']}")
+        if args.inventory_prefilter:
+            inventory_summary = report["inventory_summary"]
+            selection = report["selection"]
+            print(f"Files analyzed: {inventory_summary['file_count']}")
+            print(
+                f"Mechanical candidates processed: {selection['mechanical_candidate_count']}"
+            )
+            print(
+                f"Skipped non-mechanical: {selection['skipped_non_mechanical_count']}"
+            )
+            if args.inventory_output:
+                print(f"Inventory report written to: {args.inventory_output}")
+        else:
+            print(f"Files analyzed: {summary['file_count']}")
         print(f"Workers: {workers}")
         print(f"Errors: {summary['error_count']}")
         print(f"Features: {summary['feature_counts']}")

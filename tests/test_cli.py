@@ -73,6 +73,23 @@ def test_feature_graph_parser_accepts_scad_preview():
     assert args.scad_preview == "preview.scad"
 
 
+def test_feature_graph_parser_accepts_inventory_prefilter():
+    """Feature graph command should accept inventory-prefilter directory options."""
+    parser = cli.build_parser()
+    args = parser.parse_args(
+        [
+            "feature-graph",
+            "input-dir",
+            "--inventory-prefilter",
+            "--inventory-output",
+            "inventory.json",
+        ]
+    )
+    assert isinstance(args, argparse.Namespace)
+    assert args.inventory_prefilter is True
+    assert args.inventory_output == "inventory.json"
+
+
 def test_feature_graph_from_inventory_parser_accepts_scad_preview_dir():
     """Feature-graph-from-inventory should accept SCAD preview output dir."""
     parser = cli.build_parser()
@@ -229,6 +246,55 @@ def test_feature_graph_directory_command_execution(mock_build_graph, test_output
     assert kwargs["max_files"] == 3
     assert kwargs["workers"] == 2
     assert callable(kwargs["progress_callback"])
+
+
+@patch("stl2scad.cli.analyze_stl_folder_for_feature_graphs")
+def test_feature_graph_directory_command_inventory_prefilter_execution(
+    mock_prefilter_graphs, test_output_dir
+):
+    """Feature graph directory mode should support inventory-prefilter routing."""
+    mock_prefilter_graphs.return_value = {
+        "inventory_summary": {"file_count": 4},
+        "summary": {
+            "error_count": 0,
+            "feature_counts": {"plate_like_solid": 2},
+        },
+        "selection": {
+            "filter_mode": "inventory_mechanical_candidates",
+            "inventory_file_count": 4,
+            "mechanical_candidate_count": 2,
+            "skipped_non_mechanical_count": 2,
+            "skipped_error_count": 0,
+        },
+    }
+
+    output_file = str(test_output_dir / "feature_graph_prefilter.json")
+    inventory_file = str(test_output_dir / "feature_inventory_prefilter.json")
+    exit_code = cli.main(
+        [
+            "feature-graph",
+            str(test_output_dir),
+            "--output",
+            output_file,
+            "--workers",
+            "2",
+            "--inventory-prefilter",
+            "--inventory-output",
+            inventory_file,
+        ]
+    )
+
+    assert exit_code == 0
+    mock_prefilter_graphs.assert_called_once()
+    _args, kwargs = mock_prefilter_graphs.call_args
+    assert kwargs["input_dir"] == test_output_dir
+    assert kwargs["output_json"] == Path(output_file)
+    assert kwargs["inventory_output_json"] == Path(inventory_file)
+    assert kwargs["inventory_config"].workers == 2
+    assert kwargs["inventory_config"].recursive is True
+    assert kwargs["graph_workers"] == 2
+    assert callable(kwargs["inventory_progress_callback"])
+    assert callable(kwargs["graph_progress_callback"])
 
 
 @patch("stl2scad.cli.emit_feature_graph_scad_preview")

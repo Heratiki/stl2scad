@@ -41,12 +41,12 @@ class InventoryConfig:
 
 def analyze_stl_folder(
     input_dir: Union[Path, str],
-    output_json: Union[Path, str],
+    output_json: Optional[Union[Path, str]] = None,
     config: InventoryConfig = InventoryConfig(),
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> dict[str, Any]:
     """
-    Analyze STL files in a folder and write a JSON inventory report.
+    Analyze STL files in a folder and optionally write a JSON inventory report.
 
     ``progress_callback``, when provided, is called after each file completes
     with ``(completed_count, total_count, file_path_str)``.
@@ -103,16 +103,13 @@ def analyze_stl_folder(
         "files": results,
     }
 
-    output_path = Path(output_json)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w", encoding="utf-8") as handle:
-        json.dump(report, handle, indent=2)
+    _write_json_report(report, output_json)
     return report
 
 
 def build_feature_graphs_from_inventory(
     inventory: Union[dict[str, Any], Path, str],
-    output_json: Union[Path, str],
+    output_json: Optional[Union[Path, str]] = None,
     workers: int = 1,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> dict[str, Any]:
@@ -195,11 +192,48 @@ def build_feature_graphs_from_inventory(
         "graphs": graphs,
     }
 
-    output_path = Path(output_json)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w", encoding="utf-8") as handle:
-        json.dump(report, handle, indent=2)
+    _write_json_report(report, output_json)
     return report
+
+
+def analyze_stl_folder_for_feature_graphs(
+    input_dir: Union[Path, str],
+    output_json: Union[Path, str],
+    inventory_config: InventoryConfig = InventoryConfig(),
+    graph_workers: int = 1,
+    inventory_output_json: Optional[Union[Path, str]] = None,
+    inventory_progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    graph_progress_callback: Optional[Callable[[int, int, str], None]] = None,
+) -> dict[str, Any]:
+    """
+    Run inventory first, then build graphs only for mechanical candidates.
+
+    This completes the intended folder workflow: broad inventory heuristics
+    pre-filter likely mechanical files, and only those selected files are
+    handed to the more expensive feature-graph stage.
+    """
+    inventory_report = analyze_stl_folder(
+        input_dir=input_dir,
+        output_json=inventory_output_json,
+        config=inventory_config,
+        progress_callback=inventory_progress_callback,
+    )
+    graph_report = build_feature_graphs_from_inventory(
+        inventory=inventory_report,
+        output_json=None,
+        workers=graph_workers,
+        progress_callback=graph_progress_callback,
+    )
+    graph_report["inventory_summary"] = inventory_report["summary"]
+    graph_report["inventory_config"] = inventory_report["config"]
+    graph_report["inventory_source"] = (
+        str(Path(inventory_output_json)) if inventory_output_json is not None else None
+    )
+    graph_report.setdefault("selection", {})["filter_mode"] = (
+        "inventory_mechanical_candidates"
+    )
+    _write_json_report(graph_report, output_json)
+    return graph_report
 
 
 def _analyze_stl_file_worker(
@@ -326,6 +360,18 @@ def _resolve_inventory_entry_path(
     if path.is_absolute() or input_dir is None:
         return path
     return input_dir / path
+
+
+def _write_json_report(
+    report: dict[str, Any],
+    output_json: Optional[Union[Path, str]],
+) -> None:
+    if output_json is None:
+        return
+    output_path = Path(output_json)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as handle:
+        json.dump(report, handle, indent=2)
 
 
 def _unique_points(points: np.ndarray, tolerance: float) -> np.ndarray:

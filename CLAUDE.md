@@ -50,6 +50,9 @@ python scripts/build_feature_graph.py input.stl --output artifacts/graph.json --
 
 # Inventory a directory of STLs
 python scripts/analyze_feature_inventory.py "path/to/stls" --output artifacts/inventory.json --workers 0
+
+# Run inventory-prefiltered graph extraction in one step
+python scripts/build_feature_graph.py "path/to/stls" --output artifacts/feature_graph.json --inventory-prefilter --inventory-output artifacts/inventory.json --workers 0
 ```
 
 ## Where to look next

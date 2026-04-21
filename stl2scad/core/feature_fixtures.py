@@ -15,6 +15,8 @@ _COUNTED_FEATURE_TYPES = (
     "box_like_solid",
     "hole_like_cutout",
     "slot_like_cutout",
+    "rectangular_cutout",
+    "rectangular_pocket",
     "linear_hole_pattern",
     "grid_hole_pattern",
     "counterbore_hole",
@@ -111,6 +113,8 @@ def validate_feature_fixture_spec(raw_fixture: dict[str, Any], schema_version: i
     explicit_holes = int(spec.get("explicit_hole_count", 0))
     explicit_slots = int(spec.get("explicit_slot_count", 0))
     explicit_counterbores = int(spec.get("explicit_counterbore_count", 0))
+    explicit_rectangular_cutouts = int(spec.get("explicit_rectangular_cutout_count", 0))
+    explicit_rectangular_pockets = int(spec.get("explicit_rectangular_pocket_count", 0))
     if expected["hole_count"] > explicit_holes:
         raise ValueError(
             f"Feature fixture '{name}' expects {expected['hole_count']} holes but only defines {explicit_holes}"
@@ -122,6 +126,14 @@ def validate_feature_fixture_spec(raw_fixture: dict[str, Any], schema_version: i
     if expected["counterbore_count"] > explicit_counterbores:
         raise ValueError(
             f"Feature fixture '{name}' expects {expected['counterbore_count']} counterbores but only defines {explicit_counterbores}"
+        )
+    if expected["rectangular_cutout_count"] > explicit_rectangular_cutouts:
+        raise ValueError(
+            f"Feature fixture '{name}' expects {expected['rectangular_cutout_count']} rectangular cutouts but only defines {explicit_rectangular_cutouts}"
+        )
+    if expected["rectangular_pocket_count"] > explicit_rectangular_pockets:
+        raise ValueError(
+            f"Feature fixture '{name}' expects {expected['rectangular_pocket_count']} rectangular pockets but only defines {explicit_rectangular_pockets}"
         )
 
     return spec
@@ -254,6 +266,8 @@ def _expected_feature_counts(expected: dict[str, Any]) -> dict[str, int]:
         "box_like_solid": 1 if expected["box_like_solid"] else 0,
         "hole_like_cutout": expected["hole_count"],
         "slot_like_cutout": expected["slot_count"],
+        "rectangular_cutout": expected["rectangular_cutout_count"],
+        "rectangular_pocket": expected["rectangular_pocket_count"],
         "linear_hole_pattern": expected["linear_pattern_count"],
         "grid_hole_pattern": expected["grid_pattern_count"],
         "counterbore_hole": expected["counterbore_count"],
@@ -330,6 +344,8 @@ def _validate_plate_fixture_geometry(
         "linear_hole_patterns": [],
         "grid_hole_patterns": [],
         "slots": [],
+        "rectangular_cutouts": [],
+        "rectangular_pockets": [],
     }
 
     for index, raw_hole in enumerate(raw_fixture.get("holes", [])):
@@ -360,6 +376,26 @@ def _validate_plate_fixture_geometry(
     for index, raw_slot in enumerate(raw_fixture.get("slots", [])):
         spec["slots"].append(_validate_slot(raw_slot, fixture_name, index, feature_plate_size))
 
+    for index, raw_cutout in enumerate(raw_fixture.get("rectangular_cutouts", [])):
+        spec["rectangular_cutouts"].append(
+            _validate_plate_rectangular_cutout(
+                raw_cutout,
+                fixture_name,
+                index,
+                feature_plate_size,
+            )
+        )
+
+    for index, raw_pocket in enumerate(raw_fixture.get("rectangular_pockets", [])):
+        spec["rectangular_pockets"].append(
+            _validate_plate_rectangular_pocket(
+                raw_pocket,
+                fixture_name,
+                index,
+                feature_plate_size,
+            )
+        )
+
     explicit_holes = len(spec["holes"])
     explicit_holes += sum(
         int(pattern["count"]) for pattern in spec["linear_hole_patterns"]
@@ -371,6 +407,8 @@ def _validate_plate_fixture_geometry(
     spec["explicit_hole_count"] = explicit_holes
     spec["explicit_slot_count"] = len(spec["slots"])
     spec["explicit_counterbore_count"] = len(spec["counterbores"])
+    spec["explicit_rectangular_cutout_count"] = len(spec["rectangular_cutouts"])
+    spec["explicit_rectangular_pocket_count"] = len(spec["rectangular_pockets"])
     return spec
 
 
@@ -380,13 +418,25 @@ def _validate_box_fixture_geometry(
 ) -> dict[str, Any]:
     box_size = _as_vector3(raw_fixture.get("box_size"), f"{fixture_name}.box_size")
     _require_positive(box_size, f"{fixture_name}.box_size")
+    edge_radius = _as_non_negative_float(
+        raw_fixture.get("edge_radius", 0.0),
+        f"{fixture_name}.edge_radius",
+    )
+    if edge_radius * 2.0 >= min(box_size):
+        raise ValueError(
+            f"{fixture_name}.edge_radius must leave a positive inner box core"
+        )
 
     spec: dict[str, Any] = {
         "box_size": box_size,
+        "edge_radius": edge_radius,
         "holes": [],
         "cutouts": [],
         "explicit_hole_count": 0,
         "explicit_slot_count": 0,
+        "explicit_counterbore_count": 0,
+        "explicit_rectangular_cutout_count": 0,
+        "explicit_rectangular_pocket_count": 0,
     }
 
     for index, raw_hole in enumerate(raw_fixture.get("holes", [])):
@@ -398,6 +448,16 @@ def _validate_box_fixture_geometry(
         )
 
     spec["explicit_hole_count"] = len(spec["holes"])
+    pocket_count = 0
+    cutout_count = 0
+    for cutout in spec["cutouts"]:
+        boundary_touches = _count_box_cutout_boundary_touches(cutout, box_size)
+        if boundary_touches == 1:
+            pocket_count += 1
+        elif boundary_touches >= 2:
+            cutout_count += 1
+    spec["explicit_rectangular_cutout_count"] = cutout_count
+    spec["explicit_rectangular_pocket_count"] = pocket_count
     return spec
 
 
@@ -501,6 +561,21 @@ def _generate_plate_fixture_scad(fixture: dict[str, Any]) -> str:
             "",
         ]
     )
+    if fixture["rectangular_cutouts"] or fixture["rectangular_pockets"]:
+        lines.extend(
+            [
+                "module rectangular_through_cutout(center, size_xy, plate_thickness) {",
+                "  translate([center[0] - size_xy[0] / 2, center[1] - size_xy[1] / 2, -0.1])",
+                "    cube([size_xy[0], size_xy[1], plate_thickness + 0.2]);",
+                "}",
+                "",
+                "module rectangular_top_pocket(center, size_xy, pocket_depth, plate_thickness) {",
+                "  translate([center[0] - size_xy[0] / 2, center[1] - size_xy[1] / 2, plate_thickness - pocket_depth])",
+                "    cube([size_xy[0], size_xy[1], pocket_depth + 0.1]);",
+                "}",
+                "",
+            ]
+        )
     if edge_chamfer > 0.0:
         top_scale = [
             (plate_size[0] - 2.0 * edge_chamfer) / plate_size[0],
@@ -578,6 +653,20 @@ def _generate_plate_fixture_scad(fixture: dict[str, Any]) -> str:
             f"  through_slot({_format_vector(start)}, {_format_vector(end)}, {slot['width']:.6f}, {cut_height:.6f});  // slot_{index}"
         )
 
+    for index, cutout in enumerate(fixture["rectangular_cutouts"]):
+        center = [cutout["center"][0], cutout["center"][1], 0.0]
+        size_xy = [cutout["size"][0], cutout["size"][1]]
+        lines.append(
+            f"  rectangular_through_cutout({_format_vector(center)}, {_format_vector(size_xy)}, {thickness:.6f});  // rectangular_cutout_{index}"
+        )
+
+    for index, pocket in enumerate(fixture["rectangular_pockets"]):
+        center = [pocket["center"][0], pocket["center"][1], 0.0]
+        size_xy = [pocket["size"][0], pocket["size"][1]]
+        lines.append(
+            f"  rectangular_top_pocket({_format_vector(center)}, {_format_vector(size_xy)}, {pocket['depth']:.6f}, {thickness:.6f});  // rectangular_pocket_{index}"
+        )
+
     lines.extend(["}"])
     if has_transform:
         lines.append("}")
@@ -587,6 +676,7 @@ def _generate_plate_fixture_scad(fixture: dict[str, Any]) -> str:
 
 def _generate_box_fixture_scad(fixture: dict[str, Any]) -> str:
     box_size = fixture["box_size"]
+    edge_radius = float(fixture.get("edge_radius", 0.0))
     half_x = box_size[0] * 0.5
     half_y = box_size[1] * 0.5
     half_z = box_size[2] * 0.5
@@ -602,6 +692,26 @@ def _generate_box_fixture_scad(fixture: dict[str, Any]) -> str:
             f"box_size = {_format_vector(box_size)};",
             f"box_origin = {_format_vector([-half_x, -half_y, -half_z])};",
             "",
+        ]
+    )
+    if edge_radius > 0.0:
+        inner_size = [dimension - 2.0 * edge_radius for dimension in box_size]
+        lines.extend(
+            [
+                f"edge_radius = {edge_radius:.6f};",
+                f"inner_box_size = {_format_vector(inner_size)};",
+                "",
+                "module rounded_box(size, r) {",
+                "  minkowski() {",
+                "    cube(size, center=true);",
+                "    sphere(r=r, $fn=48);",
+                "  }",
+                "}",
+                "",
+            ]
+        )
+    lines.extend(
+        [
             "module through_hole_x(center, diameter, length) {",
             "  translate([box_origin[0] - 0.1, center[1], center[2]])",
             "    rotate(a=90, v=[0, 1, 0]) cylinder(d=diameter, h=length, center=false);",
@@ -622,17 +732,22 @@ def _generate_box_fixture_scad(fixture: dict[str, Any]) -> str:
 
     transform = fixture.get("transform", _identity_transform())
     has_transform = _has_non_identity_transform(transform)
+    box_base_line = (
+        "  rounded_box(inner_box_size, edge_radius);"
+        if edge_radius > 0.0
+        else "  translate(box_origin) cube(box_size);"
+    )
     if has_transform:
         lines.extend(
             [
                 f"translate({_format_vector(transform['translate'])})",
                 f"rotate({_format_vector(transform['rotate'])}) {{",
                 "difference() {",
-                "  translate(box_origin) cube(box_size);",
+                box_base_line,
             ]
         )
     else:
-        lines.extend(["difference() {", "  translate(box_origin) cube(box_size);"])
+        lines.extend(["difference() {", box_base_line])
 
     for index, hole in enumerate(fixture["holes"]):
         center = _format_vector(hole["center"])
@@ -803,6 +918,14 @@ def _validate_expected_detection(
         "slot_count": _as_non_negative_int(
             raw_expected.get("slot_count", 0),
             f"{fixture_name}.expected_detection.slot_count",
+        ),
+        "rectangular_cutout_count": _as_non_negative_int(
+            raw_expected.get("rectangular_cutout_count", 0),
+            f"{fixture_name}.expected_detection.rectangular_cutout_count",
+        ),
+        "rectangular_pocket_count": _as_non_negative_int(
+            raw_expected.get("rectangular_pocket_count", 0),
+            f"{fixture_name}.expected_detection.rectangular_pocket_count",
         ),
         "linear_pattern_count": _as_non_negative_int(
             raw_expected.get("linear_pattern_count", 0),
@@ -1135,6 +1258,64 @@ def _validate_slot(
     return {"start": start, "end": end, "width": width}
 
 
+def _validate_plate_rectangular_cutout(
+    raw_cutout: dict[str, Any],
+    fixture_name: str,
+    index: int,
+    plate_size: list[float],
+) -> dict[str, Any]:
+    center = _as_vector2(
+        raw_cutout.get("center"),
+        f"{fixture_name}.rectangular_cutouts[{index}].center",
+    )
+    size = _as_vector2(
+        raw_cutout.get("size"),
+        f"{fixture_name}.rectangular_cutouts[{index}].size",
+    )
+    _require_positive(size, f"{fixture_name}.rectangular_cutouts[{index}].size")
+    _require_rectangle_inside_plate(
+        center,
+        size,
+        plate_size,
+        fixture_name,
+        f"rectangular_cutouts[{index}]",
+    )
+    return {"center": center, "size": size}
+
+
+def _validate_plate_rectangular_pocket(
+    raw_pocket: dict[str, Any],
+    fixture_name: str,
+    index: int,
+    plate_size: list[float],
+) -> dict[str, Any]:
+    center = _as_vector2(
+        raw_pocket.get("center"),
+        f"{fixture_name}.rectangular_pockets[{index}].center",
+    )
+    size = _as_vector2(
+        raw_pocket.get("size"),
+        f"{fixture_name}.rectangular_pockets[{index}].size",
+    )
+    _require_positive(size, f"{fixture_name}.rectangular_pockets[{index}].size")
+    depth = _as_positive_float(
+        raw_pocket.get("depth"),
+        f"{fixture_name}.rectangular_pockets[{index}].depth",
+    )
+    if depth >= plate_size[2]:
+        raise ValueError(
+            f"{fixture_name}.rectangular_pockets[{index}].depth must be less than plate thickness"
+        )
+    _require_rectangle_inside_plate(
+        center,
+        size,
+        plate_size,
+        fixture_name,
+        f"rectangular_pockets[{index}]",
+    )
+    return {"center": center, "size": size, "depth": depth}
+
+
 def _require_circle_inside_plate(
     center: list[float],
     radius: float,
@@ -1147,6 +1328,23 @@ def _require_circle_inside_plate(
     if center[0] - radius < -half_x or center[0] + radius > half_x:
         raise ValueError(f"{fixture_name}.{label} extends beyond the plate width")
     if center[1] - radius < -half_y or center[1] + radius > half_y:
+        raise ValueError(f"{fixture_name}.{label} extends beyond the plate depth")
+
+
+def _require_rectangle_inside_plate(
+    center: list[float],
+    size: list[float],
+    plate_size: list[float],
+    fixture_name: str,
+    label: str,
+) -> None:
+    half_x = plate_size[0] * 0.5
+    half_y = plate_size[1] * 0.5
+    half_w = size[0] * 0.5
+    half_d = size[1] * 0.5
+    if center[0] - half_w < -half_x or center[0] + half_w > half_x:
+        raise ValueError(f"{fixture_name}.{label} extends beyond the plate width")
+    if center[1] - half_d < -half_y or center[1] + half_d > half_y:
         raise ValueError(f"{fixture_name}.{label} extends beyond the plate depth")
 
 
@@ -1206,6 +1404,23 @@ def _require_centered_box_inside_box(
             raise ValueError(
                 f"{fixture_name}.{label} extends beyond the box {axis_name}"
             )
+
+
+def _count_box_cutout_boundary_touches(
+    cutout: dict[str, Any],
+    box_size: list[float],
+    tolerance: float = 1e-6,
+) -> int:
+    half_sizes = [dimension * 0.5 for dimension in box_size]
+    touches = 0
+    for axis_index in range(3):
+        half_cutout = float(cutout["size"][axis_index]) * 0.5
+        center = float(cutout["center"][axis_index])
+        if center - half_cutout <= -half_sizes[axis_index] + tolerance:
+            touches += 1
+        if center + half_cutout >= half_sizes[axis_index] - tolerance:
+            touches += 1
+    return touches
 
 
 def _as_positive_float(value: Any, label: str) -> float:

@@ -164,8 +164,9 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
 
         Currently supported:
         - one plate_like_solid
-        - optional hole_like_cutout, counterbore_hole, and slot_like_cutout
-            features along the plate thickness axis
+        - optional hole_like_cutout, counterbore_hole, slot_like_cutout,
+          rectangular_cutout, and rectangular_pocket features along the plate
+          thickness axis
     """
     plate = _best_feature(graph, "plate_like_solid")
     if plate is None or float(plate.get("confidence", 0.0)) < 0.70:
@@ -189,6 +190,18 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         if feature.get("type") == "counterbore_hole"
         and float(feature.get("confidence", 0.0)) >= 0.70
     ]
+    rectangular_cutouts = [
+        feature
+        for feature in graph.get("features", [])
+        if feature.get("type") == "rectangular_cutout"
+        and float(feature.get("confidence", 0.0)) >= 0.70
+    ]
+    rectangular_pockets = [
+        feature
+        for feature in graph.get("features", [])
+        if feature.get("type") == "rectangular_pocket"
+        and float(feature.get("confidence", 0.0)) >= 0.70
+    ]
     origin = [float(value) for value in plate["origin"]]
     size = [float(value) for value in plate["size"]]
     thickness_axis_index = int(np.argmin(size))
@@ -207,7 +220,7 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         f"plate_origin = {_scad_vector(origin)};",
         f"plate_size = {_scad_vector(size)};",
     ]
-    if holes or slots or counterbores:
+    if holes or slots or counterbores or rectangular_cutouts or rectangular_pockets:
         for pattern_index, pattern in enumerate(supported_patterns):
             if pattern.get(
                 "type"
@@ -281,6 +294,24 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
                     f"counterbore_{cbore_index}_bore_depth = {float(counterbore['bore_depth']):.6f};",
                 ]
             )
+        for cutout_index, cutout in enumerate(rectangular_cutouts):
+            if cutout.get("axis") != thickness_axis:
+                continue
+            lines.extend(
+                [
+                    f"rect_cutout_{cutout_index}_center = {_scad_vector([float(value) for value in cutout['center']])};",
+                    f"rect_cutout_{cutout_index}_size = {_scad_vector([float(value) for value in cutout['size']])};",
+                ]
+            )
+        for pocket_index, pocket in enumerate(rectangular_pockets):
+            if pocket.get("axis") != thickness_axis:
+                continue
+            lines.extend(
+                [
+                    f"rect_pocket_{pocket_index}_center = {_scad_vector([float(value) for value in pocket['center']])};",
+                    f"rect_pocket_{pocket_index}_size = {_scad_vector([float(value) for value in pocket['size']])};",
+                ]
+            )
         lines.extend(
             [
                 "",
@@ -313,6 +344,16 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
                     "    hole_cutout(start, width);",
                     "    hole_cutout(end, width);",
                     "  }",
+                    "}",
+                ]
+            )
+        if rectangular_cutouts or rectangular_pockets:
+            lines.extend(
+                [
+                    "",
+                    "module rectangular_prism_cutout(center, size) {",
+                    "  translate([center[0] - size[0] / 2, center[1] - size[1] / 2, center[2] - size[2] / 2])",
+                    "    cube(size);",
                     "}",
                 ]
             )
@@ -373,6 +414,20 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
             f"counterbore_{cbore_index}_bore_diameter, "
             f"counterbore_{cbore_index}_bore_depth"
             ");"
+        )
+
+    for cutout_index, cutout in enumerate(rectangular_cutouts):
+        if cutout.get("axis") != thickness_axis:
+            continue
+        lines.append(
+            f"  rectangular_prism_cutout(rect_cutout_{cutout_index}_center, rect_cutout_{cutout_index}_size);"
+        )
+
+    for pocket_index, pocket in enumerate(rectangular_pockets):
+        if pocket.get("axis") != thickness_axis:
+            continue
+        lines.append(
+            f"  rectangular_prism_cutout(rect_pocket_{pocket_index}_center, rect_pocket_{pocket_index}_size);"
         )
 
     lines.append("}")
@@ -465,6 +520,11 @@ def _extract_axis_aligned_box_features(
         total_area,
         size,
     )
+    tolerant_box_confidence = _tolerant_box_confidence(
+        boundary_support,
+        total_area,
+        size,
+    )
 
     features: list[dict[str, Any]] = plane_features
     if (
@@ -501,11 +561,12 @@ def _extract_axis_aligned_box_features(
                 ),
             }
         )
-    elif paired_axes == 3 and confidence >= 0.80:
+    elif (paired_axes == 3 and confidence >= 0.80) or tolerant_box_confidence >= 0.70:
+        box_confidence = max(confidence, tolerant_box_confidence)
         features.append(
             {
                 "type": "box_like_solid",
-                "confidence": float(confidence),
+                "confidence": float(box_confidence),
                 "origin": [
                     float(bbox["min_x"]),
                     float(bbox["min_y"]),
@@ -521,7 +582,16 @@ def _extract_axis_aligned_box_features(
                     "depth": dimensions["depth"],
                     "height": dimensions["height"],
                 },
-                "note": "Candidate for a cube()/translate() parametric base feature.",
+                "note": (
+                    "Candidate for a cube()/translate() parametric base feature."
+                    if tolerant_box_confidence < 0.70
+                    else (
+                        "Candidate for a cube()/translate() parametric base feature,"
+                        " allowing chamfer- or fillet-broken outer edges when all"
+                        " three axis boundary pairs retain strong rectangular"
+                        " support."
+                    )
+                ),
             }
         )
     return features
@@ -626,6 +696,79 @@ def _tolerant_plate_confidence(
     return min(1.0, 0.6 * paired_support_ratio + 0.4 * footprint_area_ratio)
 
 
+def _tolerant_box_confidence(
+    boundary_support: dict[str, dict[str, Any]],
+    total_area: float,
+    size: list[float],
+) -> float:
+    if total_area <= 1e-12 or len(size) != 3 or min(float(value) for value in size) <= 1e-9:
+        return 0.0
+
+    ideal_face_areas = {
+        "x": float(size[1] * size[2]),
+        "y": float(size[0] * size[2]),
+        "z": float(size[0] * size[1]),
+    }
+    axis_confidences: list[float] = []
+    supporting_area = 0.0
+    for axis_name, ideal_face_area in ideal_face_areas.items():
+        if ideal_face_area <= 1e-9:
+            return 0.0
+        support = boundary_support.get(axis_name)
+        if support is None:
+            return 0.0
+
+        negative_area = float(support["negative_area"])
+        positive_area = float(support["positive_area"])
+        if negative_area <= 0.0 or positive_area <= 0.0:
+            return 0.0
+
+        supporting_area += negative_area + positive_area
+        negative_projection = support["negative_projection"]
+        positive_projection = support["positive_projection"]
+        min_span_ratio = min(
+            float(negative_projection["span_ratio_a"]),
+            float(negative_projection["span_ratio_b"]),
+            float(positive_projection["span_ratio_a"]),
+            float(positive_projection["span_ratio_b"]),
+        )
+        footprint_area_ratio = min(
+            float(negative_projection["area_ratio"]),
+            float(positive_projection["area_ratio"]),
+        )
+        footprint_fill_ratio = min(
+            float(negative_projection["fill_ratio"]),
+            float(positive_projection["fill_ratio"]),
+        )
+        pair_support_ratio = min(
+            1.0,
+            (negative_area + positive_area) / (2.0 * ideal_face_area),
+        )
+
+        if min_span_ratio < 0.68 or footprint_area_ratio < 0.50:
+            return 0.0
+        if footprint_fill_ratio < 0.94:
+            return 0.0
+
+        axis_confidences.append(
+            min(
+                1.0,
+                0.4 * pair_support_ratio
+                + 0.3 * min_span_ratio
+                + 0.2 * footprint_area_ratio
+                + 0.1 * footprint_fill_ratio,
+            )
+        )
+
+    overall_support_ratio = supporting_area / total_area
+    if overall_support_ratio < 0.60:
+        return 0.0
+
+    min_axis_confidence = min(axis_confidences)
+    mean_axis_confidence = sum(axis_confidences) / len(axis_confidences)
+    return min(1.0, 0.6 * min_axis_confidence + 0.4 * mean_axis_confidence)
+
+
 def _scad_vector(values: list[float]) -> str:
     return "[" + ", ".join(f"{value:.6f}" for value in values) + "]"
 
@@ -683,6 +826,44 @@ def _has_grid_pattern_fields(pattern: dict[str, Any]) -> bool:
 def _hole_key(center: list[float]) -> tuple[float, float, float]:
     rounded = [round(float(value), 4) for value in center]
     return (rounded[0], rounded[1], rounded[2])
+
+
+def _fit_axis_aligned_rectangle_2d(
+    points: np.ndarray,
+) -> Optional[tuple[np.ndarray, float, float, float]]:
+    if len(points) < 8:
+        return None
+
+    mins = np.min(points, axis=0)
+    maxs = np.max(points, axis=0)
+    spans = maxs - mins
+    min_span = float(np.min(spans))
+    if min_span <= 1e-9:
+        return None
+
+    edge_distances = np.minimum.reduce(
+        [
+            np.abs(points[:, 0] - mins[0]),
+            np.abs(points[:, 0] - maxs[0]),
+            np.abs(points[:, 1] - mins[1]),
+            np.abs(points[:, 1] - maxs[1]),
+        ]
+    )
+    rectangle_error_ratio = float(np.percentile(edge_distances, 90) / min_span)
+    if rectangle_error_ratio > 0.04:
+        return None
+
+    edge_tolerance = max(min_span * 0.08, 1e-6)
+    if not (
+        np.any(np.abs(points[:, 0] - mins[0]) <= edge_tolerance)
+        and np.any(np.abs(points[:, 0] - maxs[0]) <= edge_tolerance)
+        and np.any(np.abs(points[:, 1] - mins[1]) <= edge_tolerance)
+        and np.any(np.abs(points[:, 1] - maxs[1]) <= edge_tolerance)
+    ):
+        return None
+
+    center = (mins + maxs) * 0.5
+    return center, float(spans[0]), float(spans[1]), rectangle_error_ratio
 
 
 def _hole_cutout_module_body(
@@ -790,7 +971,7 @@ def _extract_axis_aligned_through_holes(
             coords_2d = component_vertices[:, plane_axes]
             height_values = component_vertices[:, cutout_axis_index]
             height_span = float(np.max(height_values) - np.min(height_values))
-            if height_span < cutout_depth * 0.65:
+            if height_span < cutout_depth * 0.10:
                 continue
 
             # Counterbores are stepped holes and often fail a single-circle fit,
@@ -848,7 +1029,8 @@ def _extract_axis_aligned_through_holes(
             if fit is not None:
                 center_2d, radius, radial_error_ratio, angular_coverage = fit
                 if (
-                    min_radius <= radius <= max_radius
+                    height_span >= cutout_depth * 0.65
+                    and min_radius <= radius <= max_radius
                     and radial_error_ratio <= 0.08
                     and angular_coverage >= 0.70
                     and not _center_near_outer_boundary(center_2d, bbox, plane_axes, radius)
@@ -883,55 +1065,124 @@ def _extract_axis_aligned_through_holes(
                     continue
 
             slot_fit = _fit_axis_aligned_slot_2d(coords_2d)
-            if slot_fit is None:
+            if slot_fit is not None and height_span >= cutout_depth * 0.65:
+                (
+                    center_2d,
+                    start_2d,
+                    end_2d,
+                    width,
+                    length,
+                    slot_error_ratio,
+                    slot_axis_index,
+                ) = slot_fit
+                radius = width * 0.5
+                if (
+                    min_radius <= radius <= max_radius
+                    and not _slot_near_outer_boundary(
+                        start_2d,
+                        end_2d,
+                        radius,
+                        bbox,
+                        plane_axes,
+                    )
+                ):
+                    center = [0.0, 0.0, 0.0]
+                    center[plane_axes[0]] = float(center_2d[0])
+                    center[plane_axes[1]] = float(center_2d[1])
+                    start = [0.0, 0.0, 0.0]
+                    end = [0.0, 0.0, 0.0]
+                    start[plane_axes[0]] = float(start_2d[0])
+                    start[plane_axes[1]] = float(start_2d[1])
+                    end[plane_axes[0]] = float(end_2d[0])
+                    end[plane_axes[1]] = float(end_2d[1])
+                    for vector in (center, start, end):
+                        vector[cutout_axis_index] = (span_min + span_max) * 0.5
+                    confidence = max(
+                        0.0,
+                        min(1.0, 1.0 - slot_error_ratio / 0.12),
+                    )
+                    features.append(
+                        {
+                            "type": "slot_like_cutout",
+                            "confidence": float(confidence),
+                            "axis": axis_labels[cutout_axis_index],
+                            "center": center,
+                            "start": start,
+                            "end": end,
+                            "width": float(width),
+                            "length": float(length),
+                            "depth": float(height_span),
+                            "component_faces": int(len(face_indices)),
+                            "slot_error_ratio": float(slot_error_ratio),
+                            "slot_axis": axis_labels[plane_axes[slot_axis_index]],
+                            "source_component_index": component_index,
+                            "source_parent_type": target["parent_type"],
+                            "note": (
+                                "Candidate rounded slot through-cutout in a "
+                                f"{target['parent_type'].replace('_', '-')}"
+                            ),
+                        }
+                    )
+                    continue
+
+            rect_fit = _fit_axis_aligned_rectangle_2d(coords_2d)
+            if rect_fit is None:
                 continue
-            (
+            center_2d, width, length, rectangle_error_ratio = rect_fit
+            if _rectangle_near_outer_boundary(
                 center_2d,
-                start_2d,
-                end_2d,
-                width,
-                length,
-                slot_error_ratio,
-                slot_axis_index,
-            ) = slot_fit
-            radius = width * 0.5
-            if radius < min_radius or radius > max_radius:
+                np.asarray([width, length], dtype=np.float64),
+                bbox,
+                plane_axes,
+            ):
                 continue
-            if _slot_near_outer_boundary(start_2d, end_2d, radius, bbox, plane_axes):
+
+            cutout_min = float(np.min(height_values))
+            cutout_max = float(np.max(height_values))
+            edge_tolerance = max(cutout_depth * 0.08, 1e-6)
+            touches_min = cutout_min <= span_min + edge_tolerance
+            touches_max = cutout_max >= span_max - edge_tolerance
+            if touches_min and touches_max and height_span >= cutout_depth * 0.65:
+                feature_type = "rectangular_cutout"
+                center_axis_value = (span_min + span_max) * 0.5
+                open_direction = "both"
+                note = "Candidate axis-aligned rectangular through-cutout in a "
+            elif (
+                touches_min != touches_max
+                and cutout_depth * 0.10 <= height_span <= cutout_depth * 0.95
+            ):
+                feature_type = "rectangular_pocket"
+                center_axis_value = (cutout_min + cutout_max) * 0.5
+                open_direction = "negative" if touches_min else "positive"
+                note = "Candidate axis-aligned rectangular blind pocket in a "
+            else:
                 continue
 
             center = [0.0, 0.0, 0.0]
-            start = [0.0, 0.0, 0.0]
-            end = [0.0, 0.0, 0.0]
+            size_vector = [0.0, 0.0, 0.0]
             center[plane_axes[0]] = float(center_2d[0])
             center[plane_axes[1]] = float(center_2d[1])
-            start[plane_axes[0]] = float(start_2d[0])
-            start[plane_axes[1]] = float(start_2d[1])
-            end[plane_axes[0]] = float(end_2d[0])
-            end[plane_axes[1]] = float(end_2d[1])
-            for vector in (center, start, end):
-                vector[cutout_axis_index] = (span_min + span_max) * 0.5
-            confidence = max(0.0, min(1.0, 1.0 - slot_error_ratio / 0.12))
+            center[cutout_axis_index] = float(center_axis_value)
+            size_vector[plane_axes[0]] = float(width)
+            size_vector[plane_axes[1]] = float(length)
+            size_vector[cutout_axis_index] = float(height_span)
+            confidence = max(0.0, min(1.0, 1.0 - rectangle_error_ratio / 0.04))
             features.append(
                 {
-                    "type": "slot_like_cutout",
+                    "type": feature_type,
                     "confidence": float(confidence),
                     "axis": axis_labels[cutout_axis_index],
                     "center": center,
-                    "start": start,
-                    "end": end,
-                    "width": float(width),
-                    "length": float(length),
+                    "size": size_vector,
                     "depth": float(height_span),
+                    "profile_width": float(width),
+                    "profile_height": float(length),
+                    "rectangle_error_ratio": float(rectangle_error_ratio),
+                    "open_direction": open_direction,
                     "component_faces": int(len(face_indices)),
-                    "slot_error_ratio": float(slot_error_ratio),
-                    "slot_axis": axis_labels[plane_axes[slot_axis_index]],
                     "source_component_index": component_index,
                     "source_parent_type": target["parent_type"],
-                    "note": (
-                        "Candidate rounded slot through-cutout in a "
-                        f"{target['parent_type'].replace('_', '-')}"
-                    ),
+                    "note": note + f"{target['parent_type'].replace('_', '-')}",
                 }
             )
     return features
@@ -1406,6 +1657,25 @@ def _center_near_outer_boundary(
         if value - radius <= min_coord + radius * edge_factor:
             return True
         if value + radius >= max_coord - radius * edge_factor:
+            return True
+    return False
+
+
+def _rectangle_near_outer_boundary(
+    center_2d: np.ndarray,
+    spans_2d: np.ndarray,
+    bbox: dict[str, float],
+    plane_axes: list[int],
+) -> bool:
+    labels = ("x", "y", "z")
+    for value, span, axis_index in zip(center_2d, spans_2d, plane_axes):
+        min_coord = float(bbox[f"min_{labels[axis_index]}"])
+        max_coord = float(bbox[f"max_{labels[axis_index]}"])
+        half_span = float(span) * 0.5
+        margin = max(half_span * 0.10, 1e-6)
+        if value - half_span <= min_coord + margin:
+            return True
+        if value + half_span >= max_coord - margin:
             return True
     return False
 

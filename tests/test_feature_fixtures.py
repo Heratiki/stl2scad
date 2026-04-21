@@ -28,6 +28,7 @@ _DIAMETER_TOL = 0.15
 _SLOT_LENGTH_TOL = 0.2
 _PATTERN_STEP_TOL = 0.15
 _PATTERN_SPACING_TOL = 0.15
+_POCKET_DEPTH_TOL = 0.15
 
 
 def _pop_best_match(candidates, score):
@@ -215,6 +216,110 @@ def _assert_counterbore_dimensions(fixture, features):
         )
 
 
+def _assert_rectangular_cutout_dimensions(fixture, features):
+    expected_cutouts = []
+    if fixture["fixture_type"] == "plate":
+        thickness = float(fixture["plate_size"][2])
+        z_center = thickness * 0.5
+        for cutout in fixture.get("rectangular_cutouts", []):
+            expected_cutouts.append(
+                {
+                    "axis": "z",
+                    "center": [cutout["center"][0], cutout["center"][1], z_center],
+                    "size": [cutout["size"][0], cutout["size"][1], thickness],
+                }
+            )
+    elif fixture["fixture_type"] == "box":
+        expected_cutouts = []
+        for cutout in fixture.get("cutouts", []):
+            axis = _box_cutout_axis(cutout, fixture["box_size"])
+            if axis is None:
+                continue
+            if _box_cutout_boundary_touches(cutout, fixture["box_size"]) >= 2:
+                expected_cutouts.append(
+                    {
+                        "axis": axis,
+                        "center": cutout["center"],
+                        "size": cutout["size"],
+                    }
+                )
+
+    cutouts = [feature for feature in features if feature.get("type") == "rectangular_cutout"]
+    assert len(cutouts) == len(expected_cutouts)
+
+    unmatched = list(cutouts)
+    for expected in expected_cutouts:
+        match = _pop_best_match(
+            unmatched,
+            lambda candidate: dist(candidate["center"], expected["center"]),
+        )
+        assert match is not None, f"{fixture['name']} missing expected rectangular cutout"
+        assert str(match.get("axis")) == str(expected["axis"])
+        assert dist(match["center"], expected["center"]) <= _CENTER_TOL
+        _assert_axis_aligned_size(
+            match["size"],
+            expected["size"],
+            fixture["name"],
+            "rectangular cutout size",
+        )
+
+
+def _assert_rectangular_pocket_dimensions(fixture, features):
+    expected_pockets = []
+    if fixture["fixture_type"] == "plate":
+        thickness = float(fixture["plate_size"][2])
+        for pocket in fixture.get("rectangular_pockets", []):
+            expected_pockets.append(
+                {
+                    "axis": "z",
+                    "center": [
+                        pocket["center"][0],
+                        pocket["center"][1],
+                        thickness - float(pocket["depth"]) * 0.5,
+                    ],
+                    "size": [pocket["size"][0], pocket["size"][1], float(pocket["depth"])],
+                }
+            )
+    elif fixture["fixture_type"] == "box":
+        for cutout in fixture.get("cutouts", []):
+            axis = _box_cutout_axis(cutout, fixture["box_size"])
+            if axis is None:
+                continue
+            if _box_cutout_boundary_touches(cutout, fixture["box_size"]) == 1:
+                expected_pockets.append(
+                    {
+                        "axis": axis,
+                        "center": cutout["center"],
+                        "size": cutout["size"],
+                    }
+                )
+
+    pockets = [feature for feature in features if feature.get("type") == "rectangular_pocket"]
+    assert len(pockets) == len(expected_pockets)
+
+    unmatched = list(pockets)
+    for expected in expected_pockets:
+        match = _pop_best_match(
+            unmatched,
+            lambda candidate: dist(candidate["center"], expected["center"]),
+        )
+        assert match is not None, f"{fixture['name']} missing expected rectangular pocket"
+        assert str(match.get("axis")) == str(expected["axis"])
+        assert dist(match["center"], expected["center"]) <= _CENTER_TOL
+        _assert_axis_aligned_size(
+            match["size"],
+            expected["size"],
+            fixture["name"],
+            "rectangular pocket size",
+        )
+        _assert_close(
+            match["depth"],
+            expected["size"][2],
+            _POCKET_DEPTH_TOL,
+            f"{fixture['name']} rectangular pocket depth",
+        )
+
+
 def _assert_linear_pattern_dimensions(fixture, features):
     explicit_patterns = fixture.get("linear_hole_patterns", [])
     expected_total = int(fixture["expected_detection"].get("linear_pattern_count", 0))
@@ -363,6 +468,8 @@ def _assert_grid_pattern_dimensions(fixture, features):
 def _assert_fixture_dimensions(fixture, features):
     _assert_plate_dimensions(fixture, features)
     _assert_box_dimensions(fixture, features)
+    _assert_rectangular_cutout_dimensions(fixture, features)
+    _assert_rectangular_pocket_dimensions(fixture, features)
 
     fixture_type = fixture["fixture_type"]
     if fixture_type == "plate":
@@ -399,6 +506,35 @@ def _iter_plate_fixture_holes(fixture):
                 ], diameter
 
 
+def _box_cutout_boundary_touches(cutout, box_size):
+    half_sizes = [float(value) * 0.5 for value in box_size]
+    touches = 0
+    for axis_index in range(3):
+        half_cutout = float(cutout["size"][axis_index]) * 0.5
+        center = float(cutout["center"][axis_index])
+        if center - half_cutout <= -half_sizes[axis_index] + 1e-6:
+            touches += 1
+        if center + half_cutout >= half_sizes[axis_index] - 1e-6:
+            touches += 1
+    return touches
+
+
+def _box_cutout_axis(cutout, box_size):
+    half_sizes = [float(value) * 0.5 for value in box_size]
+    labels = ("x", "y", "z")
+    touched_axes = []
+    for axis_index in range(3):
+        half_cutout = float(cutout["size"][axis_index]) * 0.5
+        center = float(cutout["center"][axis_index])
+        touches_min = center - half_cutout <= -half_sizes[axis_index] + 1e-6
+        touches_max = center + half_cutout >= half_sizes[axis_index] - 1e-6
+        if touches_min or touches_max:
+            touched_axes.append(labels[axis_index])
+    if len(touched_axes) != 1:
+        return None
+    return touched_axes[0]
+
+
 def _assert_preview_named_variables(fixture, preview_scad):
     assert "plate_origin = [" in preview_scad
     assert "plate_size = [" in preview_scad
@@ -413,6 +549,14 @@ def _assert_preview_named_variables(fixture, preview_scad):
         assert "counterbore_0_through_diameter = " in preview_scad
         assert "counterbore_0_bore_diameter = " in preview_scad
         assert "counterbore_0_bore_depth = " in preview_scad
+
+    if fixture.get("rectangular_cutouts"):
+        assert "rect_cutout_0_center = [" in preview_scad
+        assert "rect_cutout_0_size = [" in preview_scad
+
+    if fixture.get("rectangular_pockets"):
+        assert "rect_pocket_0_center = [" in preview_scad
+        assert "rect_pocket_0_size = [" in preview_scad
 
     if fixture.get("linear_hole_patterns") or int(
         fixture["expected_detection"].get("linear_pattern_count", 0)
@@ -851,6 +995,18 @@ def test_feature_fixture_manifest_covers_roadmap_stress_cases(test_data_dir):
         float(fixture.get("edge_chamfer", 0.0)) > 0.0
         for fixture in plate_fixtures
     ), "Manifest must include at least one chamfered plate fixture"
+    assert any(
+        fixture.get("rectangular_cutouts")
+        for fixture in plate_fixtures
+    ), "Manifest must include at least one plate rectangular cutout fixture"
+    assert any(
+        fixture.get("rectangular_pockets")
+        for fixture in plate_fixtures
+    ), "Manifest must include at least one plate rectangular pocket fixture"
+    assert any(
+        fixture["fixture_type"] == "box" and float(fixture.get("edge_radius", 0.0)) > 0.0
+        for fixture in fixtures
+    ), "Manifest must include at least one rounded-edge box fixture"
 
 
 def test_feature_fixture_generation_supports_box_and_l_bracket():
@@ -957,6 +1113,70 @@ def test_feature_fixture_generation_supports_chamfered_plate():
     assert "plate_edge_chamfer = 1.000000;" in scad
     assert "plate_top_scale = [0.900000, 0.800000];" in scad
     assert "linear_extrude(height=plate_size[2], scale=plate_top_scale)" in scad
+
+
+def test_feature_fixture_generation_supports_rounded_box():
+    rounded_fixture = validate_feature_fixture_spec(
+        {
+            "name": "box_rounded_edges",
+            "fixture_type": "box",
+            "output_filename": "box_rounded_edges.scad",
+            "box_size": [24.0, 16.0, 12.0],
+            "edge_radius": 2.0,
+            "expected_detection": {
+                "plate_like_solid": False,
+                "box_like_solid": True,
+                "hole_count": 0,
+                "slot_count": 0,
+                "linear_pattern_count": 0,
+                "grid_pattern_count": 0,
+                "counterbore_count": 0,
+            },
+        }
+    )
+
+    scad = generate_feature_fixture_scad(rounded_fixture)
+
+    assert "edge_radius = 2.000000;" in scad
+    assert "inner_box_size = [20.000000, 12.000000, 8.000000];" in scad
+    assert "module rounded_box(size, r) {" in scad
+    assert "minkowski()" in scad
+    assert "rounded_box(inner_box_size, edge_radius);" in scad
+
+
+def test_feature_fixture_generation_supports_rectangular_plate_features():
+    plate_fixture = validate_feature_fixture_spec(
+        {
+            "name": "plate_rect_features",
+            "fixture_type": "plate",
+            "output_filename": "plate_rect_features.scad",
+            "plate_size": [30.0, 20.0, 4.0],
+            "rectangular_cutouts": [
+                {"center": [0.0, -4.0], "size": [6.0, 4.0]},
+            ],
+            "rectangular_pockets": [
+                {"center": [0.0, 5.0], "size": [8.0, 6.0], "depth": 1.5},
+            ],
+            "expected_detection": {
+                "plate_like_solid": True,
+                "box_like_solid": False,
+                "hole_count": 0,
+                "slot_count": 0,
+                "rectangular_cutout_count": 1,
+                "rectangular_pocket_count": 1,
+                "linear_pattern_count": 0,
+                "grid_pattern_count": 0,
+                "counterbore_count": 0,
+            },
+        }
+    )
+
+    scad = generate_feature_fixture_scad(plate_fixture)
+
+    assert "module rectangular_through_cutout(center, size_xy, plate_thickness)" in scad
+    assert "module rectangular_top_pocket(center, size_xy, pocket_depth, plate_thickness)" in scad
+    assert "rectangular_through_cutout([0.000000, -4.000000, 0.000000], [6.000000, 4.000000], 4.000000);" in scad
+    assert "rectangular_top_pocket([0.000000, 5.000000, 0.000000], [8.000000, 6.000000], 1.500000, 4.000000);" in scad
 
 
 def test_feature_fixture_round_trip_detection(test_data_dir, test_output_dir):

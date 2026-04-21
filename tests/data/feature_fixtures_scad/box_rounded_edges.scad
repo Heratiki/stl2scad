@@ -1,11 +1,21 @@
 // Auto-generated from tests/data/feature_fixtures_manifest.json
-// fixture: box_with_top_notch
+// fixture: box_rounded_edges
 // fixture_type: box
-// description: Box with a rectangular notch cut from the top face. The detector should preserve the box_like_solid base while also recovering the blind rectangular pocket volume.
+// description: Rounded-edge box with moderate fillets that preserve the axis-aligned cuboid envelope while reducing strict boundary-plane area.
 $fn = 96;
 
 box_size = [24.000000, 16.000000, 12.000000];
 box_origin = [-12.000000, -8.000000, -6.000000];
+
+edge_radius = 2.000000;
+inner_box_size = [20.000000, 12.000000, 8.000000];
+
+module rounded_box(size, r) {
+  minkowski() {
+    cube(size, center=true);
+    sphere(r=r, $fn=48);
+  }
+}
 
 module through_hole_x(center, diameter, length) {
   translate([box_origin[0] - 0.1, center[1], center[2]])
@@ -23,6 +33,5 @@ module through_hole_z(center, diameter, length) {
 }
 
 difference() {
-  translate(box_origin) cube(box_size);
-  translate([-4.000000, -4.000000, 0.000000]) cube([8.000000, 8.000000, 6.000000]);  // cutout_0
+  rounded_box(inner_box_size, edge_radius);
 }

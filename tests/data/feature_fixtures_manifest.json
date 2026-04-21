@@ -226,6 +226,89 @@
       ]
     },
     {
+      "name": "plate_rectangular_through_cutout",
+      "fixture_type": "plate",
+      "description": "Plate with one axis-aligned rectangular through-cutout sized for conservative cuboid difference reconstruction.",
+      "output_filename": "plate_rectangular_through_cutout.scad",
+      "plate_size": [
+        28.0,
+        18.0,
+        4.0
+      ],
+      "rectangular_cutouts": [
+        {
+          "center": [
+            0.0,
+            -3.0
+          ],
+          "size": [
+            6.0,
+            4.0
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "rectangular_cutout_count": 1,
+            "rectangular_pocket_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_rectangular_top_pocket",
+      "fixture_type": "plate",
+      "description": "Plate with one shallow rectangular top pocket to exercise blind-cuboid subtraction detection.",
+      "output_filename": "plate_rectangular_top_pocket.scad",
+      "plate_size": [
+        30.0,
+        20.0,
+        5.0
+      ],
+      "rectangular_pockets": [
+        {
+          "center": [
+            0.0,
+            4.0
+          ],
+          "size": [
+            8.0,
+            6.0
+          ],
+          "depth": 2.0
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 1,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
       "name": "plate_single_counterbore",
       "fixture_type": "plate",
       "description": "One stepped counterbore hole in a thicker plate.",
@@ -718,6 +801,34 @@
       ]
     },
     {
+      "name": "box_rounded_edges",
+      "fixture_type": "box",
+      "description": "Rounded-edge box with moderate fillets that preserve the axis-aligned cuboid envelope while reducing strict boundary-plane area.",
+      "output_filename": "box_rounded_edges.scad",
+      "box_size": [
+        24.0,
+        16.0,
+        12.0
+      ],
+      "edge_radius": 2.0,
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": true,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
       "name": "box_z_through_hole_rotated_z25",
       "fixture_type": "box",
       "description": "Non-axis-aligned rotated box to baseline that rotated non-plate geometry is not mistakenly detected as box_like_solid.",
@@ -834,7 +945,7 @@
     {
       "name": "box_with_top_notch",
       "fixture_type": "box",
-      "description": "Box with a rectangular notch cut from the top face. Documents that the conservative bounding-plane detector still classifies this as box_like_solid because the six outer boundary planes remain intact; interior cutouts are invisible to the current algorithm.",
+      "description": "Box with a rectangular notch cut from the top face. The detector should preserve the box_like_solid base while also recovering the blind rectangular pocket volume.",
       "output_filename": "box_with_top_notch.scad",
       "box_size": [24.0, 16.0, 12.0],
       "cutouts": [
@@ -853,6 +964,8 @@
             "box_like_solid": true,
             "hole_count": 0,
             "slot_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 1,
             "linear_pattern_count": 0,
             "grid_pattern_count": 0,
             "counterbore_count": 0

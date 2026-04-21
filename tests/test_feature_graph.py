@@ -168,6 +168,51 @@ def test_feature_graph_extracts_slot_cutout(test_output_dir):
     assert slots[0]["confidence"] >= 0.70
 
 
+def test_feature_graph_extracts_rectangular_through_cutout(test_output_dir):
+    stl_file = test_output_dir / "plate_with_rectangular_cutout.stl"
+    _create_plate_with_rectangular_cutout(stl_file)
+
+    graph = build_feature_graph_for_stl(stl_file)
+    cutouts = [
+        feature
+        for feature in graph["features"]
+        if feature["type"] == "rectangular_cutout"
+    ]
+
+    assert len(cutouts) == 1
+    assert cutouts[0]["axis"] == "z"
+    assert cutouts[0]["source_parent_type"] == "plate_like_solid"
+    assert cutouts[0]["confidence"] >= 0.70
+    assert abs(cutouts[0]["center"][0] - 0.0) < 0.1
+    assert abs(cutouts[0]["center"][1] + 3.0) < 0.1
+    assert abs(cutouts[0]["size"][0] - 6.0) < 0.1
+    assert abs(cutouts[0]["size"][1] - 4.0) < 0.1
+    assert abs(cutouts[0]["size"][2] - 4.0) < 0.1
+
+
+def test_feature_graph_extracts_rectangular_pocket(test_output_dir):
+    stl_file = test_output_dir / "plate_with_rectangular_pocket.stl"
+    _create_plate_with_rectangular_pocket(stl_file)
+
+    graph = build_feature_graph_for_stl(stl_file)
+    pockets = [
+        feature
+        for feature in graph["features"]
+        if feature["type"] == "rectangular_pocket"
+    ]
+
+    assert len(pockets) == 1
+    assert pockets[0]["axis"] == "z"
+    assert pockets[0]["source_parent_type"] == "plate_like_solid"
+    assert pockets[0]["open_direction"] == "positive"
+    assert pockets[0]["confidence"] >= 0.70
+    assert abs(pockets[0]["center"][0] - 0.0) < 0.1
+    assert abs(pockets[0]["center"][1] - 4.0) < 0.1
+    assert abs(pockets[0]["size"][0] - 8.0) < 0.1
+    assert abs(pockets[0]["size"][1] - 6.0) < 0.1
+    assert abs(pockets[0]["size"][2] - 2.0) < 0.1
+
+
 def test_feature_graph_extracts_chamfered_plate_like_solid(test_output_dir):
     stl_file = test_output_dir / "plate_with_chamfered_edges.stl"
     _create_chamfered_plate(stl_file, plate_size=(20.0, 10.0, 2.0), edge_chamfer=1.0)
@@ -215,6 +260,27 @@ def test_feature_graph_extracts_box_through_hole(test_output_dir, axis):
     assert holes[0]["confidence"] >= 0.70
 
 
+def test_feature_graph_extracts_box_rectangular_pocket(test_output_dir):
+    stl_file = test_output_dir / "box_with_rectangular_top_pocket.stl"
+    _create_box_with_rectangular_top_pocket(stl_file)
+
+    graph = build_feature_graph_for_stl(stl_file)
+    pockets = [
+        feature
+        for feature in graph["features"]
+        if feature["type"] == "rectangular_pocket"
+    ]
+
+    assert len(pockets) == 1
+    assert pockets[0]["axis"] == "z"
+    assert pockets[0]["source_parent_type"] == "box_like_solid"
+    assert pockets[0]["open_direction"] == "positive"
+    assert pockets[0]["confidence"] >= 0.70
+    assert abs(pockets[0]["size"][0] - 8.0) < 0.1
+    assert abs(pockets[0]["size"][1] - 8.0) < 0.1
+    assert abs(pockets[0]["size"][2] - 6.0) < 0.1
+
+
 def test_feature_graph_scad_preview_emits_plate_with_holes(test_output_dir):
     stl_file = test_output_dir / "plate_with_two_holes_preview.stl"
     _create_plate_with_holes(stl_file)
@@ -258,6 +324,26 @@ def test_feature_graph_scad_preview_emits_slot_cutout(test_output_dir):
     assert "slot_0_end = [3.500000" in scad
     assert "slot_0_width = 3.000000;" in scad
     assert "slot_cutout(slot_0_start, slot_0_end, slot_0_width);" in scad
+
+
+def test_feature_graph_scad_preview_emits_rectangular_features(test_output_dir):
+    stl_file = test_output_dir / "plate_with_rectangular_features_preview.stl"
+    _create_plate_with_rectangular_pocket(
+        stl_file,
+        plate_size=(30.0, 20.0, 5.0),
+        pocket_center=(0.0, 4.0),
+        pocket_size=(8.0, 6.0),
+        pocket_depth=2.0,
+    )
+
+    graph = build_feature_graph_for_stl(stl_file)
+    scad = emit_feature_graph_scad_preview(graph)
+
+    assert scad is not None
+    assert "module rectangular_prism_cutout(center, size)" in scad
+    assert "rect_pocket_0_center = [0.000000, 4.000000" in scad
+    assert "rect_pocket_0_size = [8.000000, 6.000000, 2.000000];" in scad
+    assert "rectangular_prism_cutout(rect_pocket_0_center, rect_pocket_0_size);" in scad
 
 
 def test_feature_graph_scad_preview_emits_grid_hole_loop(test_output_dir):
@@ -520,6 +606,150 @@ def _create_plate_with_slot(
     mesh.save(str(output_file))
 
 
+def _create_plate_with_rectangular_cutout(
+    output_file,
+    plate_size=(28.0, 18.0, 4.0),
+    cutout_center=(0.0, -3.0),
+    cutout_size=(6.0, 4.0),
+):
+    half_width = plate_size[0] * 0.5
+    half_depth = plate_size[1] * 0.5
+    thickness = plate_size[2]
+    vertices = [
+        [-half_width, -half_depth, 0.0],
+        [half_width, -half_depth, 0.0],
+        [half_width, half_depth, 0.0],
+        [-half_width, half_depth, 0.0],
+        [-half_width, -half_depth, thickness],
+        [half_width, -half_depth, thickness],
+        [half_width, half_depth, thickness],
+        [-half_width, half_depth, thickness],
+    ]
+    faces = [
+        [0, 2, 1],
+        [0, 3, 2],
+        [4, 5, 6],
+        [4, 6, 7],
+        [0, 1, 5],
+        [0, 5, 4],
+        [1, 2, 6],
+        [1, 6, 5],
+        [2, 3, 7],
+        [2, 7, 6],
+        [3, 0, 4],
+        [3, 4, 7],
+    ]
+
+    cx, cy = cutout_center
+    sx, sy = cutout_size
+    half_sx = sx * 0.5
+    half_sy = sy * 0.5
+    inner = [
+        [cx - half_sx, cy - half_sy, 0.0],
+        [cx + half_sx, cy - half_sy, 0.0],
+        [cx + half_sx, cy + half_sy, 0.0],
+        [cx - half_sx, cy + half_sy, 0.0],
+        [cx - half_sx, cy - half_sy, thickness],
+        [cx + half_sx, cy - half_sy, thickness],
+        [cx + half_sx, cy + half_sy, thickness],
+        [cx - half_sx, cy + half_sy, thickness],
+    ]
+    base = len(vertices)
+    vertices.extend(inner)
+    faces.extend(
+        [
+            [base + 0, base + 1, base + 5],
+            [base + 0, base + 5, base + 4],
+            [base + 1, base + 2, base + 6],
+            [base + 1, base + 6, base + 5],
+            [base + 2, base + 3, base + 7],
+            [base + 2, base + 7, base + 6],
+            [base + 3, base + 0, base + 4],
+            [base + 3, base + 4, base + 7],
+        ]
+    )
+
+    mesh = Mesh(np.zeros(len(faces), dtype=Mesh.dtype))
+    vertices_array = np.asarray(vertices, dtype=np.float64)
+    for index, face in enumerate(faces):
+        mesh.vectors[index] = vertices_array[face]
+    mesh.save(str(output_file))
+
+
+def _create_plate_with_rectangular_pocket(
+    output_file,
+    plate_size=(30.0, 20.0, 5.0),
+    pocket_center=(0.0, 4.0),
+    pocket_size=(8.0, 6.0),
+    pocket_depth=2.0,
+):
+    half_width = plate_size[0] * 0.5
+    half_depth = plate_size[1] * 0.5
+    thickness = plate_size[2]
+    pocket_floor = thickness - pocket_depth
+    vertices = [
+        [-half_width, -half_depth, 0.0],
+        [half_width, -half_depth, 0.0],
+        [half_width, half_depth, 0.0],
+        [-half_width, half_depth, 0.0],
+        [-half_width, -half_depth, thickness],
+        [half_width, -half_depth, thickness],
+        [half_width, half_depth, thickness],
+        [-half_width, half_depth, thickness],
+    ]
+    faces = [
+        [0, 2, 1],
+        [0, 3, 2],
+        [4, 5, 6],
+        [4, 6, 7],
+        [0, 1, 5],
+        [0, 5, 4],
+        [1, 2, 6],
+        [1, 6, 5],
+        [2, 3, 7],
+        [2, 7, 6],
+        [3, 0, 4],
+        [3, 4, 7],
+    ]
+
+    cx, cy = pocket_center
+    sx, sy = pocket_size
+    half_sx = sx * 0.5
+    half_sy = sy * 0.5
+    pocket = [
+        [cx - half_sx, cy - half_sy, pocket_floor],
+        [cx + half_sx, cy - half_sy, pocket_floor],
+        [cx + half_sx, cy + half_sy, pocket_floor],
+        [cx - half_sx, cy + half_sy, pocket_floor],
+        [cx - half_sx, cy - half_sy, thickness],
+        [cx + half_sx, cy - half_sy, thickness],
+        [cx + half_sx, cy + half_sy, thickness],
+        [cx - half_sx, cy + half_sy, thickness],
+    ]
+    base = len(vertices)
+    vertices.extend(pocket)
+    faces.extend(
+        [
+            [base + 0, base + 1, base + 2],
+            [base + 0, base + 2, base + 3],
+            [base + 0, base + 1, base + 5],
+            [base + 0, base + 5, base + 4],
+            [base + 1, base + 2, base + 6],
+            [base + 1, base + 6, base + 5],
+            [base + 2, base + 3, base + 7],
+            [base + 2, base + 7, base + 6],
+            [base + 3, base + 0, base + 4],
+            [base + 3, base + 4, base + 7],
+        ]
+    )
+
+    mesh = Mesh(np.zeros(len(faces), dtype=Mesh.dtype))
+    vertices_array = np.asarray(vertices, dtype=np.float64)
+    for index, face in enumerate(faces):
+        mesh.vectors[index] = vertices_array[face]
+    mesh.save(str(output_file))
+
+
 def _create_chamfered_plate(
     output_file,
     plate_size=(20.0, 10.0, 2.0),
@@ -627,6 +857,80 @@ def _create_box_with_hole(
         t1 = b1 + 1
         faces.append([b0, b1, t1])
         faces.append([b0, t1, t0])
+
+    mesh = Mesh(np.zeros(len(faces), dtype=Mesh.dtype))
+    vertices_array = np.asarray(vertices, dtype=np.float64)
+    for index, face in enumerate(faces):
+        mesh.vectors[index] = vertices_array[face]
+    mesh.save(str(output_file))
+
+
+def _create_box_with_rectangular_top_pocket(
+    output_file,
+    box_size=(24.0, 16.0, 12.0),
+    pocket_center=(0.0, 0.0),
+    pocket_size=(8.0, 8.0),
+    pocket_depth=6.0,
+):
+    half_x = box_size[0] * 0.5
+    half_y = box_size[1] * 0.5
+    half_z = box_size[2] * 0.5
+    pocket_floor = half_z - pocket_depth
+    vertices = [
+        [-half_x, -half_y, -half_z],
+        [half_x, -half_y, -half_z],
+        [half_x, half_y, -half_z],
+        [-half_x, half_y, -half_z],
+        [-half_x, -half_y, half_z],
+        [half_x, -half_y, half_z],
+        [half_x, half_y, half_z],
+        [-half_x, half_y, half_z],
+    ]
+    faces = [
+        [0, 2, 1],
+        [0, 3, 2],
+        [4, 5, 6],
+        [4, 6, 7],
+        [0, 1, 5],
+        [0, 5, 4],
+        [1, 2, 6],
+        [1, 6, 5],
+        [2, 3, 7],
+        [2, 7, 6],
+        [3, 0, 4],
+        [3, 4, 7],
+    ]
+
+    cx, cy = pocket_center
+    sx, sy = pocket_size
+    half_sx = sx * 0.5
+    half_sy = sy * 0.5
+    pocket = [
+        [cx - half_sx, cy - half_sy, pocket_floor],
+        [cx + half_sx, cy - half_sy, pocket_floor],
+        [cx + half_sx, cy + half_sy, pocket_floor],
+        [cx - half_sx, cy + half_sy, pocket_floor],
+        [cx - half_sx, cy - half_sy, half_z],
+        [cx + half_sx, cy - half_sy, half_z],
+        [cx + half_sx, cy + half_sy, half_z],
+        [cx - half_sx, cy + half_sy, half_z],
+    ]
+    base = len(vertices)
+    vertices.extend(pocket)
+    faces.extend(
+        [
+            [base + 0, base + 1, base + 2],
+            [base + 0, base + 2, base + 3],
+            [base + 0, base + 1, base + 5],
+            [base + 0, base + 5, base + 4],
+            [base + 1, base + 2, base + 6],
+            [base + 1, base + 6, base + 5],
+            [base + 2, base + 3, base + 7],
+            [base + 2, base + 7, base + 6],
+            [base + 3, base + 0, base + 4],
+            [base + 3, base + 4, base + 7],
+        ]
+    )
 
     mesh = Mesh(np.zeros(len(faces), dtype=Mesh.dtype))
     vertices_array = np.asarray(vertices, dtype=np.float64)

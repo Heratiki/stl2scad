@@ -368,6 +368,95 @@
       ]
     },
     {
+      "name": "plate_multi_pattern_mixed_edge",
+      "fixture_type": "plate",
+      "description": "Mixed plate with linear+grid holes, slot, and near-boundary small-hole pair for tighter edge coverage.",
+      "output_filename": "plate_multi_pattern_mixed_edge.scad",
+      "plate_size": [
+        48.0,
+        24.0,
+        2.0
+      ],
+      "linear_hole_patterns": [
+        {
+          "origin": [
+            -16.0,
+            -7.0
+          ],
+          "step": [
+            16.0,
+            0.0
+          ],
+          "count": 3,
+          "diameter": 2.4
+        }
+      ],
+      "grid_hole_patterns": [
+        {
+          "origin": [
+            -8.0,
+            4.0
+          ],
+          "row_step": [
+            0.0,
+            6.0
+          ],
+          "col_step": [
+            8.0,
+            0.0
+          ],
+          "rows": 2,
+          "cols": 3,
+          "diameter": 1.6
+        }
+      ],
+      "holes": [
+        {
+          "center": [
+            -23.1,
+            0.0
+          ],
+          "diameter": 1.4
+        },
+        {
+          "center": [
+            23.1,
+            0.0
+          ],
+          "diameter": 1.4
+        }
+      ],
+      "slots": [
+        {
+          "start": [
+            14.0,
+            8.5
+          ],
+          "end": [
+            20.0,
+            8.5
+          ],
+          "width": 3.0
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 11,
+            "slot_count": 1,
+            "linear_pattern_count": 1,
+            "grid_pattern_count": 1,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
       "name": "plate_near_boundary_linear",
       "fixture_type": "plate",
       "description": "Linear hole pair placed near the outer plate boundary without crossing it.",
@@ -617,6 +706,56 @@
       ]
     },
     {
+      "name": "box_z_through_hole_rotated_z25",
+      "fixture_type": "box",
+      "description": "Non-axis-aligned rotated box with a z-through-hole to extend rotated non-plate fixture coverage.",
+      "output_filename": "box_z_through_hole_rotated_z25.scad",
+      "box_size": [
+        18.0,
+        12.0,
+        10.0
+      ],
+      "holes": [
+        {
+          "axis": "z",
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "diameter": 4.0
+        }
+      ],
+      "transform": {
+        "rotate": [
+          0.0,
+          0.0,
+          25.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
       "name": "l_bracket_plain",
       "fixture_type": "l_bracket",
       "description": "Plain L-bracket baseline for non-plate, non-box geometry.",
@@ -697,6 +836,12 @@
       "description": "Hollow box with interior cavity - can be interpreted as single hollow box OR as six separate wall plates",
       "output_filename": "box_hollow_ambiguous.scad",
       "box_size": [24.0, 16.0, 12.0],
+      "cutouts": [
+        {
+          "center": [0.0, 0.0, 0.0],
+          "size": [18.0, 10.0, 6.0]
+        }
+      ],
       "candidates": [
         {
           "rank": 1,

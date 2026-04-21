@@ -8,6 +8,7 @@ from stl2scad import cli
 from stl2scad.core.benchmark_fixtures import ensure_benchmark_fixtures
 from stl2scad.core.feature_inventory import (
     InventoryConfig,
+    InventorySelectionConfig,
     analyze_stl_file,
     analyze_stl_folder,
     analyze_stl_folder_for_feature_graphs,
@@ -137,6 +138,58 @@ def test_analyze_stl_folder_for_feature_graphs_prefilters_mechanical_candidates(
     assert inventory_events[-1][0] == 2
     assert len(graph_events) == 1
     assert graph_events[-1][0] == 1
+
+
+def test_build_feature_graphs_from_inventory_supports_score_based_selection(
+    test_data_dir, test_output_dir
+):
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+
+    inventory_report = {
+        "input_dir": str(fixtures_dir),
+        "files": [
+            {
+                "file": "primitive_box_axis_aligned.stl",
+                "status": "ok",
+                "classification": {
+                    "primary": "organic_candidate",
+                    "mechanical_score": 0.72,
+                    "organic_score": 0.32,
+                },
+            },
+            {
+                "file": "primitive_sphere.stl",
+                "status": "ok",
+                "classification": {
+                    "primary": "organic_candidate",
+                    "mechanical_score": 0.18,
+                    "organic_score": 0.84,
+                },
+            },
+        ],
+    }
+
+    output_json = test_output_dir / "feature_graph_scored_selection.json"
+    report = build_feature_graphs_from_inventory(
+        inventory_report,
+        output_json,
+        workers=1,
+        selection_config=InventorySelectionConfig(
+            require_primary_mechanical=False,
+            min_mechanical_score=0.60,
+            max_organic_score=0.50,
+        ),
+    )
+
+    assert output_json.exists()
+    assert report["selection"]["filter_mode"] == "inventory_scored_candidates"
+    assert report["selection"]["mechanical_candidate_count"] == 1
+    assert report["selection"]["selected_non_mechanical_primary_count"] == 1
+    assert report["selection"]["skipped_non_mechanical_count"] == 0
+    assert report["selection"]["skipped_below_score_count"] == 1
+    assert report["summary"]["file_count"] == 1
+    assert report["graphs"][0]["source_file"] == "primitive_box_axis_aligned.stl"
 
 
 def test_feature_graph_from_inventory_command_execution(test_data_dir, test_output_dir):

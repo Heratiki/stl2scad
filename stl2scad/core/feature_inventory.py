@@ -39,6 +39,13 @@ class InventoryConfig:
     spacing_tolerance: float = 1e-4
 
 
+@dataclass(frozen=True)
+class InventorySelectionConfig:
+    require_primary_mechanical: bool = True
+    min_mechanical_score: Optional[float] = None
+    max_organic_score: Optional[float] = None
+
+
 def analyze_stl_folder(
     input_dir: Union[Path, str],
     output_json: Optional[Union[Path, str]] = None,
@@ -111,6 +118,7 @@ def build_feature_graphs_from_inventory(
     inventory: Union[dict[str, Any], Path, str],
     output_json: Optional[Union[Path, str]] = None,
     workers: int = 1,
+    selection_config: InventorySelectionConfig = InventorySelectionConfig(),
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> dict[str, Any]:
     """
@@ -126,12 +134,10 @@ def build_feature_graphs_from_inventory(
     if not isinstance(inventory_files, list):
         raise ValueError("Inventory report must contain a files list")
 
-    selected_entries = [
-        result
-        for result in inventory_files
-        if result.get("status") == "ok"
-        and result.get("classification", {}).get("primary") == "mechanical_candidate"
-    ]
+    selected_entries, selection_counts = _select_inventory_entries(
+        inventory_files,
+        selection_config=selection_config,
+    )
     resolved_files = [
         _resolve_inventory_entry_path(entry, input_dir) for entry in selected_entries
     ]
@@ -163,12 +169,6 @@ def build_feature_graphs_from_inventory(
                     progress_callback(done_count, len(resolved_files), str(path))
             graphs = [graph_map[path] for path in resolved_files]
 
-    skipped_non_mechanical_count = sum(
-        1
-        for result in inventory_files
-        if result.get("status") == "ok"
-        and result.get("classification", {}).get("primary") != "mechanical_candidate"
-    )
     skipped_error_count = sum(
         1 for result in inventory_files if result.get("status") != "ok"
     )
@@ -185,8 +185,25 @@ def build_feature_graphs_from_inventory(
         "selection": {
             "inventory_file_count": len(inventory_files),
             "mechanical_candidate_count": len(selected_entries),
-            "skipped_non_mechanical_count": skipped_non_mechanical_count,
+            "selected_candidate_count": len(selected_entries),
+            "selected_non_mechanical_primary_count": selection_counts[
+                "selected_non_mechanical_primary_count"
+            ],
+            "skipped_non_mechanical_count": selection_counts[
+                "skipped_non_mechanical_count"
+            ],
+            "skipped_below_score_count": selection_counts[
+                "skipped_below_score_count"
+            ],
             "skipped_error_count": skipped_error_count,
+            "selection_config": {
+                "require_primary_mechanical": bool(
+                    selection_config.require_primary_mechanical
+                ),
+                "min_mechanical_score": selection_config.min_mechanical_score,
+                "max_organic_score": selection_config.max_organic_score,
+            },
+            "filter_mode": _selection_filter_mode(selection_config),
         },
         "summary": _summarize_graphs(graphs),
         "graphs": graphs,
@@ -201,6 +218,7 @@ def analyze_stl_folder_for_feature_graphs(
     output_json: Union[Path, str],
     inventory_config: InventoryConfig = InventoryConfig(),
     graph_workers: int = 1,
+    selection_config: InventorySelectionConfig = InventorySelectionConfig(),
     inventory_output_json: Optional[Union[Path, str]] = None,
     inventory_progress_callback: Optional[Callable[[int, int, str], None]] = None,
     graph_progress_callback: Optional[Callable[[int, int, str], None]] = None,
@@ -222,6 +240,7 @@ def analyze_stl_folder_for_feature_graphs(
         inventory=inventory_report,
         output_json=None,
         workers=graph_workers,
+        selection_config=selection_config,
         progress_callback=graph_progress_callback,
     )
     graph_report["inventory_summary"] = inventory_report["summary"]
@@ -229,11 +248,84 @@ def analyze_stl_folder_for_feature_graphs(
     graph_report["inventory_source"] = (
         str(Path(inventory_output_json)) if inventory_output_json is not None else None
     )
-    graph_report.setdefault("selection", {})["filter_mode"] = (
-        "inventory_mechanical_candidates"
-    )
     _write_json_report(graph_report, output_json)
     return graph_report
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _selection_filter_mode(selection_config: InventorySelectionConfig) -> str:
+    if (
+        selection_config.require_primary_mechanical
+        and selection_config.min_mechanical_score is None
+        and selection_config.max_organic_score is None
+    ):
+        return "inventory_mechanical_candidates"
+    if selection_config.require_primary_mechanical:
+        return "inventory_mechanical_candidates_with_scores"
+    return "inventory_scored_candidates"
+
+
+def _select_inventory_entries(
+    inventory_files: Sequence[dict[str, Any]],
+    selection_config: InventorySelectionConfig,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    selected_entries: list[dict[str, Any]] = []
+    skipped_non_mechanical_count = 0
+    skipped_below_score_count = 0
+    selected_non_mechanical_primary_count = 0
+
+    for result in inventory_files:
+        if result.get("status") != "ok":
+            continue
+        classification = result.get("classification", {})
+        primary = str(classification.get("primary", ""))
+
+        if primary == "degenerate_or_flat_candidate":
+            skipped_non_mechanical_count += 1
+            continue
+
+        if selection_config.require_primary_mechanical and primary != "mechanical_candidate":
+            skipped_non_mechanical_count += 1
+            continue
+
+        mechanical_score = _safe_float(classification.get("mechanical_score"))
+        organic_score = _safe_float(classification.get("organic_score"))
+
+        if (
+            selection_config.min_mechanical_score is not None
+            and (
+                mechanical_score is None
+                or mechanical_score < selection_config.min_mechanical_score
+            )
+        ):
+            skipped_below_score_count += 1
+            continue
+
+        if (
+            selection_config.max_organic_score is not None
+            and (
+                organic_score is None
+                or organic_score > selection_config.max_organic_score
+            )
+        ):
+            skipped_below_score_count += 1
+            continue
+
+        if primary != "mechanical_candidate":
+            selected_non_mechanical_primary_count += 1
+        selected_entries.append(result)
+
+    return selected_entries, {
+        "skipped_non_mechanical_count": skipped_non_mechanical_count,
+        "skipped_below_score_count": skipped_below_score_count,
+        "selected_non_mechanical_primary_count": selected_non_mechanical_primary_count,
+    }
 
 
 def _analyze_stl_file_worker(

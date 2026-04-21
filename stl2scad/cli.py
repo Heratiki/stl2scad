@@ -22,6 +22,7 @@ from stl2scad.core.feature_graph import (
 )
 from stl2scad.core.feature_inventory import (
     InventoryConfig,
+    InventorySelectionConfig,
     analyze_stl_folder,
     analyze_stl_folder_for_feature_graphs,
     build_feature_graphs_from_inventory,
@@ -64,6 +65,17 @@ def _non_negative_int(value: str) -> int:
         raise argparse.ArgumentTypeError(f"Expected an integer, got '{value}'") from exc
     if parsed < 0:
         raise argparse.ArgumentTypeError("Value must be non-negative")
+    return parsed
+
+
+def _unit_interval_float(value: str) -> float:
+    """argparse type validator for 0.0-1.0 floats."""
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"Expected a float, got '{value}'") from exc
+    if parsed < 0.0 or parsed > 1.0:
+        raise argparse.ArgumentTypeError("Value must be between 0.0 and 1.0")
     return parsed
 
 
@@ -314,6 +326,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional inventory JSON output path when using --inventory-prefilter",
     )
     feature_graph_parser.add_argument(
+        "--inventory-min-mechanical-score",
+        type=_unit_interval_float,
+        default=None,
+        help="Optional minimum inventory mechanical_score required for graph selection (0.0-1.0)",
+    )
+    feature_graph_parser.add_argument(
+        "--inventory-max-organic-score",
+        type=_unit_interval_float,
+        default=None,
+        help="Optional maximum inventory organic_score allowed for graph selection (0.0-1.0)",
+    )
+    feature_graph_parser.add_argument(
+        "--inventory-allow-non-mechanical-primary",
+        action="store_true",
+        help="Allow non-degenerate non-mechanical primary classifications if score thresholds pass",
+    )
+    feature_graph_parser.add_argument(
         "--scad-preview",
         default=None,
         help="Optional SCAD preview output path for a single STL input",
@@ -343,6 +372,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--scad-preview-dir",
         default=None,
         help="Optional output directory for SCAD previews generated from each graph",
+    )
+    feature_graph_inventory_parser.add_argument(
+        "--inventory-min-mechanical-score",
+        type=_unit_interval_float,
+        default=None,
+        help="Optional minimum inventory mechanical_score required for graph selection (0.0-1.0)",
+    )
+    feature_graph_inventory_parser.add_argument(
+        "--inventory-max-organic-score",
+        type=_unit_interval_float,
+        default=None,
+        help="Optional maximum inventory organic_score allowed for graph selection (0.0-1.0)",
+    )
+    feature_graph_inventory_parser.add_argument(
+        "--inventory-allow-non-mechanical-primary",
+        action="store_true",
+        help="Allow non-degenerate non-mechanical primary classifications if score thresholds pass",
     )
     feature_graph_inventory_parser.set_defaults(
         handler=feature_graph_from_inventory_command
@@ -537,12 +583,23 @@ def feature_graph_command(args: argparse.Namespace) -> int:
     try:
         input_path = Path(args.input_path)
         output_path = Path(args.output)
+        has_inventory_selection_filters = any(
+            (
+                args.inventory_min_mechanical_score is not None,
+                args.inventory_max_organic_score is not None,
+                args.inventory_allow_non_mechanical_primary,
+            )
+        )
 
         if not input_path.is_dir() and (
-            args.inventory_prefilter or args.inventory_output
+            args.inventory_prefilter or args.inventory_output or has_inventory_selection_filters
         ):
             raise ValueError(
-                "--inventory-prefilter and --inventory-output require a directory input"
+                "--inventory-prefilter, --inventory-output, and --inventory-* selection options require a directory input"
+            )
+        if has_inventory_selection_filters and not args.inventory_prefilter:
+            raise ValueError(
+                "--inventory-* selection options require --inventory-prefilter"
             )
 
         if input_path.is_dir():
@@ -589,6 +646,13 @@ def feature_graph_command(args: argparse.Namespace) -> int:
                         workers=workers,
                     ),
                     graph_workers=workers,
+                    selection_config=InventorySelectionConfig(
+                        require_primary_mechanical=(
+                            not args.inventory_allow_non_mechanical_primary
+                        ),
+                        min_mechanical_score=args.inventory_min_mechanical_score,
+                        max_organic_score=args.inventory_max_organic_score,
+                    ),
                     inventory_output_json=(
                         Path(args.inventory_output)
                         if args.inventory_output is not None
@@ -620,6 +684,16 @@ def feature_graph_command(args: argparse.Namespace) -> int:
                     "Skipped non-mechanical: "
                     f"{selection['skipped_non_mechanical_count']}"
                 )
+                if selection.get("skipped_below_score_count", 0) > 0:
+                    print(
+                        "Skipped below score threshold: "
+                        f"{selection['skipped_below_score_count']}"
+                    )
+                if selection.get("selected_non_mechanical_primary_count", 0) > 0:
+                    print(
+                        "Selected non-mechanical primary: "
+                        f"{selection['selected_non_mechanical_primary_count']}"
+                    )
                 if args.inventory_output:
                     print(f"Inventory report written to: {args.inventory_output}")
             else:
@@ -679,6 +753,13 @@ def feature_graph_from_inventory_command(args: argparse.Namespace) -> int:
             inventory=Path(args.inventory_json),
             output_json=Path(args.output),
             workers=workers,
+            selection_config=InventorySelectionConfig(
+                require_primary_mechanical=(
+                    not args.inventory_allow_non_mechanical_primary
+                ),
+                min_mechanical_score=args.inventory_min_mechanical_score,
+                max_organic_score=args.inventory_max_organic_score,
+            ),
             progress_callback=_progress,
         )
         summary = report["summary"]
@@ -688,6 +769,16 @@ def feature_graph_from_inventory_command(args: argparse.Namespace) -> int:
             "Mechanical candidates processed: "
             f"{selection['mechanical_candidate_count']}"
         )
+        if selection.get("skipped_below_score_count", 0) > 0:
+            print(
+                "Skipped below score threshold: "
+                f"{selection['skipped_below_score_count']}"
+            )
+        if selection.get("selected_non_mechanical_primary_count", 0) > 0:
+            print(
+                "Selected non-mechanical primary: "
+                f"{selection['selected_non_mechanical_primary_count']}"
+            )
         print(f"Workers: {workers}")
         print(f"Errors: {summary['error_count']}")
         print(f"Features: {summary['feature_counts']}")

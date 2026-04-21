@@ -738,6 +738,15 @@ def test_feature_fixture_manifest_covers_roadmap_stress_cases(test_data_dir):
     assert len(negative_fixtures) >= 2, \
         f"Manifest must include at least 2 negative-class fixtures (sphere, torus). Found {len(negative_fixtures)}"
     assert any(
+        fixture["fixture_type"] in {"box", "l_bracket"}
+        and any(abs(float(value)) > 1e-9 for value in fixture["transform"]["rotate"])
+        for fixture in fixtures
+    ), "Manifest must include at least one rotated non-plate fixture"
+    assert any(
+        fixture["fixture_type"] == "box" and len(fixture.get("cutouts", [])) > 0
+        for fixture in fixtures
+    ), "Manifest must include at least one composite non-plate box fixture with cutouts"
+    assert any(
         fixture["slots"]
         and (
             fixture["holes"]
@@ -746,6 +755,12 @@ def test_feature_fixture_manifest_covers_roadmap_stress_cases(test_data_dir):
         )
         for fixture in plate_fixtures
     )
+    assert any(
+        fixture["slots"]
+        and fixture["linear_hole_patterns"]
+        and fixture["grid_hole_patterns"]
+        for fixture in plate_fixtures
+    ), "Manifest must include at least one plate mixing slot + linear + grid patterns"
     assert any(
         max(fixture["plate_size"][:2]) / min(fixture["plate_size"][:2]) >= 4.0
         and fixture["explicit_hole_count"] >= 3

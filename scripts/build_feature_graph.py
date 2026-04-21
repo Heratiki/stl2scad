@@ -21,8 +21,16 @@ from stl2scad.core.feature_graph import (
 )
 from stl2scad.core.feature_inventory import (
     InventoryConfig,
+    InventorySelectionConfig,
     analyze_stl_folder_for_feature_graphs,
 )
+
+
+def _unit_interval_float(value: str) -> float:
+    parsed = float(value)
+    if parsed < 0.0 or parsed > 1.0:
+        raise argparse.ArgumentTypeError("Value must be between 0.0 and 1.0")
+    return parsed
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -65,6 +73,23 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional inventory JSON output path when using --inventory-prefilter.",
     )
+    parser.add_argument(
+        "--inventory-min-mechanical-score",
+        type=_unit_interval_float,
+        default=None,
+        help="Optional minimum inventory mechanical_score required for graph selection (0.0-1.0).",
+    )
+    parser.add_argument(
+        "--inventory-max-organic-score",
+        type=_unit_interval_float,
+        default=None,
+        help="Optional maximum inventory organic_score allowed for graph selection (0.0-1.0).",
+    )
+    parser.add_argument(
+        "--inventory-allow-non-mechanical-primary",
+        action="store_true",
+        help="Allow non-degenerate non-mechanical primary classifications if score thresholds pass.",
+    )
     return parser
 
 
@@ -82,10 +107,23 @@ def main() -> int:
 
     input_path = Path(args.input_path)
     output_path = Path(args.output)
-    if not input_path.is_dir() and (args.inventory_prefilter or args.inventory_output):
-        raise ValueError(
-            "--inventory-prefilter and --inventory-output require a directory input."
+    has_inventory_selection_filters = any(
+        (
+            args.inventory_min_mechanical_score is not None,
+            args.inventory_max_organic_score is not None,
+            args.inventory_allow_non_mechanical_primary,
         )
+    )
+    if not input_path.is_dir() and (
+        args.inventory_prefilter
+        or args.inventory_output
+        or has_inventory_selection_filters
+    ):
+        raise ValueError(
+            "--inventory-prefilter, --inventory-output, and --inventory-* selection options require a directory input."
+        )
+    if has_inventory_selection_filters and not args.inventory_prefilter:
+        raise ValueError("--inventory-* selection options require --inventory-prefilter.")
     if input_path.is_dir():
         workers = _resolve_workers(args.workers)
 
@@ -130,6 +168,13 @@ def main() -> int:
                     workers=workers,
                 ),
                 graph_workers=workers,
+                selection_config=InventorySelectionConfig(
+                    require_primary_mechanical=(
+                        not args.inventory_allow_non_mechanical_primary
+                    ),
+                    min_mechanical_score=args.inventory_min_mechanical_score,
+                    max_organic_score=args.inventory_max_organic_score,
+                ),
                 inventory_output_json=(
                     Path(args.inventory_output)
                     if args.inventory_output is not None
@@ -159,6 +204,16 @@ def main() -> int:
             print(
                 f"Skipped non-mechanical: {selection['skipped_non_mechanical_count']}"
             )
+            if selection.get("skipped_below_score_count", 0) > 0:
+                print(
+                    "Skipped below score threshold: "
+                    f"{selection['skipped_below_score_count']}"
+                )
+            if selection.get("selected_non_mechanical_primary_count", 0) > 0:
+                print(
+                    "Selected non-mechanical primary: "
+                    f"{selection['selected_non_mechanical_primary_count']}"
+                )
             if args.inventory_output:
                 print(f"Inventory report written to: {args.inventory_output}")
         else:

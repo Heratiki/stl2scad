@@ -58,5 +58,5 @@ python scripts/build_feature_graph.py "path/to/stls" --output artifacts/feature_
 ## Where to look next
 
 - Roadmap and priorities: [docs/planning/feature_level_reconstruction.md](docs/planning/feature_level_reconstruction.md)
-- Memory bank (Cline-style): [memory-bank/](memory-bank/)
+- Memory bank (Cline-style): [docs/memory-bank/](docs/memory-bank/)
 - Core converter entry point: [stl2scad/core/converter.py](stl2scad/core/converter.py)

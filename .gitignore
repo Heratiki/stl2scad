@@ -55,7 +55,7 @@ test*.json
 *.sqlite
 *.stl
 *.scad
-memory-bank/
+docs/memory-bank/
 tests/data/Cube_3d_printing_sample_debug.echo
 
 # Runtime/build artifacts that accidentally got tracked

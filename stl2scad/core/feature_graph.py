@@ -21,15 +21,30 @@ from .feature_inventory import _bbox, _normalized_normals, _triangle_areas
 STL_SUFFIXES = {".stl"}
 
 
+from stl2scad.tuning.config import DetectorConfig
+
 def build_feature_graph_for_stl(
     stl_file: Union[Path, str],
     root_dir: Optional[Union[Path, str]] = None,
-    normal_axis_threshold: float = 0.96,
-    boundary_tolerance_ratio: float = 0.01,
+    normal_axis_threshold: Optional[float] = None,
+    boundary_tolerance_ratio: Optional[float] = None,
+    config: Optional[DetectorConfig] = None,
 ) -> dict[str, Any]:
     """
     Build a conservative feature graph for one STL file.
+
+    config overrides defaults; the legacy kwargs override config fields when
+    provided, preserving every existing call site.
     """
+    resolved = config or DetectorConfig()
+    if normal_axis_threshold is not None or boundary_tolerance_ratio is not None:
+        import dataclasses
+        overrides: dict[str, float] = {}
+        if normal_axis_threshold is not None:
+            overrides["normal_axis_threshold"] = normal_axis_threshold
+        if boundary_tolerance_ratio is not None:
+            overrides["boundary_tolerance_ratio"] = boundary_tolerance_ratio
+        resolved = dataclasses.replace(resolved, **overrides)
     path = Path(stl_file)
     mesh = Mesh.from_file(str(path))
     vectors = np.asarray(mesh.vectors, dtype=np.float64)
@@ -42,8 +57,7 @@ def build_feature_graph_for_stl(
         normals,
         face_areas,
         bbox,
-        normal_axis_threshold=normal_axis_threshold,
-        boundary_tolerance_ratio=boundary_tolerance_ratio,
+        config=resolved,
     )
     features.extend(
         _extract_axis_aligned_through_holes(
@@ -52,10 +66,10 @@ def build_feature_graph_for_stl(
             face_areas,
             bbox,
             features,
-            normal_axis_threshold=normal_axis_threshold,
+            config=resolved,
         )
     )
-    features.extend(_extract_repeated_hole_patterns(features))
+    features.extend(_extract_repeated_hole_patterns(features, config=resolved))
 
     return {
         "schema_version": 1,
@@ -440,8 +454,7 @@ def _extract_axis_aligned_box_features(
     normals: np.ndarray,
     face_areas: np.ndarray,
     bbox: dict[str, float],
-    normal_axis_threshold: float,
-    boundary_tolerance_ratio: float,
+    config: DetectorConfig,
 ) -> list[dict[str, Any]]:
     if len(vectors) == 0:
         return []
@@ -452,7 +465,7 @@ def _extract_axis_aligned_box_features(
 
     face_centers = np.mean(vectors, axis=1)
     diagonal = max(float(bbox.get("diagonal", 0.0)), 1e-9)
-    boundary_tolerance = max(diagonal * boundary_tolerance_ratio, 1e-6)
+    boundary_tolerance = max(diagonal * config.boundary_tolerance_ratio, 1e-6)
     axis_pairs = {
         "x": (0, np.array([1.0, 0.0, 0.0]), bbox["min_x"], bbox["max_x"]),
         "y": (1, np.array([0.0, 1.0, 0.0]), bbox["min_y"], bbox["max_y"]),
@@ -463,10 +476,10 @@ def _extract_axis_aligned_box_features(
     plane_features: list[dict[str, Any]] = []
     boundary_support: dict[str, dict[str, Any]] = {}
     for axis_name, (axis_index, axis, min_coord, max_coord) in axis_pairs.items():
-        negative_mask = (normals @ -axis >= normal_axis_threshold) & (
+        negative_mask = (normals @ -axis >= config.normal_axis_threshold) & (
             np.abs(face_centers[:, axis_index] - min_coord) <= boundary_tolerance
         )
-        positive_mask = (normals @ axis >= normal_axis_threshold) & (
+        positive_mask = (normals @ axis >= config.normal_axis_threshold) & (
             np.abs(face_centers[:, axis_index] - max_coord) <= boundary_tolerance
         )
         negative_area = float(np.sum(face_areas[negative_mask]))
@@ -519,17 +532,19 @@ def _extract_axis_aligned_box_features(
         bbox,
         total_area,
         size,
+        config=config,
     )
     tolerant_box_confidence = _tolerant_box_confidence(
         boundary_support,
         total_area,
         size,
+        config=config,
     )
 
     features: list[dict[str, Any]] = plane_features
     if (
-        paired_axes >= 2 and confidence >= 0.55 and thin_ratio <= 0.18
-    ) or tolerant_plate_confidence >= 0.70:
+        paired_axes >= config.plate_paired_axes_min and confidence >= config.plate_confidence_min and thin_ratio <= config.plate_thin_ratio_max
+    ) or tolerant_plate_confidence >= config.plate_tolerant_confidence_min:
         plate_confidence = max(confidence, tolerant_plate_confidence)
         features.append(
             {
@@ -552,7 +567,7 @@ def _extract_axis_aligned_box_features(
                 },
                 "note": (
                     "Candidate for an editable plate or slab feature."
-                    if tolerant_plate_confidence < 0.70
+                    if tolerant_plate_confidence < config.plate_tolerant_confidence_min
                     else (
                         "Candidate for an editable plate or slab feature, allowing"
                         " chamfer-broken side planes when the thin-axis footprint"
@@ -561,7 +576,7 @@ def _extract_axis_aligned_box_features(
                 ),
             }
         )
-    elif (paired_axes == 3 and confidence >= 0.80) or tolerant_box_confidence >= 0.70:
+    elif (paired_axes == config.box_paired_axes_required and confidence >= config.box_confidence_min) or tolerant_box_confidence >= config.box_tolerant_confidence_min:
         box_confidence = max(confidence, tolerant_box_confidence)
         features.append(
             {
@@ -584,7 +599,7 @@ def _extract_axis_aligned_box_features(
                 },
                 "note": (
                     "Candidate for a cube()/translate() parametric base feature."
-                    if tolerant_box_confidence < 0.70
+                    if tolerant_box_confidence < config.box_tolerant_confidence_min
                     else (
                         "Candidate for a cube()/translate() parametric base feature,"
                         " allowing chamfer- or fillet-broken outer edges when all"
@@ -652,6 +667,7 @@ def _tolerant_plate_confidence(
     bbox: dict[str, float],
     total_area: float,
     size: list[float],
+    config: DetectorConfig,
 ) -> float:
     if total_area <= 1e-12 or len(size) != 3:
         return 0.0
@@ -686,11 +702,11 @@ def _tolerant_plate_confidence(
         float(positive_projection["fill_ratio"]),
     )
 
-    if paired_support_ratio < 0.55:
+    if paired_support_ratio < config.tolerant_plate_paired_support_min:
         return 0.0
-    if min_span_ratio < 0.75 or footprint_area_ratio < 0.60:
+    if min_span_ratio < config.tolerant_plate_min_span_ratio or footprint_area_ratio < config.tolerant_plate_footprint_area_ratio:
         return 0.0
-    if footprint_fill_ratio < 0.85:
+    if footprint_fill_ratio < config.tolerant_plate_footprint_fill_ratio:
         return 0.0
 
     return min(1.0, 0.6 * paired_support_ratio + 0.4 * footprint_area_ratio)
@@ -700,6 +716,7 @@ def _tolerant_box_confidence(
     boundary_support: dict[str, dict[str, Any]],
     total_area: float,
     size: list[float],
+    config: DetectorConfig,
 ) -> float:
     if total_area <= 1e-12 or len(size) != 3 or min(float(value) for value in size) <= 1e-9:
         return 0.0
@@ -745,9 +762,9 @@ def _tolerant_box_confidence(
             (negative_area + positive_area) / (2.0 * ideal_face_area),
         )
 
-        if min_span_ratio < 0.68 or footprint_area_ratio < 0.50:
+        if min_span_ratio < config.tolerant_box_min_span_ratio or footprint_area_ratio < config.tolerant_box_footprint_area_ratio:
             return 0.0
-        if footprint_fill_ratio < 0.94:
+        if footprint_fill_ratio < config.tolerant_box_footprint_fill_ratio:
             return 0.0
 
         axis_confidences.append(
@@ -761,7 +778,7 @@ def _tolerant_box_confidence(
         )
 
     overall_support_ratio = supporting_area / total_area
-    if overall_support_ratio < 0.60:
+    if overall_support_ratio < config.tolerant_box_overall_support_ratio:
         return 0.0
 
     min_axis_confidence = min(axis_confidences)
@@ -830,6 +847,7 @@ def _hole_key(center: list[float]) -> tuple[float, float, float]:
 
 def _fit_axis_aligned_rectangle_2d(
     points: np.ndarray,
+    config: DetectorConfig,
 ) -> Optional[tuple[np.ndarray, float, float, float]]:
     if len(points) < 8:
         return None
@@ -850,10 +868,10 @@ def _fit_axis_aligned_rectangle_2d(
         ]
     )
     rectangle_error_ratio = float(np.percentile(edge_distances, 90) / min_span)
-    if rectangle_error_ratio > 0.04:
+    if rectangle_error_ratio > config.rect_error_ratio_max:
         return None
 
-    edge_tolerance = max(min_span * 0.08, 1e-6)
+    edge_tolerance = max(min_span * config.rect_edge_tolerance_ratio, 1e-6)
     if not (
         np.any(np.abs(points[:, 0] - mins[0]) <= edge_tolerance)
         and np.any(np.abs(points[:, 0] - maxs[0]) <= edge_tolerance)
@@ -923,13 +941,13 @@ def _extract_axis_aligned_through_holes(
     face_areas: np.ndarray,
     bbox: dict[str, float],
     existing_features: list[dict[str, Any]],
-    normal_axis_threshold: float,
+    config: DetectorConfig,
 ) -> list[dict[str, Any]]:
     axis_labels = ("x", "y", "z")
     face_centers = np.mean(vectors, axis=1)
     features: list[dict[str, Any]] = []
 
-    for target in _candidate_cutout_axes(existing_features):
+    for target in _candidate_cutout_axes(existing_features, config=config):
         cutout_axis_index = int(target["axis_index"])
         cutout_depth = float(target["depth"])
         if cutout_depth <= 1e-9:
@@ -940,7 +958,7 @@ def _extract_axis_aligned_through_holes(
         axis_vector[cutout_axis_index] = 1.0
         span_min = float(bbox[f"min_{axis_labels[cutout_axis_index]}"])
         span_max = float(bbox[f"max_{axis_labels[cutout_axis_index]}"])
-        sidewall_mask = np.abs(normals @ axis_vector) <= (1.0 - normal_axis_threshold)
+        sidewall_mask = np.abs(normals @ axis_vector) <= (1.0 - config.normal_axis_threshold)
         # Keep only cutout-region faces away from the outer boundary planes on
         # the two perpendicular axes. This avoids merging hole sidewalls with
         # the parent solid's outer side faces into one giant component.
@@ -949,29 +967,29 @@ def _extract_axis_aligned_through_holes(
             axis_min = float(bbox[f"min_{axis_labels[axis]}"])
             axis_max = float(bbox[f"max_{axis_labels[axis]}"])
             axis_span = max(axis_max - axis_min, 1e-9)
-            boundary_margin = axis_span * 0.05
+            boundary_margin = axis_span * config.hole_interior_boundary_margin_ratio
             interior_plane_mask &= (
                 (face_centers[:, axis] > axis_min + boundary_margin)
                 & (face_centers[:, axis] < axis_max - boundary_margin)
             )
         interior_mask = (
-            face_centers[:, cutout_axis_index] > span_min + cutout_depth * 0.05
-        ) & (face_centers[:, cutout_axis_index] < span_max - cutout_depth * 0.05)
+            face_centers[:, cutout_axis_index] > span_min + cutout_depth * config.hole_interior_depth_margin_ratio
+        ) & (face_centers[:, cutout_axis_index] < span_max - cutout_depth * config.hole_interior_depth_margin_ratio)
         candidate_faces = np.where((sidewall_mask | interior_mask) & interior_plane_mask)[0]
         if len(candidate_faces) == 0:
             continue
 
         components = _connected_face_components(vectors, candidate_faces)
-        min_radius = max(min(target["size"][axis] for axis in plane_axes) * 0.005, 0.05)
-        max_radius = max(target["size"][axis] for axis in plane_axes) * 0.45
+        min_radius = max(min(target["size"][axis] for axis in plane_axes) * config.hole_min_radius_ratio, 0.05)
+        max_radius = max(target["size"][axis] for axis in plane_axes) * config.hole_max_radius_ratio
         for component_index, face_indices in enumerate(components):
-            if len(face_indices) < 8:
+            if len(face_indices) < config.hole_min_component_faces:
                 continue
             component_vertices = vectors[face_indices].reshape(-1, 3)
             coords_2d = component_vertices[:, plane_axes]
             height_values = component_vertices[:, cutout_axis_index]
             height_span = float(np.max(height_values) - np.min(height_values))
-            if height_span < cutout_depth * 0.10:
+            if height_span < cutout_depth * config.hole_height_span_floor_ratio:
                 continue
 
             # Counterbores are stepped holes and often fail a single-circle fit,
@@ -983,6 +1001,7 @@ def _extract_axis_aligned_through_holes(
                 cutout_depth,
                 span_min,
                 span_max,
+                config=config,
             )
             if (
                 cbore is not None
@@ -994,6 +1013,7 @@ def _extract_axis_aligned_through_holes(
                     bbox,
                     plane_axes,
                     cbore["bore_radius"],
+                    config=config,
                     edge_factor=0.05,
                 )
             ):
@@ -1029,11 +1049,11 @@ def _extract_axis_aligned_through_holes(
             if fit is not None:
                 center_2d, radius, radial_error_ratio, angular_coverage = fit
                 if (
-                    height_span >= cutout_depth * 0.65
+                    height_span >= cutout_depth * config.hole_height_span_ratio_min
                     and min_radius <= radius <= max_radius
-                    and radial_error_ratio <= 0.08
-                    and angular_coverage >= 0.70
-                    and not _center_near_outer_boundary(center_2d, bbox, plane_axes, radius)
+                    and radial_error_ratio <= config.hole_radial_error_max
+                    and angular_coverage >= config.hole_angular_coverage_min
+                    and not _center_near_outer_boundary(center_2d, bbox, plane_axes, radius, config=config)
                 ):
                     center = [0.0, 0.0, 0.0]
                     center[plane_axes[0]] = float(center_2d[0])
@@ -1041,7 +1061,7 @@ def _extract_axis_aligned_through_holes(
                     center[cutout_axis_index] = (span_min + span_max) * 0.5
                     confidence = max(
                         0.0,
-                        min(1.0, (1.0 - radial_error_ratio / 0.08) * angular_coverage),
+                        min(1.0, (1.0 - radial_error_ratio / config.hole_radial_error_max) * angular_coverage),
                     )
                     features.append(
                         {
@@ -1064,8 +1084,8 @@ def _extract_axis_aligned_through_holes(
                     )
                     continue
 
-            slot_fit = _fit_axis_aligned_slot_2d(coords_2d)
-            if slot_fit is not None and height_span >= cutout_depth * 0.65:
+            slot_fit = _fit_axis_aligned_slot_2d(coords_2d, config=config)
+            if slot_fit is not None and height_span >= cutout_depth * config.hole_height_span_ratio_min:
                 (
                     center_2d,
                     start_2d,
@@ -1084,6 +1104,7 @@ def _extract_axis_aligned_through_holes(
                         radius,
                         bbox,
                         plane_axes,
+                        config=config,
                     )
                 ):
                     center = [0.0, 0.0, 0.0]
@@ -1099,7 +1120,7 @@ def _extract_axis_aligned_through_holes(
                         vector[cutout_axis_index] = (span_min + span_max) * 0.5
                     confidence = max(
                         0.0,
-                        min(1.0, 1.0 - slot_error_ratio / 0.12),
+                        min(1.0, 1.0 - slot_error_ratio / config.slot_error_ratio_max),
                     )
                     features.append(
                         {
@@ -1125,7 +1146,7 @@ def _extract_axis_aligned_through_holes(
                     )
                     continue
 
-            rect_fit = _fit_axis_aligned_rectangle_2d(coords_2d)
+            rect_fit = _fit_axis_aligned_rectangle_2d(coords_2d, config=config)
             if rect_fit is None:
                 continue
             center_2d, width, length, rectangle_error_ratio = rect_fit
@@ -1134,22 +1155,23 @@ def _extract_axis_aligned_through_holes(
                 np.asarray([width, length], dtype=np.float64),
                 bbox,
                 plane_axes,
+                config=config,
             ):
                 continue
 
             cutout_min = float(np.min(height_values))
             cutout_max = float(np.max(height_values))
-            edge_tolerance = max(cutout_depth * 0.08, 1e-6)
+            edge_tolerance = max(cutout_depth * config.rect_edge_tolerance_ratio, 1e-6)
             touches_min = cutout_min <= span_min + edge_tolerance
             touches_max = cutout_max >= span_max - edge_tolerance
-            if touches_min and touches_max and height_span >= cutout_depth * 0.65:
+            if touches_min and touches_max and height_span >= cutout_depth * config.hole_height_span_ratio_min:
                 feature_type = "rectangular_cutout"
                 center_axis_value = (span_min + span_max) * 0.5
                 open_direction = "both"
                 note = "Candidate axis-aligned rectangular through-cutout in a "
             elif (
                 touches_min != touches_max
-                and cutout_depth * 0.10 <= height_span <= cutout_depth * 0.95
+                and cutout_depth * config.pocket_height_floor_ratio <= height_span <= cutout_depth * config.pocket_height_ceiling_ratio
             ):
                 feature_type = "rectangular_pocket"
                 center_axis_value = (cutout_min + cutout_max) * 0.5
@@ -1166,7 +1188,7 @@ def _extract_axis_aligned_through_holes(
             size_vector[plane_axes[0]] = float(width)
             size_vector[plane_axes[1]] = float(length)
             size_vector[cutout_axis_index] = float(height_span)
-            confidence = max(0.0, min(1.0, 1.0 - rectangle_error_ratio / 0.04))
+            confidence = max(0.0, min(1.0, 1.0 - rectangle_error_ratio / config.rect_error_ratio_max))
             features.append(
                 {
                     "type": feature_type,
@@ -1190,6 +1212,7 @@ def _extract_axis_aligned_through_holes(
 
 def _candidate_cutout_axes(
     existing_features: list[dict[str, Any]],
+    config: DetectorConfig,
 ) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
 
@@ -1223,6 +1246,7 @@ def _candidate_cutout_axes(
 
 def _extract_repeated_hole_patterns(
     features: list[dict[str, Any]],
+    config: DetectorConfig,
 ) -> list[dict[str, Any]]:
     holes = [
         feature for feature in features if feature.get("type") == "hole_like_cutout"
@@ -1235,7 +1259,7 @@ def _extract_repeated_hole_patterns(
     for hole in holes:
         diameter = float(hole["diameter"])
         # Group diameters with a modest tolerance to absorb mesh noise.
-        key = (str(hole["axis"]), int(round(diameter * 100.0)))
+        key = (str(hole["axis"]), int(round(diameter / config.pattern_diameter_rounding_mm)))
         groups.setdefault(key, []).append(hole)
 
     for (axis, diameter_key), group in groups.items():
@@ -1251,7 +1275,7 @@ def _extract_repeated_hole_patterns(
         ]
         pattern_type = (
             "grid_hole_pattern"
-            if len(group) >= 4 and min(unique_counts) >= 2
+            if len(group) >= config.grid_pattern_min_holes and min(unique_counts) >= 2
             else "linear_hole_pattern"
         )
         pattern = {
@@ -1259,14 +1283,14 @@ def _extract_repeated_hole_patterns(
             "confidence": float(min(float(hole["confidence"]) for hole in group)),
             "axis": axis,
             "hole_count": int(len(group)),
-            "diameter": float(diameter_key / 100.0),
+            "diameter": float(diameter_key * config.pattern_diameter_rounding_mm),
             "centers": [[float(value) for value in hole["center"]] for hole in group],
             "note": "Candidate repeated hole pattern for future SCAD loop emission.",
         }
         if pattern_type == "linear_hole_pattern":
-            pattern.update(_linear_hole_pattern_metadata(centers, varying_axes))
+            pattern.update(_linear_hole_pattern_metadata(centers, varying_axes, config=config))
         else:
-            pattern.update(_grid_hole_pattern_metadata(centers, axis, varying_axes))
+            pattern.update(_grid_hole_pattern_metadata(centers, axis, varying_axes, config=config))
         patterns.append(pattern)
     return patterns
 
@@ -1274,6 +1298,7 @@ def _extract_repeated_hole_patterns(
 def _linear_hole_pattern_metadata(
     centers: np.ndarray,
     varying_axes: list[int],
+    config: DetectorConfig,
 ) -> dict[str, Any]:
     if len(centers) < 2:
         return {}
@@ -1291,7 +1316,7 @@ def _linear_hole_pattern_metadata(
     regularity_error = float(
         np.max(np.linalg.norm(ordered_centers - expected, axis=1)) / spacing
     )
-    if regularity_error > 0.08:
+    if regularity_error > config.pattern_regularity_error_max:
         return {}
 
     return {
@@ -1308,6 +1333,7 @@ def _grid_hole_pattern_metadata(
     centers: np.ndarray,
     axis: str,
     varying_axes: list[int],
+    config: DetectorConfig,
 ) -> dict[str, Any]:
     if len(centers) < 4 or len(varying_axes) != 2:
         return {}
@@ -1359,7 +1385,7 @@ def _grid_hole_pattern_metadata(
     regularity_error = float(
         np.max(np.linalg.norm(ordered_array - expected_array, axis=1)) / min_spacing
     )
-    if regularity_error > 0.08:
+    if regularity_error > config.pattern_regularity_error_max:
         return {}
 
     return {
@@ -1383,6 +1409,7 @@ def _try_counterbore_fit(
     height_span: float,
     span_min: float,
     span_max: float,
+    config: DetectorConfig,
 ) -> Optional[dict[str, Any]]:
     """Try to detect a counterbore (stepped hole) in a connected component.
 
@@ -1394,13 +1421,13 @@ def _try_counterbore_fit(
     h_min = float(np.min(height_values))
     h_max = float(np.max(height_values))
     h_span = h_max - h_min
-    if h_span < height_span * 0.5:
+    if h_span < height_span * config.cbore_height_span_floor_ratio:
         return None
 
     # Fit circles on endpoint slices first. Try thinner slices before thicker
     # ones so near-through counterbores do not blur one side with two radii.
     endpoint_fit = None
-    for slice_ratio in (0.10, 0.15, 0.20):
+    for slice_ratio in config.cbore_slice_ratios:
         slice_thickness = max(h_span * slice_ratio, 1e-9)
         lower_mask = height_values <= (h_min + slice_thickness)
         upper_mask = height_values >= (h_max - slice_thickness)
@@ -1425,15 +1452,15 @@ def _try_counterbore_fit(
     upper_center, upper_radius, upper_error, upper_coverage = endpoint_fit[1]
 
     # Both fits must be reasonable.
-    if lower_error > 0.12 or upper_error > 0.12:
+    if lower_error > config.cbore_radial_error_max or upper_error > config.cbore_radial_error_max:
         return None
-    if lower_coverage < 0.60 or upper_coverage < 0.60:
+    if lower_coverage < config.cbore_angular_coverage_min or upper_coverage < config.cbore_angular_coverage_min:
         return None
 
     # Centers must be concentric.
     larger_radius = max(lower_radius, upper_radius)
     center_distance = float(np.linalg.norm(lower_center - upper_center))
-    if center_distance > larger_radius * 0.10:
+    if center_distance > larger_radius * config.cbore_concentric_ratio_max:
         return None
 
     # Radii must differ by at least 20%.
@@ -1441,7 +1468,7 @@ def _try_counterbore_fit(
     if smaller_radius <= 0:
         return None
     radius_ratio = larger_radius / smaller_radius
-    if radius_ratio < 1.20:
+    if radius_ratio < config.cbore_radius_ratio_min:
         return None
 
     # Determine which radius is bore vs through-hole.
@@ -1477,15 +1504,15 @@ def _try_counterbore_fit(
     total_depth = float(h_max - h_min)
 
     if (
-        bore_depth < total_depth * 0.10
-        or through_depth < total_depth * 0.10
-        or bore_depth > total_depth * 0.95
-        or through_depth > total_depth * 0.95
+        bore_depth < total_depth * config.cbore_depth_floor_ratio
+        or through_depth < total_depth * config.cbore_depth_floor_ratio
+        or bore_depth > total_depth * config.cbore_depth_ceiling_ratio
+        or through_depth > total_depth * config.cbore_depth_ceiling_ratio
     ):
         return None
 
     # Larger-radius bore should touch only one outer boundary plane.
-    edge_tolerance = total_depth * 0.08
+    edge_tolerance = total_depth * config.cbore_edge_tolerance_ratio
     bore_touches_min = np.min(bore_segment_heights) <= h_min + edge_tolerance
     bore_touches_max = np.max(bore_segment_heights) >= h_max - edge_tolerance
     if bore_touches_min == bore_touches_max:
@@ -1495,7 +1522,7 @@ def _try_counterbore_fit(
     worst_coverage = min(bore_coverage, through_coverage)
     confidence = max(
         0.0,
-        min(1.0, (1.0 - worst_error / 0.10) * worst_coverage),
+        min(1.0, (1.0 - worst_error / config.cbore_radial_error_max) * worst_coverage),
     )
 
     return {
@@ -1579,6 +1606,7 @@ def _fit_circle_2d(
 
 def _fit_axis_aligned_slot_2d(
     points: np.ndarray,
+    config: DetectorConfig,
 ) -> Optional[tuple[np.ndarray, np.ndarray, np.ndarray, float, float, float, int]]:
     if len(points) < 16:
         return None
@@ -1590,13 +1618,13 @@ def _fit_axis_aligned_slot_2d(
     short_axis = 1 - long_axis
     length = float(spans[long_axis])
     width = float(spans[short_axis])
-    if width <= 1e-9 or length / width < 1.40:
+    if width <= 1e-9 or length / width < config.slot_aspect_ratio_min:
         return None
 
     radius = width * 0.5
     center = (mins + maxs) * 0.5
     straight_length = length - width
-    if straight_length <= radius * 0.25:
+    if straight_length <= radius * config.slot_straight_length_min_ratio:
         return None
 
     start = center.copy()
@@ -1614,14 +1642,14 @@ def _fit_axis_aligned_slot_2d(
     slot_error_ratio = float(
         np.percentile(np.abs(distances - radius), 90) / max(radius, 1e-9)
     )
-    if slot_error_ratio > 0.16:
+    if slot_error_ratio > config.slot_error_ratio_max:
         return None
 
     # Require evidence for both caps and both straight sides to avoid treating noise as a slot.
     long_coords = points[:, long_axis]
     short_coords = points[:, short_axis]
-    cap_tolerance = radius * 0.25
-    side_tolerance = radius * 0.25
+    cap_tolerance = radius * config.slot_cap_tolerance_ratio
+    side_tolerance = radius * config.slot_side_tolerance_ratio
     has_start_cap = bool(np.any(long_coords <= start[long_axis] + cap_tolerance))
     has_end_cap = bool(np.any(long_coords >= end[long_axis] - cap_tolerance))
     middle_mask = (long_coords >= start[long_axis] - cap_tolerance) & (
@@ -1648,8 +1676,11 @@ def _center_near_outer_boundary(
     bbox: dict[str, float],
     plane_axes: list[int],
     radius: float,
-    edge_factor: float = 0.1,
+    config: DetectorConfig,
+    edge_factor: Optional[float] = None,
 ) -> bool:
+    if edge_factor is None:
+        edge_factor = config.hole_edge_factor
     labels = ("x", "y", "z")
     for value, axis_index in zip(center_2d, plane_axes):
         min_coord = float(bbox[f"min_{labels[axis_index]}"])
@@ -1666,6 +1697,7 @@ def _rectangle_near_outer_boundary(
     spans_2d: np.ndarray,
     bbox: dict[str, float],
     plane_axes: list[int],
+    config: DetectorConfig,
 ) -> bool:
     labels = ("x", "y", "z")
     for value, span, axis_index in zip(center_2d, spans_2d, plane_axes):
@@ -1686,6 +1718,7 @@ def _slot_near_outer_boundary(
     radius: float,
     bbox: dict[str, float],
     plane_axes: list[int],
+    config: DetectorConfig,
 ) -> bool:
     labels = ("x", "y", "z")
     for local_axis, axis_index in enumerate(plane_axes):

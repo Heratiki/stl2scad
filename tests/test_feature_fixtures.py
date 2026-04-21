@@ -514,25 +514,33 @@ def test_feature_fixture_validation_rejects_invalid_counterbore_geometry():
 
 
 def test_feature_fixture_manifest_rejects_unknown_schema_version(tmp_path):
-    manifest_path = tmp_path / "feature_manifest_schema_mismatch.json"
+    manifest_path = tmp_path / "feature_manifest_schema_unsupported.json"
     manifest_path.write_text(
         """
 {
-    "schema_version": 2,
+    "schema_version": 3,
     "fixtures": [
         {
             "name": "plate_plain",
             "fixture_type": "plate",
             "output_filename": "plate_plain.scad",
             "plate_size": [20.0, 10.0, 2.0],
-            "expected_detection": {
-                "plate_like_solid": true,
-                "hole_count": 0,
-                "slot_count": 0,
-                "linear_pattern_count": 0,
-                "grid_pattern_count": 0,
-                "counterbore_count": 0
-            }
+            "candidates": [
+                {
+                    "rank": 1,
+                    "name": "primary",
+                    "confidence": 0.95,
+                    "expected_detection": {
+                        "plate_like_solid": true,
+                        "box_like_solid": false,
+                        "hole_count": 0,
+                        "slot_count": 0,
+                        "linear_pattern_count": 0,
+                        "grid_pattern_count": 0,
+                        "counterbore_count": 0
+                    }
+                }
+            ]
         }
     ]
 }
@@ -544,9 +552,180 @@ def test_feature_fixture_manifest_rejects_unknown_schema_version(tmp_path):
         load_feature_fixture_manifest(manifest_path)
 
 
-def test_feature_fixture_manifest_covers_roadmap_stress_cases(test_data_dir):
+def test_feature_fixture_candidates_validation():
+    """Test that schema v2 fixture candidates are validated correctly."""
+    # Valid fixture with multiple candidates
+    valid_fixture = {
+        "name": "ambiguous_box",
+        "fixture_type": "box",
+        "output_filename": "ambiguous.scad",
+        "box_size": [20.0, 16.0, 12.0],
+        "candidates": [
+            {
+                "rank": 1,
+                "name": "hollow_box",
+                "confidence": 0.85,
+                "expected_detection": {
+                    "plate_like_solid": False,
+                    "box_like_solid": True,
+                    "hole_count": 0,
+                    "slot_count": 0,
+                    "linear_pattern_count": 0,
+                    "grid_pattern_count": 0,
+                    "counterbore_count": 0,
+                }
+            },
+            {
+                "rank": 2,
+                "name": "wall_plates",
+                "confidence": 0.60,
+                "expected_detection": {
+                    "plate_like_solid": True,
+                    "box_like_solid": False,
+                    "hole_count": 0,
+                    "slot_count": 0,
+                    "linear_pattern_count": 0,
+                    "grid_pattern_count": 0,
+                    "counterbore_count": 0,
+                }
+            }
+        ]
+    }
+    
+    # Should validate successfully
+    spec = validate_feature_fixture_spec(valid_fixture, schema_version=2)
+    assert len(spec["candidates"]) == 2
+    assert spec["candidates"][0]["rank"] == 1
+    assert spec["candidates"][0]["confidence"] == 0.85
+    assert spec["candidates"][1]["rank"] == 2
+
+
+def test_feature_fixture_candidates_require_v2_schema():
+    """Test that candidates are required in schema v2."""
+    fixture_v2_missing_candidates = {
+        "name": "invalid_v2",
+        "fixture_type": "box",
+        "output_filename": "invalid.scad",
+        "box_size": [20.0, 16.0, 12.0],
+    }
+    
+    with pytest.raises(ValueError, match="requires candidates array"):
+        validate_feature_fixture_spec(fixture_v2_missing_candidates, schema_version=2)
+
+
+def test_feature_fixture_candidates_invalid_confidence():
+    """Test that candidate confidence must be between 0 and 1."""
+    invalid_fixture = {
+        "name": "invalid_confidence",
+        "fixture_type": "box",
+        "output_filename": "invalid.scad",
+        "box_size": [20.0, 16.0, 12.0],
+        "candidates": [
+            {
+                "rank": 1,
+                "name": "primary",
+                "confidence": 1.5,  # Invalid: > 1.0
+                "expected_detection": {
+                    "plate_like_solid": False,
+                    "box_like_solid": True,
+                    "hole_count": 0,
+                    "slot_count": 0,
+                    "linear_pattern_count": 0,
+                    "grid_pattern_count": 0,
+                    "counterbore_count": 0,
+                }
+            }
+        ]
+    }
+    
+    with pytest.raises(ValueError, match="confidence must be 0.0-1.0"):
+        validate_feature_fixture_spec(invalid_fixture, schema_version=2)
+
+
+def test_feature_fixture_candidates_duplicate_ranks():
+    """Test that duplicate ranks are rejected."""
+    invalid_fixture = {
+        "name": "duplicate_ranks",
+        "fixture_type": "box",
+        "output_filename": "invalid.scad",
+        "box_size": [20.0, 16.0, 12.0],
+        "candidates": [
+            {
+                "rank": 1,
+                "name": "first",
+                "confidence": 0.85,
+                "expected_detection": {
+                    "plate_like_solid": False,
+                    "box_like_solid": True,
+                    "hole_count": 0,
+                    "slot_count": 0,
+                    "linear_pattern_count": 0,
+                    "grid_pattern_count": 0,
+                    "counterbore_count": 0,
+                }
+            },
+            {
+                "rank": 1,  # Duplicate!
+                "name": "second",
+                "confidence": 0.60,
+                "expected_detection": {
+                    "plate_like_solid": True,
+                    "box_like_solid": False,
+                    "hole_count": 0,
+                    "slot_count": 0,
+                    "linear_pattern_count": 0,
+                    "grid_pattern_count": 0,
+                    "counterbore_count": 0,
+                }
+            }
+        ]
+    }
+    
+    with pytest.raises(ValueError, match="duplicate rank"):
+        validate_feature_fixture_spec(invalid_fixture, schema_version=2)
+
+
+def test_feature_fixture_manifest_with_ambiguous_fixture(test_data_dir):
+    """Test that the manifest includes an ambiguous fixture with multiple candidates."""
     manifest_path = test_data_dir / "feature_fixtures_manifest.json"
     fixtures = load_feature_fixture_manifest(manifest_path)
+    
+    ambiguous = [f for f in fixtures if f["name"] == "box_hollow_ambiguous"]
+    assert len(ambiguous) == 1, "Manifest should include box_hollow_ambiguous fixture"
+    
+    fixture = ambiguous[0]
+    assert len(fixture["candidates"]) >= 2, "Ambiguous fixture should have multiple candidates"
+    
+    # Verify candidates are sorted by rank
+    ranks = [c["rank"] for c in fixture["candidates"]]
+    assert ranks == sorted(ranks), "Candidates must be sorted by rank"
+    
+    # Verify primary interpretation is most confident
+    assert fixture["candidates"][0]["confidence"] >= fixture["candidates"][1]["confidence"], \
+        "Primary candidate should have higher confidence than secondary"
+
+
+def test_feature_fixture_manifest_schema_v2(test_data_dir):
+    """Test that all fixtures in the manifest have been properly migrated to schema v2."""
+    import json
+    manifest_path = test_data_dir / "feature_fixtures_manifest.json"
+    raw_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    
+    assert raw_manifest["schema_version"] == 2, "Manifest should be schema version 2"
+    
+    for fixture in raw_manifest["fixtures"]:
+        assert "candidates" in fixture, f"Fixture {fixture['name']} missing candidates array"
+        assert isinstance(fixture["candidates"], list), f"Fixture {fixture['name']} candidates must be array"
+        assert len(fixture["candidates"]) > 0, f"Fixture {fixture['name']} candidates must not be empty"
+        
+        for candidate in fixture["candidates"]:
+            assert "rank" in candidate, f"Candidate in {fixture['name']} missing rank"
+            assert "name" in candidate, f"Candidate in {fixture['name']} missing name"
+            assert "confidence" in candidate, f"Candidate in {fixture['name']} missing confidence"
+            assert "expected_detection" in candidate, f"Candidate in {fixture['name']} missing expected_detection"
+
+
+def test_feature_fixture_manifest_covers_roadmap_stress_cases(test_data_dir):
 
     plate_fixtures = [fixture for fixture in fixtures if fixture["fixture_type"] == "plate"]
     negative_fixtures = [fixture for fixture in fixtures if fixture["fixture_type"] in {"sphere", "torus"}]

@@ -19,9 +19,9 @@ def load_feature_fixture_manifest(
     path = Path(manifest_path)
     payload = json.loads(path.read_text(encoding="utf-8"))
     schema_version = payload.get("schema_version")
-    if schema_version != 1:
+    if schema_version not in (1, 2):
         raise ValueError(
-            f"Unsupported feature fixture manifest schema_version '{schema_version}'. Expected 1"
+            f"Unsupported feature fixture manifest schema_version '{schema_version}'. Expected 1 or 2"
         )
     fixtures = payload.get("fixtures")
     if not isinstance(fixtures, list) or not fixtures:
@@ -30,7 +30,7 @@ def load_feature_fixture_manifest(
     normalized: list[dict[str, Any]] = []
     names_seen: set[str] = set()
     for raw_fixture in fixtures:
-        fixture = validate_feature_fixture_spec(raw_fixture)
+        fixture = validate_feature_fixture_spec(raw_fixture, schema_version=schema_version)
         name = str(fixture["name"])
         if name in names_seen:
             raise ValueError(f"Duplicate feature fixture name: {name}")
@@ -39,8 +39,12 @@ def load_feature_fixture_manifest(
     return normalized
 
 
-def validate_feature_fixture_spec(raw_fixture: dict[str, Any]) -> dict[str, Any]:
-    """Validate one feature fixture spec and return a normalized copy."""
+def validate_feature_fixture_spec(raw_fixture: dict[str, Any], schema_version: int = 1) -> dict[str, Any]:
+    """Validate one feature fixture spec and return a normalized copy.
+    
+    For schema_version 1: expected_detection is required and implicitly represents a single candidate.
+    For schema_version 2: candidates array is required; each candidate has rank, name, confidence, expected_detection.
+    """
     if not isinstance(raw_fixture, dict):
         raise ValueError("Feature fixture entries must be objects")
 
@@ -65,10 +69,31 @@ def validate_feature_fixture_spec(raw_fixture: dict[str, Any]) -> dict[str, Any]
         "description": str(raw_fixture.get("description", "")).strip(),
         "output_filename": output_filename,
         "transform": _validate_fixture_transform(raw_fixture.get("transform"), name),
-        "expected_detection": _validate_expected_detection(
-            raw_fixture.get("expected_detection"), name
-        ),
     }
+
+    # Handle candidates for schema v2; fall back to expected_detection for v1
+    if schema_version >= 2:
+        candidates = raw_fixture.get("candidates")
+        if not isinstance(candidates, list) or not candidates:
+            raise ValueError(f"Feature fixture '{name}' (schema v2) requires candidates array")
+        spec["candidates"] = _validate_candidates(candidates, name)
+        # For backward compatibility, also populate expected_detection from primary candidate
+        spec["expected_detection"] = spec["candidates"][0]["expected_detection"]
+    else:
+        # Schema v1: expected_detection only
+        expected_detection = _validate_expected_detection(
+            raw_fixture.get("expected_detection"), name
+        )
+        spec["expected_detection"] = expected_detection
+        # Wrap in candidates for consistent internal representation
+        spec["candidates"] = [
+            {
+                "rank": 1,
+                "name": "primary",
+                "confidence": 0.95,
+                "expected_detection": expected_detection,
+            }
+        ]
 
     geometry = _validate_geometry_by_fixture_type(raw_fixture, name, fixture_type)
     spec.update(geometry)
@@ -637,6 +662,67 @@ def _validate_expected_detection(
         ),
     }
     return expected
+
+
+def _validate_candidates(
+    raw_candidates: list[Any],
+    fixture_name: str,
+) -> list[dict[str, Any]]:
+    """Validate candidates array for schema v2 fixtures.
+    
+    Each candidate must have: rank, name, confidence, expected_detection.
+    Candidates must be sorted by rank (ascending).
+    """
+    if not isinstance(raw_candidates, list) or not raw_candidates:
+        raise ValueError(f"Feature fixture '{fixture_name}' candidates must be non-empty array")
+    
+    validated_candidates: list[dict[str, Any]] = []
+    ranks_seen: set[int] = set()
+    
+    for index, raw_candidate in enumerate(raw_candidates):
+        if not isinstance(raw_candidate, dict):
+            raise ValueError(
+                f"Feature fixture '{fixture_name}' candidates[{index}] must be object"
+            )
+        
+        rank = int(raw_candidate.get("rank", 0))
+        if rank < 1:
+            raise ValueError(
+                f"Feature fixture '{fixture_name}' candidates[{index}].rank must be >= 1"
+            )
+        if rank in ranks_seen:
+            raise ValueError(
+                f"Feature fixture '{fixture_name}' has duplicate rank {rank}"
+            )
+        ranks_seen.add(rank)
+        
+        name = str(raw_candidate.get("name", "")).strip()
+        if not name:
+            raise ValueError(
+                f"Feature fixture '{fixture_name}' candidates[{index}].name is required"
+            )
+        
+        confidence = float(raw_candidate.get("confidence", 0.0))
+        if not (0.0 <= confidence <= 1.0):
+            raise ValueError(
+                f"Feature fixture '{fixture_name}' candidates[{index}].confidence must be 0.0-1.0"
+            )
+        
+        expected_detection = _validate_expected_detection(
+            raw_candidate.get("expected_detection"),
+            f"{fixture_name}.candidates[{index}]",
+        )
+        
+        validated_candidates.append({
+            "rank": rank,
+            "name": name,
+            "confidence": confidence,
+            "expected_detection": expected_detection,
+        })
+    
+    # Sort by rank to ensure consistent ordering
+    validated_candidates.sort(key=lambda c: c["rank"])
+    return validated_candidates
 
 
 def _validate_plate_hole(

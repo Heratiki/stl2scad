@@ -178,7 +178,7 @@ def test_detect_primitive_with_cgal_handles_invalid_output(monkeypatch):
 
 def test_cgal_helper_capabilities_end_to_end():
     helper_path = (
-        Path(__file__).resolve().parents[1] / "scripts" / "stl2scad-cgal-helper.py"
+        Path(__file__).resolve().parents[1] / "scripts" / "stl2scad_cgal_helper.py"
     ).resolve()
 
     capabilities = cgal_backend.get_cgal_backend_capabilities(
@@ -589,7 +589,7 @@ def test_cgal_helper_prototype_end_to_end(test_data_dir):
     fixtures_dir = test_data_dir / "benchmark_fixtures"
     ensure_benchmark_fixtures(fixtures_dir)
     helper_path = (
-        Path(__file__).resolve().parents[1] / "scripts" / "stl2scad-cgal-helper.py"
+        Path(__file__).resolve().parents[1] / "scripts" / "stl2scad_cgal_helper.py"
     ).resolve()
 
     result = cgal_backend.detect_primitive_with_cgal(
@@ -618,7 +618,7 @@ def test_cgal_helper_command_detects_rotated_cylinder_fixture(test_data_dir):
     fixtures_dir = test_data_dir / "benchmark_fixtures"
     ensure_benchmark_fixtures(fixtures_dir)
     helper_path = (
-        Path(__file__).resolve().parents[1] / "scripts" / "stl2scad-cgal-helper.py"
+        Path(__file__).resolve().parents[1] / "scripts" / "stl2scad_cgal_helper.py"
     ).resolve()
     mesh = stl.mesh.Mesh.from_file(str(fixtures_dir / "primitive_cylinder_rotated.stl"))
 
@@ -654,7 +654,7 @@ def test_cgal_helper_command_detects_cone_fixture(test_data_dir):
     fixtures_dir = test_data_dir / "benchmark_fixtures"
     ensure_benchmark_fixtures(fixtures_dir)
     helper_path = (
-        Path(__file__).resolve().parents[1] / "scripts" / "stl2scad-cgal-helper.py"
+        Path(__file__).resolve().parents[1] / "scripts" / "stl2scad_cgal_helper.py"
     ).resolve()
     mesh = stl.mesh.Mesh.from_file(str(fixtures_dir / "primitive_cone.stl"))
 
@@ -695,7 +695,7 @@ def test_converter_cgal_backend_uses_helper_and_emits_metadata(
     fixtures_dir = test_data_dir / "benchmark_fixtures"
     ensure_benchmark_fixtures(fixtures_dir)
     helper_path = (
-        Path(__file__).resolve().parents[1] / "scripts" / "stl2scad-cgal-helper.py"
+        Path(__file__).resolve().parents[1] / "scripts" / "stl2scad_cgal_helper.py"
     ).resolve()
     monkeypatch.setenv(cgal_backend.CGAL_HELPER_ENV_VAR, str(helper_path))
 

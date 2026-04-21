@@ -15,7 +15,7 @@ Use an **external helper executable** as the initial CGAL integration boundary, 
 3. PATH search for:
    - `stl2scad-cgal-helper`
    - `stl2scad-cgal-helper.exe`
-   - `stl2scad-cgal-helper.py`
+   - `stl2scad_cgal_helper.py`
 
 ## Request Protocol
 Primitive detection command invocation:
@@ -93,7 +93,7 @@ If no reliable primitive is found:
 6. If neither yields a confident primitive, converter falls back to polyhedron output.
 
 ## Phase 2 Status
-1. Minimal helper prototype implemented (`scripts/stl2scad-cgal-helper.py`).
+1. Minimal helper prototype implemented (`scripts/stl2scad_cgal_helper.py`).
 2. End-to-end adapter/protocol tests added (`tests/test_cgal_backend.py`).
 3. Diagnostics now propagate into conversion metadata and verification JSON reports.
 4. Helper capability reporting now makes CGAL binding availability explicit.

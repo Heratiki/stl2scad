@@ -7,7 +7,7 @@ Close out the Phase 2 deliverable for optional CGAL-backed parametric recognitio
 - [x] Integration boundary documented (`docs/planning/cgal_integration_boundary.md`)
 - [x] Adapter implemented (`stl2scad/core/cgal_backend.py`)
 - [x] `cgal` recognition backend wired through converter/recognition routing
-- [x] Helper prototype available for end-to-end protocol validation (`scripts/stl2scad-cgal-helper.py`)
+- [x] Helper prototype available for end-to-end protocol validation (`scripts/stl2scad_cgal_helper.py`)
 - [x] Converter metadata includes backend/primitive fields for CGAL path
 - [x] Verification JSON report includes conversion metadata from SCAD header (including backend diagnostics)
 - [x] Automated tests cover:

@@ -28,7 +28,7 @@ CGAL_HELPER_ENV_VAR = "STL2SCAD_CGAL_HELPER"
 DEFAULT_CGAL_HELPER_NAMES = (
     "stl2scad-cgal-helper",
     "stl2scad-cgal-helper.exe",
-    "stl2scad-cgal-helper.py",
+    "stl2scad_cgal_helper.py",
 )
 _FLOAT_RE = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
 _VECTOR_RE = rf"\(\s*({_FLOAT_RE})\s*,\s*({_FLOAT_RE})\s*,\s*({_FLOAT_RE})\s*\)"

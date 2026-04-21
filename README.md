@@ -79,7 +79,7 @@ pip install -e .[parametric_phase2]
 # Point to your helper executable/script (example on Windows)
 set STL2SCAD_CGAL_HELPER=C:\path\to\stl2scad-cgal-helper.exe
 # or prototype script:
-# set STL2SCAD_CGAL_HELPER=C:\path\to\stl2scad\scripts\stl2scad-cgal-helper.py
+# set STL2SCAD_CGAL_HELPER=C:\path\to\stl2scad\scripts\stl2scad_cgal_helper.py
 ```
 
 The direct Python binding path currently accepts high-coverage sphere,

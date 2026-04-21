@@ -24,4 +24,5 @@ module through_hole_z(center, diameter, length) {
 
 difference() {
   translate(box_origin) cube(box_size);
+  translate([-7.000000, -3.000000, -1.000000]) cube([14.000000, 6.000000, 2.000000]);  // cutout_0
 }

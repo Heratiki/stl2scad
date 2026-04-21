@@ -13,6 +13,7 @@ from stl2scad.core.feature_fixtures import (
     generate_feature_fixture_scad,
     iter_expected_feature_counts,
     load_feature_fixture_manifest,
+    rank_feature_fixture_candidates,
     validate_feature_fixture_spec,
     write_feature_fixture_library,
 )
@@ -703,6 +704,67 @@ def test_feature_fixture_manifest_with_ambiguous_fixture(test_data_dir):
     # Verify primary interpretation is most confident
     assert fixture["candidates"][0]["confidence"] >= fixture["candidates"][1]["confidence"], \
         "Primary candidate should have higher confidence than secondary"
+    assert fixture["cutouts"], "Ambiguous hollow box fixture should include a real cavity cutout"
+    assert fixture["cutouts"][0]["center"] == [0.0, 0.0, 0.0]
+
+
+def test_feature_fixture_candidate_ranking_prefers_exact_match():
+    fixture = validate_feature_fixture_spec(
+        {
+            "name": "ambiguous_box",
+            "fixture_type": "box",
+            "output_filename": "ambiguous_box.scad",
+            "box_size": [24.0, 16.0, 12.0],
+            "candidates": [
+                {
+                    "rank": 1,
+                    "name": "hollow_box_via_difference",
+                    "confidence": 0.85,
+                    "expected_detection": {
+                        "plate_like_solid": False,
+                        "box_like_solid": True,
+                        "hole_count": 0,
+                        "slot_count": 0,
+                        "linear_pattern_count": 0,
+                        "grid_pattern_count": 0,
+                        "counterbore_count": 0,
+                    },
+                },
+                {
+                    "rank": 2,
+                    "name": "six_wall_plates_interpretation",
+                    "confidence": 0.60,
+                    "expected_detection": {
+                        "plate_like_solid": True,
+                        "box_like_solid": False,
+                        "hole_count": 0,
+                        "slot_count": 0,
+                        "linear_pattern_count": 0,
+                        "grid_pattern_count": 0,
+                        "counterbore_count": 0,
+                    },
+                },
+            ],
+        },
+        schema_version=2,
+    )
+    graph = {
+        "features": [
+            {"type": "box_like_solid", "confidence": 0.82},
+            {"type": "axis_boundary_plane_pair", "confidence": 1.0},
+        ]
+    }
+
+    rankings = rank_feature_fixture_candidates(fixture, graph)
+
+    assert [ranking["name"] for ranking in rankings] == [
+        "hollow_box_via_difference",
+        "six_wall_plates_interpretation",
+    ]
+    assert rankings[0]["exact_match"] is True
+    assert rankings[0]["candidate_confidence"] == pytest.approx(0.82)
+    assert rankings[1]["exact_match"] is False
+    assert rankings[1]["candidate_confidence"] == 0.0
 
 
 def test_feature_fixture_manifest_schema_v2(test_data_dir):
@@ -971,6 +1033,46 @@ def test_feature_fixture_preview_round_trip_detection(test_data_dir, test_output
             ), f"{fixture['name']} preview expected {expected_count} {feature_type} entries, got {feature_counts.get(feature_type, 0)}"
 
         _assert_fixture_dimensions(fixture, preview_graph["features"])
+
+
+def test_feature_fixture_ambiguous_candidate_round_trip_ranking(
+    test_data_dir,
+    test_output_dir,
+):
+    manifest_path = test_data_dir / "feature_fixtures_manifest.json"
+    fixtures = load_feature_fixture_manifest(manifest_path)
+    fixture = next(
+        item for item in fixtures if item["name"] == "box_hollow_ambiguous"
+    )
+    write_feature_fixture_library(manifest_path, test_output_dir)
+
+    try:
+        openscad_path = get_openscad_path()
+    except FileNotFoundError as exc:
+        if os.getenv("CI", "").lower() == "true":
+            pytest.fail(f"OpenSCAD is required in CI for ambiguous fixture checks: {exc}")
+        pytest.skip(f"OpenSCAD not available: {exc}")
+
+    scad_path = test_output_dir / fixture["output_filename"]
+    stl_path = test_output_dir / f"{Path(fixture['output_filename']).stem}.stl"
+    log_path = test_output_dir / f"{fixture['name']}.candidate.log"
+
+    success = run_openscad(
+        fixture["name"],
+        ["--render", "-o", str(stl_path), str(scad_path)],
+        str(log_path),
+        openscad_path,
+    )
+
+    assert success, f"OpenSCAD render failed for {fixture['name']}"
+    graph = build_feature_graph_for_stl(stl_path)
+    rankings = rank_feature_fixture_candidates(fixture, graph)
+
+    assert rankings[0]["name"] == fixture["candidates"][0]["name"]
+    assert rankings[0]["exact_match"] is True
+    assert rankings[0]["candidate_confidence"] >= 0.70
+    assert rankings[1]["name"] == fixture["candidates"][1]["name"]
+    assert rankings[1]["exact_match"] is False
 
 
 def test_feature_fixture_negative_class_detection(test_data_dir, test_output_dir):

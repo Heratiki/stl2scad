@@ -10,6 +10,15 @@ from typing import Any, Iterable, Optional, Union
 
 _SUPPORTED_FIXTURE_TYPES = {"plate", "box", "l_bracket", "sphere", "torus"}
 _AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
+_COUNTED_FEATURE_TYPES = (
+    "plate_like_solid",
+    "box_like_solid",
+    "hole_like_cutout",
+    "slot_like_cutout",
+    "linear_hole_pattern",
+    "grid_hole_pattern",
+    "counterbore_hole",
+)
 
 
 def load_feature_fixture_manifest(
@@ -120,7 +129,10 @@ def validate_feature_fixture_spec(raw_fixture: dict[str, Any], schema_version: i
 
 def generate_feature_fixture_scad(fixture: dict[str, Any]) -> str:
     """Generate OpenSCAD source for one validated fixture."""
-    normalized = validate_feature_fixture_spec(fixture)
+    normalized = validate_feature_fixture_spec(
+        fixture,
+        schema_version=_fixture_schema_version(fixture),
+    )
     fixture_type = normalized["fixture_type"]
     if fixture_type == "plate":
         return _generate_plate_fixture_scad(normalized)
@@ -157,6 +169,86 @@ def iter_expected_feature_counts(
 ) -> dict[str, int]:
     """Return expected detector counts for a validated fixture."""
     expected = fixture["expected_detection"]
+    return _expected_feature_counts(expected)
+
+
+def summarize_detected_feature_counts(graph: dict[str, Any]) -> dict[str, int]:
+    """Count detector output entries for the feature types tracked by fixtures."""
+    feature_counts = {feature_type: 0 for feature_type in _COUNTED_FEATURE_TYPES}
+    for feature in graph.get("features", []):
+        feature_type = str(feature.get("type", ""))
+        if feature_type in feature_counts:
+            feature_counts[feature_type] += 1
+    return feature_counts
+
+
+def rank_feature_fixture_candidates(
+    fixture: dict[str, Any],
+    graph: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Rank declared fixture interpretations against an observed feature graph."""
+    normalized = validate_feature_fixture_spec(
+        fixture,
+        schema_version=_fixture_schema_version(fixture),
+    )
+    actual_counts = summarize_detected_feature_counts(graph)
+    confidence_by_type: dict[str, list[float]] = {
+        feature_type: [] for feature_type in _COUNTED_FEATURE_TYPES
+    }
+    for feature in graph.get("features", []):
+        feature_type = str(feature.get("type", ""))
+        if feature_type not in confidence_by_type:
+            continue
+        confidence_by_type[feature_type].append(float(feature.get("confidence", 0.0)))
+    for confidences in confidence_by_type.values():
+        confidences.sort(reverse=True)
+
+    rankings: list[dict[str, Any]] = []
+    for candidate in normalized["candidates"]:
+        expected_counts = _expected_feature_counts(candidate["expected_detection"])
+        total_delta = sum(
+            abs(actual_counts[feature_type] - expected_counts[feature_type])
+            for feature_type in _COUNTED_FEATURE_TYPES
+        )
+        normalization = sum(
+            max(actual_counts[feature_type], expected_counts[feature_type], 1)
+            for feature_type in _COUNTED_FEATURE_TYPES
+        )
+        match_score = max(0.0, 1.0 - float(total_delta) / float(normalization))
+        support_confidence = _candidate_support_confidence(
+            expected_counts,
+            confidence_by_type,
+        )
+        exact_match = total_delta == 0
+        rankings.append(
+            {
+                "rank": int(candidate["rank"]),
+                "name": str(candidate["name"]),
+                "declared_confidence": float(candidate["confidence"]),
+                "expected_feature_counts": expected_counts,
+                "actual_feature_counts": dict(actual_counts),
+                "count_delta": int(total_delta),
+                "match_score": float(match_score),
+                "support_confidence": float(support_confidence),
+                "candidate_confidence": float(match_score * support_confidence),
+                "exact_match": bool(exact_match),
+            }
+        )
+
+    rankings.sort(
+        key=lambda item: (
+            item["exact_match"],
+            item["candidate_confidence"],
+            item["match_score"],
+            item["declared_confidence"],
+            -item["rank"],
+        ),
+        reverse=True,
+    )
+    return rankings
+
+
+def _expected_feature_counts(expected: dict[str, Any]) -> dict[str, int]:
     return {
         "plate_like_solid": 1 if expected["plate_like_solid"] else 0,
         "box_like_solid": 1 if expected["box_like_solid"] else 0,
@@ -166,6 +258,30 @@ def iter_expected_feature_counts(
         "grid_hole_pattern": expected["grid_pattern_count"],
         "counterbore_hole": expected["counterbore_count"],
     }
+
+
+def _candidate_support_confidence(
+    expected_counts: dict[str, int],
+    confidence_by_type: dict[str, list[float]],
+) -> float:
+    required_confidences: list[float] = []
+    for feature_type, expected_count in expected_counts.items():
+        if expected_count <= 0:
+            continue
+        confidences = confidence_by_type.get(feature_type, [])
+        if len(confidences) < expected_count:
+            return 0.0
+        required_confidences.append(float(confidences[expected_count - 1]))
+    if not required_confidences:
+        return 1.0
+    return min(required_confidences)
+
+
+def _fixture_schema_version(raw_fixture: dict[str, Any]) -> int:
+    candidates = raw_fixture.get("candidates")
+    if isinstance(candidates, list) and candidates:
+        return 2
+    return 1
 
 
 def _validate_geometry_by_fixture_type(

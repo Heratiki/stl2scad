@@ -122,11 +122,12 @@ Detects axis-aligned boxes, through-holes, slots, and repeated hole patterns (li
 
 ### Recently completed (2026-04-20)
 
+- **Schema-v2 candidate interpretation checks** — feature fixtures can now declare ranked interpretation candidates, and the harness can rank those candidates against an observed feature graph via `rank_feature_fixture_candidates`. The `box_hollow_ambiguous` fixture now includes a real interior cavity and a round-trip test asserts the intended interpretation ranks first.
 - **Single-step inventory-prefiltered graph workflow** — folder-level feature graph generation can now run inventory first, persist the inventory optionally, and build graphs only for files classified as `mechanical_candidate`. This is exposed in both `scripts/build_feature_graph.py` and `python -m stl2scad feature-graph --inventory-prefilter`.
 - **Dimensional round-trip assertions** — `test_feature_fixture_round_trip_detection` now compares detected feature dimensions against the manifest within per-field tolerances (hole diameter/center, slot width/length, counterbore through/bore/depth, plate and box extents, linear/grid pattern origin/step/spacing).
 - **Counterbore depth generator fix** — `counterbore_hole` module now takes explicit `plate_thickness` and anchors the bore at `plate_thickness - bore_depth`, eliminating the compounded 0.1mm offset. All 11 affected `.scad` fixtures were regenerated.
 - **CI-hard-fail for missing OpenSCAD** — `test_feature_fixture_round_trip_detection` fails (no longer silently skips) when `CI=true` and the OpenSCAD binary is unavailable.
-- **Manifest `schema_version` enforcement** — `load_feature_fixture_manifest` rejects any manifest whose schema_version is not 1, with a dedicated negative test.
+- **Manifest `schema_version` enforcement** — `load_feature_fixture_manifest` rejects unknown schema versions, and the checked-in fixture manifest is now schema version 2 with explicit candidate interpretations.
 - **Parametric preview round-trip** — SCAD previews now declare named variables for supported plate geometry and cutouts, and `test_feature_fixture_preview_round_trip_detection` re-renders those previews to STL and re-checks detector counts plus supported dimensions.
 
 ### Immediate priorities
@@ -139,7 +140,7 @@ Detects axis-aligned boxes, through-holes, slots, and repeated hole patterns (li
 
 Once the round-trip is asserting dimensions, the fixture pipeline becomes the backbone for the parametric-SCAD work. The natural follow-ons:
 
-1. **Confidence-scored candidate fixtures** — introduce manifest entries that declare *multiple* valid interpretations (e.g., hollow box = one `difference()` of two cubes OR six wall slabs) and an expected ranking. The detector's ranked output must put the intended interpretation at the top with a confidence above threshold. This turns the fixture system into the ground truth for the interactive-selection modes already described in the long-term vision.
+1. **Detector-native interpretation ranking** — schema-v2 fixtures and harness-side candidate ranking are now in place, including a real hollow-box ambiguity fixture. The next step is to make the detector emit ranked interpretation candidates directly so the fixture harness can compare declared ranking/confidence against detector-produced ranking/confidence, not only against observed feature-count matches.
 2. **Negative-class fixtures** — add deliberately non-mechanical and ambiguous shapes (organic blobs, near-primitives that should NOT classify as primitives, L-brackets with and without a bracket primitive implemented) and assert the detector stays silent or falls through to polyhedron. Guards against detector over-reach as new primitives come online.
 3. **Noise-injection fixtures** — generate the manifest STLs with controlled perturbation (vertex jitter, normal flipping on a fraction of triangles, small non-manifold gaps) and assert the detector still produces the right feature graph. Real CAD-exported STLs aren't pristine; this closes the gap between synthetic fixtures and field data.
 4. **Promote the manifest schema to a versioned contract** — `schema_version` already exists; start enforcing it on load and document the schema so third-party fixture authors (or future detectors) have a stable target.

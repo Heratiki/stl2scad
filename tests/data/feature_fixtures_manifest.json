@@ -838,6 +838,12 @@
       "description": "Hollow box with interior cavity - can be interpreted as single hollow box OR as six separate wall plates",
       "output_filename": "box_hollow_ambiguous.scad",
       "box_size": [24.0, 16.0, 12.0],
+      "cutouts": [
+        {
+          "center": [0.0, 0.0, 0.0],
+          "size": [14.0, 6.0, 2.0]
+        }
+      ],
       "candidates": [
         {
           "rank": 1,

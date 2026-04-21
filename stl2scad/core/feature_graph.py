@@ -196,6 +196,8 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
     supported_patterns = _supported_hole_patterns(graph, thickness_axis)
     linear_pattern_names: dict[int, str] = {}
     grid_pattern_names: dict[int, str] = {}
+    emitted_hole_keys: set[tuple[float, float, float]] = set()
+    standalone_holes: list[dict[str, Any]] = []
 
     lines = [
         "// Feature graph SCAD preview",
@@ -240,6 +242,24 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
                         f"{pattern_name}_diameter = {float(pattern['diameter']):.6f};",
                     ]
                 )
+            emitted_hole_keys.update(
+                _hole_key([float(value) for value in center])
+                for center in pattern.get("centers", [])
+            )
+        for hole in holes:
+            if hole.get("axis") != thickness_axis:
+                continue
+            center = [float(value) for value in hole["center"]]
+            if _hole_key(center) in emitted_hole_keys:
+                continue
+            standalone_holes.append(hole)
+        for hole_index, hole in enumerate(standalone_holes):
+            lines.extend(
+                [
+                    f"hole_{hole_index}_center = {_scad_vector([float(value) for value in hole['center']])};",
+                    f"hole_{hole_index}_diameter = {float(hole['diameter']):.6f};",
+                ]
+            )
         for slot_index, slot in enumerate(slots):
             if slot.get("axis") != thickness_axis:
                 continue
@@ -304,7 +324,6 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         ]
     )
 
-    emitted_hole_keys: set[tuple[float, float, float]] = set()
     for pattern_index, pattern in enumerate(supported_patterns):
         diameter = float(pattern["diameter"])
         centers = [[float(value) for value in center] for center in pattern["centers"]]
@@ -331,16 +350,11 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
             lines.append(f"  for (hole_center = {center_list}) {{")
             lines.append(f"    hole_cutout(hole_center, {diameter:.6f});")
             lines.append("  }")
-        emitted_hole_keys.update(_hole_key(center) for center in centers)
 
-    for hole in holes:
-        if hole.get("axis") != thickness_axis:
-            continue
-        center = [float(value) for value in hole["center"]]
-        if _hole_key(center) in emitted_hole_keys:
-            continue
-        diameter = float(hole["diameter"])
-        lines.append(f"  hole_cutout({_scad_vector(center)}, {diameter:.6f});")
+    for hole_index, hole in enumerate(standalone_holes):
+        lines.append(
+            f"  hole_cutout(hole_{hole_index}_center, hole_{hole_index}_diameter);"
+        )
 
     for slot_index, slot in enumerate(slots):
         if slot.get("axis") != thickness_axis:

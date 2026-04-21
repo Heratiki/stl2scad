@@ -16,7 +16,10 @@ from stl2scad.core.feature_fixtures import (
     validate_feature_fixture_spec,
     write_feature_fixture_library,
 )
-from stl2scad.core.feature_graph import build_feature_graph_for_stl
+from stl2scad.core.feature_graph import (
+    build_feature_graph_for_stl,
+    emit_feature_graph_scad_preview,
+)
 
 _SIZE_TOL = 0.05
 _CENTER_TOL = 0.15
@@ -395,6 +398,53 @@ def _iter_plate_fixture_holes(fixture):
                 ], diameter
 
 
+def _assert_preview_named_variables(fixture, preview_scad):
+    assert "plate_origin = [" in preview_scad
+    assert "plate_size = [" in preview_scad
+
+    if fixture.get("slots"):
+        assert "slot_0_start = [" in preview_scad
+        assert "slot_0_end = [" in preview_scad
+        assert "slot_0_width = " in preview_scad
+
+    if fixture.get("counterbores"):
+        assert "counterbore_0_center = [" in preview_scad
+        assert "counterbore_0_through_diameter = " in preview_scad
+        assert "counterbore_0_bore_diameter = " in preview_scad
+        assert "counterbore_0_bore_depth = " in preview_scad
+
+    if fixture.get("linear_hole_patterns") or int(
+        fixture["expected_detection"].get("linear_pattern_count", 0)
+    ) > 0:
+        assert "hole_pattern_0_count = " in preview_scad
+        assert "hole_pattern_0_origin = [" in preview_scad
+        assert "hole_pattern_0_step = [" in preview_scad
+        assert "hole_pattern_0_diameter = " in preview_scad
+
+    if fixture.get("grid_hole_patterns"):
+        assert "hole_grid_0_rows = " in preview_scad
+        assert "hole_grid_0_cols = " in preview_scad
+        assert "hole_grid_0_origin = [" in preview_scad
+        assert "hole_grid_0_row_step = [" in preview_scad
+        assert "hole_grid_0_col_step = [" in preview_scad
+        assert "hole_grid_0_diameter = " in preview_scad
+
+    expected_plate_holes = list(_iter_plate_fixture_holes(fixture))
+    expected_pattern_holes = sum(
+        int(pattern["count"]) for pattern in fixture.get("linear_hole_patterns", [])
+    ) + sum(
+        int(pattern["rows"]) * int(pattern["cols"])
+        for pattern in fixture.get("grid_hole_patterns", [])
+    )
+    expected_pattern_holes += sum(
+        int(pattern["count"]) for pattern in _expected_inferred_linear_patterns(fixture)
+    )
+    expected_standalone_holes = max(0, len(expected_plate_holes) - expected_pattern_holes)
+    if expected_standalone_holes:
+        assert "hole_0_center = [" in preview_scad
+        assert "hole_0_diameter = " in preview_scad
+
+
 def test_feature_fixture_manifest_matches_checked_in_scad(test_data_dir, test_output_dir):
     manifest_path = test_data_dir / "feature_fixtures_manifest.json"
     checked_in_dir = test_data_dir / "feature_fixtures_scad"
@@ -655,3 +705,69 @@ def test_feature_fixture_round_trip_detection(test_data_dir, test_output_dir):
             ), f"{fixture['name']} expected {expected_count} {feature_type} entries, got {feature_counts.get(feature_type, 0)}"
 
         _assert_fixture_dimensions(fixture, graph["features"])
+
+
+def test_feature_fixture_preview_round_trip_detection(test_data_dir, test_output_dir):
+    manifest_path = test_data_dir / "feature_fixtures_manifest.json"
+    fixtures = load_feature_fixture_manifest(manifest_path)
+    write_feature_fixture_library(manifest_path, test_output_dir)
+
+    try:
+        openscad_path = get_openscad_path()
+    except FileNotFoundError as exc:
+        if os.getenv("CI", "").lower() == "true":
+            pytest.fail(f"OpenSCAD is required in CI for feature preview round-trip checks: {exc}")
+        pytest.skip(f"OpenSCAD not available: {exc}")
+
+    for fixture in fixtures:
+        if fixture["fixture_type"] != "plate":
+            continue
+
+        scad_path = test_output_dir / fixture["output_filename"]
+        stl_path = test_output_dir / f"{Path(fixture['output_filename']).stem}.stl"
+        log_path = test_output_dir / f"{fixture['name']}.log"
+
+        success = run_openscad(
+            fixture["name"],
+            ["--render", "-o", str(stl_path), str(scad_path)],
+            str(log_path),
+            openscad_path,
+        )
+
+        assert success, f"OpenSCAD render failed for {fixture['name']}"
+        graph = build_feature_graph_for_stl(stl_path)
+        preview_scad = emit_feature_graph_scad_preview(graph)
+
+        if not fixture["expected_detection"].get("plate_like_solid", False):
+            assert preview_scad is None
+            continue
+
+        assert preview_scad is not None, f"{fixture['name']} expected a SCAD preview"
+        _assert_preview_named_variables(fixture, preview_scad)
+
+        preview_path = test_output_dir / f"{fixture['name']}.preview.scad"
+        preview_stl_path = test_output_dir / f"{fixture['name']}.preview.stl"
+        preview_log_path = test_output_dir / f"{fixture['name']}.preview.log"
+        preview_path.write_text(preview_scad, encoding="utf-8")
+
+        preview_success = run_openscad(
+            f"{fixture['name']}_preview",
+            ["--render", "-o", str(preview_stl_path), str(preview_path)],
+            str(preview_log_path),
+            openscad_path,
+        )
+
+        assert preview_success, f"OpenSCAD preview render failed for {fixture['name']}"
+        preview_graph = build_feature_graph_for_stl(preview_stl_path)
+
+        feature_counts: dict[str, int] = {}
+        for feature in preview_graph["features"]:
+            feature_type = feature["type"]
+            feature_counts[feature_type] = feature_counts.get(feature_type, 0) + 1
+
+        for feature_type, expected_count in iter_expected_feature_counts(fixture).items():
+            assert (
+                feature_counts.get(feature_type, 0) == expected_count
+            ), f"{fixture['name']} preview expected {expected_count} {feature_type} entries, got {feature_counts.get(feature_type, 0)}"
+
+        _assert_fixture_dimensions(fixture, preview_graph["features"])

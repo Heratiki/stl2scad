@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterable, Optional, Union
 
-_SUPPORTED_FIXTURE_TYPES = {"plate", "box", "l_bracket"}
+_SUPPORTED_FIXTURE_TYPES = {"plate", "box", "l_bracket", "sphere", "torus"}
 _AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
 
 
@@ -103,6 +103,10 @@ def generate_feature_fixture_scad(fixture: dict[str, Any]) -> str:
         return _generate_box_fixture_scad(normalized)
     if fixture_type == "l_bracket":
         return _generate_l_bracket_fixture_scad(normalized)
+    if fixture_type == "sphere":
+        return _generate_sphere_fixture_scad(normalized)
+    if fixture_type == "torus":
+        return _generate_torus_fixture_scad(normalized)
     raise ValueError(f"Unsupported feature fixture type '{fixture_type}'")
 
 
@@ -150,6 +154,10 @@ def _validate_geometry_by_fixture_type(
         return _validate_box_fixture_geometry(raw_fixture, fixture_name)
     if fixture_type == "l_bracket":
         return _validate_l_bracket_fixture_geometry(raw_fixture, fixture_name)
+    if fixture_type == "sphere":
+        return _validate_sphere_fixture_geometry(raw_fixture, fixture_name)
+    if fixture_type == "torus":
+        return _validate_torus_fixture_geometry(raw_fixture, fixture_name)
     raise ValueError(f"Unsupported feature fixture type '{fixture_type}'")
 
 

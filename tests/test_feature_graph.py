@@ -208,6 +208,19 @@ def test_feature_graph_scad_preview_emits_plate_with_holes(test_output_dir):
     assert scad.count("cylinder(") == 1
 
 
+def test_feature_graph_scad_preview_parameterizes_standalone_hole(test_output_dir):
+    stl_file = test_output_dir / "plate_with_single_hole_preview.stl"
+    _create_plate_with_holes(stl_file, centers=[(0.0, 0.0)])
+
+    graph = build_feature_graph_for_stl(stl_file)
+    scad = emit_feature_graph_scad_preview(graph)
+
+    assert scad is not None
+    assert "hole_0_center = [" in scad
+    assert "hole_0_diameter = 4.000000;" in scad
+    assert "hole_cutout(hole_0_center, hole_0_diameter);" in scad
+
+
 def test_feature_graph_scad_preview_emits_slot_cutout(test_output_dir):
     stl_file = test_output_dir / "plate_with_slot_preview.stl"
     _create_plate_with_slot(stl_file)

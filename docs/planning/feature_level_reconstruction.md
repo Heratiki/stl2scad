@@ -119,6 +119,7 @@ Detects axis-aligned boxes, through-holes, slots, and repeated hole patterns (li
 - **Counterbore depth generator fix** — `counterbore_hole` module now takes explicit `plate_thickness` and anchors the bore at `plate_thickness - bore_depth`, eliminating the compounded 0.1mm offset. All 11 affected `.scad` fixtures were regenerated.
 - **CI-hard-fail for missing OpenSCAD** — `test_feature_fixture_round_trip_detection` fails (no longer silently skips) when `CI=true` and the OpenSCAD binary is unavailable.
 - **Manifest `schema_version` enforcement** — `load_feature_fixture_manifest` rejects any manifest whose schema_version is not 1, with a dedicated negative test.
+- **Parametric preview round-trip** — SCAD previews now declare named variables for supported plate geometry and cutouts, and `test_feature_fixture_preview_round_trip_detection` re-renders those previews to STL and re-checks detector counts plus supported dimensions.
 
 ### Immediate priorities
 
@@ -130,11 +131,10 @@ Detects axis-aligned boxes, through-holes, slots, and repeated hole patterns (li
 
 Once the round-trip is asserting dimensions, the fixture pipeline becomes the backbone for the parametric-SCAD work. The natural follow-ons:
 
-1. **Parametric-variable round-trip** — assert not just that the detector found the right dimensions, but that the SCAD preview it emits declares named variables (`hole_diameter`, `pattern_count`, `counterbore_bore_depth`, …) carrying those values. Re-render the emitted SCAD to STL and confirm it matches the original manifest STL within tolerance. This is the end-to-end check for "editable SCAD, not just a mesh dump."
-2. **Confidence-scored candidate fixtures** — introduce manifest entries that declare *multiple* valid interpretations (e.g., hollow box = one `difference()` of two cubes OR six wall slabs) and an expected ranking. The detector's ranked output must put the intended interpretation at the top with a confidence above threshold. This turns the fixture system into the ground truth for the interactive-selection modes already described in the long-term vision.
-3. **Negative-class fixtures** — add deliberately non-mechanical and ambiguous shapes (organic blobs, near-primitives that should NOT classify as primitives, L-brackets with and without a bracket primitive implemented) and assert the detector stays silent or falls through to polyhedron. Guards against detector over-reach as new primitives come online.
-4. **Noise-injection fixtures** — generate the manifest STLs with controlled perturbation (vertex jitter, normal flipping on a fraction of triangles, small non-manifold gaps) and assert the detector still produces the right feature graph. Real CAD-exported STLs aren't pristine; this closes the gap between synthetic fixtures and field data.
-5. **Promote the manifest schema to a versioned contract** — `schema_version` already exists; start enforcing it on load and document the schema so third-party fixture authors (or future detectors) have a stable target.
+1. **Confidence-scored candidate fixtures** — introduce manifest entries that declare *multiple* valid interpretations (e.g., hollow box = one `difference()` of two cubes OR six wall slabs) and an expected ranking. The detector's ranked output must put the intended interpretation at the top with a confidence above threshold. This turns the fixture system into the ground truth for the interactive-selection modes already described in the long-term vision.
+2. **Negative-class fixtures** — add deliberately non-mechanical and ambiguous shapes (organic blobs, near-primitives that should NOT classify as primitives, L-brackets with and without a bracket primitive implemented) and assert the detector stays silent or falls through to polyhedron. Guards against detector over-reach as new primitives come online.
+3. **Noise-injection fixtures** — generate the manifest STLs with controlled perturbation (vertex jitter, normal flipping on a fraction of triangles, small non-manifold gaps) and assert the detector still produces the right feature graph. Real CAD-exported STLs aren't pristine; this closes the gap between synthetic fixtures and field data.
+4. **Promote the manifest schema to a versioned contract** — `schema_version` already exists; start enforcing it on load and document the schema so third-party fixture authors (or future detectors) have a stable target.
 
 ### Ongoing
 

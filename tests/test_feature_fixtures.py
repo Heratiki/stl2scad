@@ -586,6 +586,36 @@ def test_feature_fixture_generation_supports_box_and_l_bracket():
     assert iter_expected_feature_counts(bracket_fixture)["box_like_solid"] == 0
 
 
+def test_feature_fixture_generation_supports_transform_wrapper():
+    rotated_fixture = validate_feature_fixture_spec(
+        {
+            "name": "plate_plain_rotated",
+            "fixture_type": "plate",
+            "output_filename": "plate_plain_rotated.scad",
+            "plate_size": [20.0, 10.0, 2.0],
+            "transform": {
+                "rotate": [0.0, 0.0, 30.0],
+                "translate": [0.0, 0.0, 0.0],
+            },
+            "expected_detection": {
+                "plate_like_solid": False,
+                "box_like_solid": False,
+                "hole_count": 0,
+                "slot_count": 0,
+                "linear_pattern_count": 0,
+                "grid_pattern_count": 0,
+                "counterbore_count": 0,
+            },
+        }
+    )
+
+    scad = generate_feature_fixture_scad(rotated_fixture)
+
+    assert "// transform: rotate=[0.000000, 0.000000, 30.000000]" in scad
+    assert "rotate([0.000000, 0.000000, 30.000000]) {" in scad
+    assert "difference() {" in scad
+
+
 def test_feature_fixture_round_trip_detection(test_data_dir, test_output_dir):
     manifest_path = test_data_dir / "feature_fixtures_manifest.json"
     fixtures = load_feature_fixture_manifest(manifest_path)

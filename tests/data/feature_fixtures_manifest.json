@@ -19,6 +19,26 @@
       }
     },
     {
+      "name": "plate_plain_rotated_z30",
+      "fixture_type": "plate",
+      "description": "Plain plate rotated about Z to baseline non-axis-aligned behavior.",
+      "output_filename": "plate_plain_rotated_z30.scad",
+      "plate_size": [20.0, 10.0, 2.0],
+      "transform": {
+        "rotate": [0.0, 0.0, 30.0],
+        "translate": [0.0, 0.0, 0.0]
+      },
+      "expected_detection": {
+        "plate_like_solid": false,
+        "box_like_solid": false,
+        "hole_count": 0,
+        "slot_count": 0,
+        "linear_pattern_count": 0,
+        "grid_pattern_count": 0,
+        "counterbore_count": 0
+      }
+    },
+    {
       "name": "plate_linear_two_holes",
       "fixture_type": "plate",
       "description": "Simple two-hole plate used as the baseline linear pattern case.",

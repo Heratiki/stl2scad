@@ -64,6 +64,7 @@ def validate_feature_fixture_spec(raw_fixture: dict[str, Any]) -> dict[str, Any]
         "fixture_type": fixture_type,
         "description": str(raw_fixture.get("description", "")).strip(),
         "output_filename": output_filename,
+        "transform": _validate_fixture_transform(raw_fixture.get("transform"), name),
         "expected_detection": _validate_expected_detection(
             raw_fixture.get("expected_detection"), name
         ),
@@ -288,10 +289,22 @@ def _generate_plate_fixture_scad(fixture: dict[str, Any]) -> str:
             "    cylinder(d=bore_d, h=bore_depth + 0.1, center=false);",
             "}",
             "",
-            "difference() {",
-            "  translate(plate_origin) cube(plate_size);",
         ]
     )
+
+    transform = fixture.get("transform", _identity_transform())
+    has_transform = _has_non_identity_transform(transform)
+    if has_transform:
+        lines.extend(
+            [
+                f"translate({_format_vector(transform['translate'])})",
+                f"rotate({_format_vector(transform['rotate'])}) {{",
+                "difference() {",
+                "  translate(plate_origin) cube(plate_size);",
+            ]
+        )
+    else:
+        lines.extend(["difference() {", "  translate(plate_origin) cube(plate_size);"])
 
     for index, hole in enumerate(fixture["holes"]):
         center = [hole["center"][0], hole["center"][1], z_offset]
@@ -337,7 +350,10 @@ def _generate_plate_fixture_scad(fixture: dict[str, Any]) -> str:
             f"  through_slot({_format_vector(start)}, {_format_vector(end)}, {slot['width']:.6f}, {cut_height:.6f});  // slot_{index}"
         )
 
-    lines.extend(["}", ""])
+    lines.extend(["}"])
+    if has_transform:
+        lines.append("}")
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -373,10 +389,22 @@ def _generate_box_fixture_scad(fixture: dict[str, Any]) -> str:
             "    cylinder(d=diameter, h=length, center=false);",
             "}",
             "",
-            "difference() {",
-            "  translate(box_origin) cube(box_size);",
         ]
     )
+
+    transform = fixture.get("transform", _identity_transform())
+    has_transform = _has_non_identity_transform(transform)
+    if has_transform:
+        lines.extend(
+            [
+                f"translate({_format_vector(transform['translate'])})",
+                f"rotate({_format_vector(transform['rotate'])}) {{",
+                "difference() {",
+                "  translate(box_origin) cube(box_size);",
+            ]
+        )
+    else:
+        lines.extend(["difference() {", "  translate(box_origin) cube(box_size);"])
 
     for index, hole in enumerate(fixture["holes"]):
         center = _format_vector(hole["center"])
@@ -395,7 +423,10 @@ def _generate_box_fixture_scad(fixture: dict[str, Any]) -> str:
             f"  translate({_format_vector(cutout_origin)}) cube({_format_vector(cutout['size'])});  // cutout_{index}"
         )
 
-    lines.extend(["}", ""])
+    lines.extend(["}"])
+    if has_transform:
+        lines.append("}")
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -413,18 +444,39 @@ def _generate_l_bracket_fixture_scad(fixture: dict[str, Any]) -> str:
             f"leg_thickness = {leg_thickness:.6f};",
             f"bracket_origin = {_format_vector([-half_x, -half_y, -half_z])};",
             "",
-            "union() {",
-            "  translate(bracket_origin) cube([bracket_size[0], bracket_size[1], leg_thickness]);",
-            "  translate(bracket_origin) cube([leg_thickness, bracket_size[1], bracket_size[2]]);",
-            "}",
-            "",
         ]
     )
+
+    transform = fixture.get("transform", _identity_transform())
+    has_transform = _has_non_identity_transform(transform)
+    if has_transform:
+        lines.extend(
+            [
+                f"translate({_format_vector(transform['translate'])})",
+                f"rotate({_format_vector(transform['rotate'])}) {{",
+                "union() {",
+                "  translate(bracket_origin) cube([bracket_size[0], bracket_size[1], leg_thickness]);",
+                "  translate(bracket_origin) cube([leg_thickness, bracket_size[1], bracket_size[2]]);",
+                "}",
+                "}",
+                "",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "union() {",
+                "  translate(bracket_origin) cube([bracket_size[0], bracket_size[1], leg_thickness]);",
+                "  translate(bracket_origin) cube([leg_thickness, bracket_size[1], bracket_size[2]]);",
+                "}",
+                "",
+            ]
+        )
     return "\n".join(lines)
 
 
 def _fixture_header_lines(fixture: dict[str, Any]) -> list[str]:
-    return [
+    lines = [
         "// Auto-generated from tests/data/feature_fixtures_manifest.json",
         f"// fixture: {fixture['name']}",
         f"// fixture_type: {fixture['fixture_type']}",
@@ -432,6 +484,42 @@ def _fixture_header_lines(fixture: dict[str, Any]) -> list[str]:
         "$fn = 96;",
         "",
     ]
+    transform = fixture.get("transform", _identity_transform())
+    if _has_non_identity_transform(transform):
+        lines.insert(
+            4,
+            "// transform: rotate="
+            f"{_format_vector(transform['rotate'])}, "
+            f"translate={_format_vector(transform['translate'])}",
+        )
+    return lines
+
+
+def _identity_transform() -> dict[str, list[float]]:
+    return {"rotate": [0.0, 0.0, 0.0], "translate": [0.0, 0.0, 0.0]}
+
+
+def _validate_fixture_transform(
+    raw_transform: Optional[dict[str, Any]],
+    fixture_name: str,
+) -> dict[str, list[float]]:
+    if raw_transform is None:
+        return _identity_transform()
+    if not isinstance(raw_transform, dict):
+        raise ValueError(f"{fixture_name}.transform must be an object")
+    rotate = _as_vector3(raw_transform.get("rotate", [0.0, 0.0, 0.0]), f"{fixture_name}.transform.rotate")
+    translate = _as_vector3(
+        raw_transform.get("translate", [0.0, 0.0, 0.0]),
+        f"{fixture_name}.transform.translate",
+    )
+    return {"rotate": rotate, "translate": translate}
+
+
+def _has_non_identity_transform(transform: dict[str, list[float]]) -> bool:
+    for key in ("rotate", "translate"):
+        if any(abs(float(value)) > 1e-9 for value in transform[key]):
+            return True
+    return False
 
 
 def _validate_expected_detection(

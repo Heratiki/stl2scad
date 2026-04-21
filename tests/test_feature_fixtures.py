@@ -726,6 +726,8 @@ def test_feature_fixture_manifest_schema_v2(test_data_dir):
 
 
 def test_feature_fixture_manifest_covers_roadmap_stress_cases(test_data_dir):
+    manifest_path = test_data_dir / "feature_fixtures_manifest.json"
+    fixtures = load_feature_fixture_manifest(manifest_path)
 
     plate_fixtures = [fixture for fixture in fixtures if fixture["fixture_type"] == "plate"]
     negative_fixtures = [fixture for fixture in fixtures if fixture["fixture_type"] in {"sphere", "torus"}]

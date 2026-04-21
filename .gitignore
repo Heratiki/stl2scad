@@ -58,6 +58,15 @@ test*.json
 memory-bank/
 tests/data/Cube_3d_printing_sample_debug.echo
 
+# Runtime/build artifacts that accidentally got tracked
+.coverage
+chats.db
+.codex
+stl2scad.egg-info/
+
+# Generated test outputs (kept locally, never committed)
+tests/data/.generated/
+
 # Keep committed benchmark fixtures/manifest for Phase 0+ regression baselines
 !tests/data/benchmark_fixtures/
 !tests/data/benchmark_fixtures/**/*.stl

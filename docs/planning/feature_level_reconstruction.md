@@ -117,6 +117,8 @@ Detects axis-aligned boxes, through-holes, slots, and repeated hole patterns (li
 
 - Only handles axis-aligned geometry — rotated features are invisible
 - Pattern detection depends on hole centers being near-exactly spaced; real-world STLs from meshed CAD may have enough floating-point noise to break it
+- `plate_like_solid` requires strictly rectangular top/bottom faces — any chamfer or fillet on a plate edge drops detection to `axis_boundary_plane_pair` only and blocks SCAD preview emission. Observed on multiple real FDM parts (2026-04-20 sample); dominant real-world failure mode.
+- No `box_like_solid` primitive — pure axis-aligned cuboids (e.g. Test_Cube) produce only axis-pair features, never a parametric preview.
 
 ## Next Milestones
 
@@ -132,9 +134,13 @@ Detects axis-aligned boxes, through-holes, slots, and repeated hole patterns (li
 
 ### Immediate priorities
 
-1. **Expand beyond axis-aligned fixtures** — add rotated and more composite non-plate fixtures once the conservative baseline remains stable.
-2. **Tighten edge-case coverage** — keep adding tolerance-boundary geometry and multi-pattern plates that mirror real-world noisy CAD exports.
-3. **Improve inventory-guided selection quality** — move beyond a binary whole-file mechanical/organic gate so inventory can contribute richer, detector-relevant prioritization.
+Reprioritized 2026-04-20. A 6-STL sample from a real FDM collection (`D:\3D Files\FDM`) produced a parametric SCAD preview for only 1 part; four of the other five were symmetric plates or boxes that fell through to `axis_boundary_plane_pair` only. Fixture pass-rate is no longer a proxy for real-world pass-rate — the synthetic corpus is axis-aligned and has sharp edges, while real mechanical parts almost always carry chamfers or fillets on broken edges.
+
+1. **Tolerant plate/box detection** — accept a `plate_like_solid` whose top/bottom face is rectangular modulo small chamfer or fillet triangles, and add a `box_like_solid` path that fires on symmetric cuboids (Test_Cube baseline). This is the single largest real-world payoff: most mechanical parts have broken edges, and today any break makes the plate invisible.
+2. **Noise + real-world recall as a first-class metric** — add controlled-perturbation fixtures (vertex jitter, flipped normals, small non-manifold gaps) and a handful of real-world STLs with authored `expected_detection` counts, so "real-world recall" becomes a number we track alongside synthetic fixture pass-rate. Promoted from "Beyond dimensional parity" because synthetic-only coverage is now the dominant failure mode.
+3. **Grid-pattern SCAD emission** — detector already emits `grid_hole_pattern` with full `grid_origin`/`grid_rows`/`grid_cols` metadata, but the preview emitter falls back to a hardcoded center list. Wire the existing metadata into nested row/column loops so grid-hole parts produce fully parametric SCAD.
+4. **Expand beyond axis-aligned fixtures** — add rotated and more composite non-plate fixtures once the conservative baseline remains stable.
+5. **Improve inventory-guided selection quality** — move beyond a binary whole-file mechanical/organic gate so inventory can contribute richer, detector-relevant prioritization.
 
 ### Beyond dimensional parity
 
@@ -142,8 +148,9 @@ Once the round-trip is asserting dimensions, the fixture pipeline becomes the ba
 
 1. **Detector-native interpretation ranking** — schema-v2 fixtures and harness-side candidate ranking are now in place, including a real hollow-box ambiguity fixture. The next step is to make the detector emit ranked interpretation candidates directly so the fixture harness can compare declared ranking/confidence against detector-produced ranking/confidence, not only against observed feature-count matches.
 2. **Negative-class fixtures** — add deliberately non-mechanical and ambiguous shapes (organic blobs, near-primitives that should NOT classify as primitives, L-brackets with and without a bracket primitive implemented) and assert the detector stays silent or falls through to polyhedron. Guards against detector over-reach as new primitives come online.
-3. **Noise-injection fixtures** — generate the manifest STLs with controlled perturbation (vertex jitter, normal flipping on a fraction of triangles, small non-manifold gaps) and assert the detector still produces the right feature graph. Real CAD-exported STLs aren't pristine; this closes the gap between synthetic fixtures and field data.
-4. **Promote the manifest schema to a versioned contract** — `schema_version` already exists; start enforcing it on load and document the schema so third-party fixture authors (or future detectors) have a stable target.
+3. **Promote the manifest schema to a versioned contract** — `schema_version` already exists; start enforcing it on load and document the schema so third-party fixture authors (or future detectors) have a stable target.
+
+(Noise-injection fixtures were promoted out of this section into "Immediate priorities" on 2026-04-20; see item 2 above.)
 
 ### Ongoing
 

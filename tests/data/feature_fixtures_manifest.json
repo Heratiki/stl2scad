@@ -342,6 +342,39 @@
         "grid_pattern_count": 0,
         "counterbore_count": 0
       }
+    },
+    {
+      "name": "negative_sphere",
+      "fixture_type": "sphere",
+      "description": "Sphere geometry as negative-class fixture to guard against over-detection.",
+      "output_filename": "negative_sphere.scad",
+      "radius": 10.0,
+      "expected_detection": {
+        "plate_like_solid": false,
+        "box_like_solid": false,
+        "hole_count": 0,
+        "slot_count": 0,
+        "linear_pattern_count": 0,
+        "grid_pattern_count": 0,
+        "counterbore_count": 0
+      }
+    },
+    {
+      "name": "negative_torus",
+      "fixture_type": "torus",
+      "description": "Torus geometry as negative-class fixture to guard against over-detection.",
+      "output_filename": "negative_torus.scad",
+      "major_radius": 15.0,
+      "minor_radius": 5.0,
+      "expected_detection": {
+        "plate_like_solid": false,
+        "box_like_solid": false,
+        "hole_count": 0,
+        "slot_count": 0,
+        "linear_pattern_count": 0,
+        "grid_pattern_count": 0,
+        "counterbore_count": 0
+      }
     }
   ]
 }

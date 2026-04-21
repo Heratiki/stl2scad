@@ -265,6 +265,45 @@ def _validate_l_bracket_fixture_geometry(
     }
 
 
+def _validate_sphere_fixture_geometry(
+    raw_fixture: dict[str, Any],
+    fixture_name: str,
+) -> dict[str, Any]:
+    radius = _as_positive_float(
+        raw_fixture.get("radius"),
+        f"{fixture_name}.radius",
+    )
+    return {
+        "radius": radius,
+        "explicit_hole_count": 0,
+        "explicit_slot_count": 0,
+    }
+
+
+def _validate_torus_fixture_geometry(
+    raw_fixture: dict[str, Any],
+    fixture_name: str,
+) -> dict[str, Any]:
+    major_radius = _as_positive_float(
+        raw_fixture.get("major_radius"),
+        f"{fixture_name}.major_radius",
+    )
+    minor_radius = _as_positive_float(
+        raw_fixture.get("minor_radius"),
+        f"{fixture_name}.minor_radius",
+    )
+    if minor_radius >= major_radius:
+        raise ValueError(
+            f"{fixture_name}.minor_radius must be smaller than major_radius"
+        )
+    return {
+        "major_radius": major_radius,
+        "minor_radius": minor_radius,
+        "explicit_hole_count": 0,
+        "explicit_slot_count": 0,
+    }
+
+
 def _generate_plate_fixture_scad(fixture: dict[str, Any]) -> str:
     plate_size = fixture["plate_size"]
     half_x = plate_size[0] * 0.5
@@ -480,6 +519,42 @@ def _generate_l_bracket_fixture_scad(fixture: dict[str, Any]) -> str:
                 "",
             ]
         )
+    return "\n".join(lines)
+
+
+def _generate_sphere_fixture_scad(fixture: dict[str, Any]) -> str:
+    radius = fixture["radius"]
+    lines = _fixture_header_lines(fixture)
+    lines.extend(
+        [
+            f"radius = {radius:.6f};",
+            "",
+            "sphere(r=radius);",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _generate_torus_fixture_scad(fixture: dict[str, Any]) -> str:
+    major_radius = fixture["major_radius"]
+    minor_radius = fixture["minor_radius"]
+    lines = _fixture_header_lines(fixture)
+    lines.extend(
+        [
+            f"major_radius = {major_radius:.6f};",
+            f"minor_radius = {minor_radius:.6f};",
+            "",
+            "module torus(major_r, minor_r) {",
+            "  rotate_extrude(convexity = 10, $fn = 96)",
+            "    translate([major_r, 0, 0])",
+            "      circle(r = minor_r, $fn = 64);",
+            "}",
+            "",
+            "torus(major_radius, minor_radius);",
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 

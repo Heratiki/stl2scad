@@ -549,9 +549,13 @@ def test_feature_fixture_manifest_covers_roadmap_stress_cases(test_data_dir):
     fixtures = load_feature_fixture_manifest(manifest_path)
 
     plate_fixtures = [fixture for fixture in fixtures if fixture["fixture_type"] == "plate"]
+    negative_fixtures = [fixture for fixture in fixtures if fixture["fixture_type"] in {"sphere", "torus"}]
     fixture_types = {fixture["fixture_type"] for fixture in fixtures}
 
-    assert {"box", "l_bracket"}.issubset(fixture_types)
+    assert {"box", "l_bracket", "sphere", "torus"}.issubset(fixture_types), \
+        f"Manifest must include box, l_bracket, sphere, and torus fixtures. Found: {fixture_types}"
+    assert len(negative_fixtures) >= 2, \
+        f"Manifest must include at least 2 negative-class fixtures (sphere, torus). Found {len(negative_fixtures)}"
     assert any(
         fixture["slots"]
         and (
@@ -771,3 +775,50 @@ def test_feature_fixture_preview_round_trip_detection(test_data_dir, test_output
             ), f"{fixture['name']} preview expected {expected_count} {feature_type} entries, got {feature_counts.get(feature_type, 0)}"
 
         _assert_fixture_dimensions(fixture, preview_graph["features"])
+
+
+def test_feature_fixture_negative_class_detection(test_data_dir, test_output_dir):
+    """Validate that negative-class fixtures (sphere, torus) don't produce mechanical features."""
+    manifest_path = test_data_dir / "feature_fixtures_manifest.json"
+    fixtures = load_feature_fixture_manifest(manifest_path)
+    write_feature_fixture_library(manifest_path, test_output_dir)
+
+    try:
+        openscad_path = get_openscad_path()
+    except FileNotFoundError as exc:
+        if os.getenv("CI", "").lower() == "true":
+            pytest.fail(f"OpenSCAD is required in CI for negative fixture checks: {exc}")
+        pytest.skip(f"OpenSCAD not available: {exc}")
+
+    negative_fixtures = [
+        fixture
+        for fixture in fixtures
+        if fixture["fixture_type"] in {"sphere", "torus"}
+    ]
+    assert negative_fixtures, "No negative-class fixtures found in manifest"
+
+    for fixture in negative_fixtures:
+        scad_path = test_output_dir / fixture["output_filename"]
+        stl_path = test_output_dir / f"{Path(fixture['output_filename']).stem}.stl"
+        log_path = test_output_dir / f"{fixture['name']}.negative.log"
+
+        success = run_openscad(
+            fixture["name"],
+            ["--render", "-o", str(stl_path), str(scad_path)],
+            str(log_path),
+            openscad_path,
+        )
+
+        assert success, f"OpenSCAD render failed for {fixture['name']}"
+        graph = build_feature_graph_for_stl(stl_path)
+
+        high_confidence_features = [
+            feature
+            for feature in graph["features"]
+            if float(feature.get("confidence", 0.0)) >= 0.70
+            and feature["type"] in {"plate_like_solid", "box_like_solid"}
+        ]
+
+        assert (
+            not high_confidence_features
+        ), f"{fixture['name']} should not produce high-confidence plate/box features, but got {[f['type'] for f in high_confidence_features]}"

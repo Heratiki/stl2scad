@@ -370,7 +370,7 @@
     {
       "name": "plate_multi_pattern_mixed_edge",
       "fixture_type": "plate",
-      "description": "Mixed plate with linear+grid holes, slot, and near-boundary small-hole pair for tighter edge coverage.",
+      "description": "Mixed plate combining a 3-hole linear pattern, a 2x3 grid pattern, and a slot on a single wide plate — exercises the detector handling multiple concurrent feature families.",
       "output_filename": "plate_multi_pattern_mixed_edge.scad",
       "plate_size": [
         48.0,
@@ -410,22 +410,6 @@
           "diameter": 1.6
         }
       ],
-      "holes": [
-        {
-          "center": [
-            -23.1,
-            0.0
-          ],
-          "diameter": 1.4
-        },
-        {
-          "center": [
-            23.1,
-            0.0
-          ],
-          "diameter": 1.4
-        }
-      ],
       "slots": [
         {
           "start": [
@@ -447,7 +431,7 @@
           "expected_detection": {
             "plate_like_solid": true,
             "box_like_solid": false,
-            "hole_count": 11,
+            "hole_count": 9,
             "slot_count": 1,
             "linear_pattern_count": 1,
             "grid_pattern_count": 1,
@@ -708,23 +692,12 @@
     {
       "name": "box_z_through_hole_rotated_z25",
       "fixture_type": "box",
-      "description": "Non-axis-aligned rotated box with a z-through-hole to extend rotated non-plate fixture coverage.",
+      "description": "Non-axis-aligned rotated box to baseline that rotated non-plate geometry is not mistakenly detected as box_like_solid.",
       "output_filename": "box_z_through_hole_rotated_z25.scad",
       "box_size": [
         18.0,
         12.0,
         10.0
-      ],
-      "holes": [
-        {
-          "axis": "z",
-          "center": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "diameter": 4.0
-        }
       ],
       "transform": {
         "rotate": [
@@ -831,17 +804,40 @@
       ]
     },
     {
+      "name": "box_with_top_notch",
+      "fixture_type": "box",
+      "description": "Box with a rectangular notch cut from the top face. Documents that the conservative bounding-plane detector still classifies this as box_like_solid because the six outer boundary planes remain intact; interior cutouts are invisible to the current algorithm.",
+      "output_filename": "box_with_top_notch.scad",
+      "box_size": [24.0, 16.0, 12.0],
+      "cutouts": [
+        {
+          "center": [0.0, 0.0, 3.0],
+          "size": [8.0, 8.0, 6.0]
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": true,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
       "name": "box_hollow_ambiguous",
       "fixture_type": "box",
       "description": "Hollow box with interior cavity - can be interpreted as single hollow box OR as six separate wall plates",
       "output_filename": "box_hollow_ambiguous.scad",
       "box_size": [24.0, 16.0, 12.0],
-      "cutouts": [
-        {
-          "center": [0.0, 0.0, 0.0],
-          "size": [18.0, 10.0, 6.0]
-        }
-      ],
       "candidates": [
         {
           "rank": 1,

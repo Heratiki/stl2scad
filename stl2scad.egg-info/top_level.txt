@@ -1,2 +1,0 @@
-stl2scad
-tests

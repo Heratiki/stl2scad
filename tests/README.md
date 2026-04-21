@@ -100,14 +100,14 @@ pytest tests/test_debug.py
 
 ## Test Plan Progress
 
-See [debug_test_plan.md](debug_test_plan.md) for detailed test plan and progress tracking.
+See [debug_test_plan.md](../docs/planning/debug_test_plan.md) for detailed test plan and progress tracking.
 
 ## Adding New Tests
 
 1. Create test files in the appropriate module or create a new module if needed
 2. Add fixtures to `conftest.py` if required
 3. Add utility functions to `utils.py` if needed
-4. Update `debug_test_plan.md` with new test cases
+4. Update [debug_test_plan.md](../docs/planning/debug_test_plan.md) with new test cases
 5. Add test data files to `data/` directory if needed
 
 ## Debugging Tests

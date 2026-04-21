@@ -30,6 +30,34 @@
       ]
     },
     {
+      "name": "plate_plain_chamfered_edges",
+      "fixture_type": "plate",
+      "description": "Plain plate with a uniform edge chamfer that breaks the side boundary planes while preserving the overall plate envelope.",
+      "output_filename": "plate_plain_chamfered_edges.scad",
+      "plate_size": [
+        20.0,
+        10.0,
+        2.0
+      ],
+      "edge_chamfer": 1.0,
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
       "name": "plate_plain_rotated_z30",
       "fixture_type": "plate",
       "description": "Plain plate rotated about Z to baseline non-axis-aligned behavior.",

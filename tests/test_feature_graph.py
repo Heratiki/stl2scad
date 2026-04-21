@@ -168,6 +168,30 @@ def test_feature_graph_extracts_slot_cutout(test_output_dir):
     assert slots[0]["confidence"] >= 0.70
 
 
+def test_feature_graph_extracts_chamfered_plate_like_solid(test_output_dir):
+    stl_file = test_output_dir / "plate_with_chamfered_edges.stl"
+    _create_chamfered_plate(stl_file, plate_size=(20.0, 10.0, 2.0), edge_chamfer=1.0)
+
+    graph = build_feature_graph_for_stl(stl_file)
+    plates = [
+        feature for feature in graph["features"] if feature["type"] == "plate_like_solid"
+    ]
+    axis_pairs = {
+        feature["axis"]: feature
+        for feature in graph["features"]
+        if feature["type"] == "axis_boundary_plane_pair"
+    }
+
+    assert len(plates) == 1
+    assert axis_pairs["z"]["paired"] is True
+    assert axis_pairs["x"]["paired"] is False
+    assert axis_pairs["y"]["paired"] is False
+    assert plates[0]["confidence"] >= 0.70
+    assert plates[0]["parameters"]["width"] == 20.0
+    assert plates[0]["parameters"]["depth"] == 10.0
+    assert plates[0]["parameters"]["thickness"] == 2.0
+
+
 @pytest.mark.parametrize("axis", ["x", "z"])
 def test_feature_graph_extracts_box_through_hole(test_output_dir, axis):
     stl_file = test_output_dir / f"box_with_{axis}_hole.stl"
@@ -488,6 +512,51 @@ def _create_plate_with_slot(
         t1 = b1 + 1
         faces.append([b0, b1, t1])
         faces.append([b0, t1, t0])
+
+    mesh = Mesh(np.zeros(len(faces), dtype=Mesh.dtype))
+    vertices_array = np.asarray(vertices, dtype=np.float64)
+    for index, face in enumerate(faces):
+        mesh.vectors[index] = vertices_array[face]
+    mesh.save(str(output_file))
+
+
+def _create_chamfered_plate(
+    output_file,
+    plate_size=(20.0, 10.0, 2.0),
+    edge_chamfer=1.0,
+):
+    width, depth, thickness = plate_size
+    half_width = width * 0.5
+    half_depth = depth * 0.5
+    inner_half_width = half_width - edge_chamfer
+    inner_half_depth = half_depth - edge_chamfer
+    if inner_half_width <= 0.0 or inner_half_depth <= 0.0:
+        raise ValueError("edge_chamfer must leave a positive top face footprint")
+
+    vertices = [
+        [-half_width, -half_depth, 0.0],
+        [half_width, -half_depth, 0.0],
+        [half_width, half_depth, 0.0],
+        [-half_width, half_depth, 0.0],
+        [-inner_half_width, -inner_half_depth, thickness],
+        [inner_half_width, -inner_half_depth, thickness],
+        [inner_half_width, inner_half_depth, thickness],
+        [-inner_half_width, inner_half_depth, thickness],
+    ]
+    faces = [
+        [0, 2, 1],
+        [0, 3, 2],
+        [4, 5, 6],
+        [4, 6, 7],
+        [0, 1, 5],
+        [0, 5, 4],
+        [1, 2, 6],
+        [1, 6, 5],
+        [2, 3, 7],
+        [2, 7, 6],
+        [3, 0, 4],
+        [3, 4, 7],
+    ]
 
     mesh = Mesh(np.zeros(len(faces), dtype=Mesh.dtype))
     vertices_array = np.asarray(vertices, dtype=np.float64)

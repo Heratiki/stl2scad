@@ -308,9 +308,23 @@ def _validate_plate_fixture_geometry(
 ) -> dict[str, Any]:
     plate_size = _as_vector3(raw_fixture.get("plate_size"), f"{fixture_name}.plate_size")
     _require_positive(plate_size, f"{fixture_name}.plate_size")
+    edge_chamfer = _as_non_negative_float(
+        raw_fixture.get("edge_chamfer", 0.0),
+        f"{fixture_name}.edge_chamfer",
+    )
+    if edge_chamfer * 2.0 >= min(plate_size[0], plate_size[1]):
+        raise ValueError(
+            f"{fixture_name}.edge_chamfer must leave a positive top face footprint"
+        )
+    feature_plate_size = [
+        plate_size[0] - 2.0 * edge_chamfer,
+        plate_size[1] - 2.0 * edge_chamfer,
+        plate_size[2],
+    ]
 
     spec: dict[str, Any] = {
         "plate_size": plate_size,
+        "edge_chamfer": edge_chamfer,
         "holes": [],
         "counterbores": [],
         "linear_hole_patterns": [],
@@ -319,25 +333,32 @@ def _validate_plate_fixture_geometry(
     }
 
     for index, raw_hole in enumerate(raw_fixture.get("holes", [])):
-        spec["holes"].append(_validate_plate_hole(raw_hole, fixture_name, index, plate_size))
+        spec["holes"].append(
+            _validate_plate_hole(raw_hole, fixture_name, index, feature_plate_size)
+        )
 
     for index, raw_counterbore in enumerate(raw_fixture.get("counterbores", [])):
         spec["counterbores"].append(
-            _validate_plate_counterbore(raw_counterbore, fixture_name, index, plate_size)
+            _validate_plate_counterbore(
+                raw_counterbore,
+                fixture_name,
+                index,
+                feature_plate_size,
+            )
         )
 
     for index, raw_pattern in enumerate(raw_fixture.get("linear_hole_patterns", [])):
         spec["linear_hole_patterns"].append(
-            _validate_linear_pattern(raw_pattern, fixture_name, index, plate_size)
+            _validate_linear_pattern(raw_pattern, fixture_name, index, feature_plate_size)
         )
 
     for index, raw_pattern in enumerate(raw_fixture.get("grid_hole_patterns", [])):
         spec["grid_hole_patterns"].append(
-            _validate_grid_pattern(raw_pattern, fixture_name, index, plate_size)
+            _validate_grid_pattern(raw_pattern, fixture_name, index, feature_plate_size)
         )
 
     for index, raw_slot in enumerate(raw_fixture.get("slots", [])):
-        spec["slots"].append(_validate_slot(raw_slot, fixture_name, index, plate_size))
+        spec["slots"].append(_validate_slot(raw_slot, fixture_name, index, feature_plate_size))
 
     explicit_holes = len(spec["holes"])
     explicit_holes += sum(
@@ -447,6 +468,7 @@ def _validate_torus_fixture_geometry(
 
 def _generate_plate_fixture_scad(fixture: dict[str, Any]) -> str:
     plate_size = fixture["plate_size"]
+    edge_chamfer = float(fixture.get("edge_chamfer", 0.0))
     half_x = plate_size[0] * 0.5
     half_y = plate_size[1] * 0.5
     thickness = plate_size[2]
@@ -479,20 +501,38 @@ def _generate_plate_fixture_scad(fixture: dict[str, Any]) -> str:
             "",
         ]
     )
+    if edge_chamfer > 0.0:
+        top_scale = [
+            (plate_size[0] - 2.0 * edge_chamfer) / plate_size[0],
+            (plate_size[1] - 2.0 * edge_chamfer) / plate_size[1],
+        ]
+        lines.extend(
+            [
+                f"plate_edge_chamfer = {edge_chamfer:.6f};",
+                f"plate_top_scale = {_format_vector(top_scale)};",
+                "",
+            ]
+        )
 
     transform = fixture.get("transform", _identity_transform())
     has_transform = _has_non_identity_transform(transform)
+    plate_base_line = (
+        "  linear_extrude(height=plate_size[2], scale=plate_top_scale)"
+        " square([plate_size[0], plate_size[1]], center=true);"
+        if edge_chamfer > 0.0
+        else "  translate(plate_origin) cube(plate_size);"
+    )
     if has_transform:
         lines.extend(
             [
                 f"translate({_format_vector(transform['translate'])})",
                 f"rotate({_format_vector(transform['rotate'])}) {{",
                 "difference() {",
-                "  translate(plate_origin) cube(plate_size);",
+                plate_base_line,
             ]
         )
     else:
-        lines.extend(["difference() {", "  translate(plate_origin) cube(plate_size);"])
+        lines.extend(["difference() {", plate_base_line])
 
     for index, hole in enumerate(fixture["holes"]):
         center = [hole["center"][0], hole["center"][1], z_offset]
@@ -1175,6 +1215,16 @@ def _as_positive_float(value: Any, label: str) -> float:
         raise ValueError(f"{label} must be a float") from exc
     if parsed <= 0.0:
         raise ValueError(f"{label} must be > 0")
+    return parsed
+
+
+def _as_non_negative_float(value: Any, label: str) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be a float") from exc
+    if parsed < 0.0:
+        raise ValueError(f"{label} must be >= 0")
     return parsed
 
 

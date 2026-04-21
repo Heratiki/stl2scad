@@ -847,6 +847,10 @@ def test_feature_fixture_manifest_covers_roadmap_stress_cases(test_data_dir):
         for fixture in plate_fixtures
         for center, diameter in _iter_plate_fixture_holes(fixture)
     )
+    assert any(
+        float(fixture.get("edge_chamfer", 0.0)) > 0.0
+        for fixture in plate_fixtures
+    ), "Manifest must include at least one chamfered plate fixture"
 
 
 def test_feature_fixture_generation_supports_box_and_l_bracket():
@@ -926,6 +930,33 @@ def test_feature_fixture_generation_supports_transform_wrapper():
     assert "// transform: rotate=[0.000000, 0.000000, 30.000000]" in scad
     assert "rotate([0.000000, 0.000000, 30.000000]) {" in scad
     assert "difference() {" in scad
+
+
+def test_feature_fixture_generation_supports_chamfered_plate():
+    chamfered_fixture = validate_feature_fixture_spec(
+        {
+            "name": "plate_chamfered",
+            "fixture_type": "plate",
+            "output_filename": "plate_chamfered.scad",
+            "plate_size": [20.0, 10.0, 2.0],
+            "edge_chamfer": 1.0,
+            "expected_detection": {
+                "plate_like_solid": True,
+                "box_like_solid": False,
+                "hole_count": 0,
+                "slot_count": 0,
+                "linear_pattern_count": 0,
+                "grid_pattern_count": 0,
+                "counterbore_count": 0,
+            },
+        }
+    )
+
+    scad = generate_feature_fixture_scad(chamfered_fixture)
+
+    assert "plate_edge_chamfer = 1.000000;" in scad
+    assert "plate_top_scale = [0.900000, 0.800000];" in scad
+    assert "linear_extrude(height=plate_size[2], scale=plate_top_scale)" in scad
 
 
 def test_feature_fixture_round_trip_detection(test_data_dir, test_output_dir):

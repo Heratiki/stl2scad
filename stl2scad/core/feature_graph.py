@@ -406,6 +406,7 @@ def _extract_axis_aligned_box_features(
 
     supporting_area = 0.0
     plane_features: list[dict[str, Any]] = []
+    boundary_support: dict[str, dict[str, Any]] = {}
     for axis_name, (axis_index, axis, min_coord, max_coord) in axis_pairs.items():
         negative_mask = (normals @ -axis >= normal_axis_threshold) & (
             np.abs(face_centers[:, axis_index] - min_coord) <= boundary_tolerance
@@ -416,6 +417,24 @@ def _extract_axis_aligned_box_features(
         negative_area = float(np.sum(face_areas[negative_mask]))
         positive_area = float(np.sum(face_areas[positive_mask]))
         supporting_area += negative_area + positive_area
+        plane_axes = [index for index in range(3) if index != axis_index]
+        boundary_support[axis_name] = {
+            "axis_index": axis_index,
+            "negative_area": negative_area,
+            "positive_area": positive_area,
+            "negative_projection": _boundary_projection_metrics(
+                vectors[negative_mask].reshape(-1, 3),
+                plane_axes,
+                bbox,
+                negative_area,
+            ),
+            "positive_projection": _boundary_projection_metrics(
+                vectors[positive_mask].reshape(-1, 3),
+                plane_axes,
+                bbox,
+                positive_area,
+            ),
+        }
         plane_features.append(
             {
                 "type": "axis_boundary_plane_pair",
@@ -434,18 +453,28 @@ def _extract_axis_aligned_box_features(
         "depth": float(bbox["height"]),
         "height": float(bbox["depth"]),
     }
+    size = [dimensions["width"], dimensions["depth"], dimensions["height"]]
     nonzero_dims = [value for value in dimensions.values() if value > 1e-9]
     thin_ratio = (
         min(nonzero_dims) / max(nonzero_dims) if len(nonzero_dims) == 3 else 0.0
     )
     paired_axes = sum(1 for feature in plane_features if feature["paired"])
+    tolerant_plate_confidence = _tolerant_plate_confidence(
+        boundary_support,
+        bbox,
+        total_area,
+        size,
+    )
 
     features: list[dict[str, Any]] = plane_features
-    if paired_axes >= 2 and confidence >= 0.55 and thin_ratio <= 0.18:
+    if (
+        paired_axes >= 2 and confidence >= 0.55 and thin_ratio <= 0.18
+    ) or tolerant_plate_confidence >= 0.70:
+        plate_confidence = max(confidence, tolerant_plate_confidence)
         features.append(
             {
                 "type": "plate_like_solid",
-                "confidence": float(confidence),
+                "confidence": float(plate_confidence),
                 "origin": [
                     float(bbox["min_x"]),
                     float(bbox["min_y"]),
@@ -461,7 +490,15 @@ def _extract_axis_aligned_box_features(
                     "depth": dimensions["depth"],
                     "thickness": min(nonzero_dims) if nonzero_dims else 0.0,
                 },
-                "note": "Candidate for an editable plate or slab feature.",
+                "note": (
+                    "Candidate for an editable plate or slab feature."
+                    if tolerant_plate_confidence < 0.70
+                    else (
+                        "Candidate for an editable plate or slab feature, allowing"
+                        " chamfer-broken side planes when the thin-axis footprint"
+                        " remains strongly rectangular."
+                    )
+                ),
             }
         )
     elif paired_axes == 3 and confidence >= 0.80:
@@ -499,6 +536,94 @@ def _best_feature(graph: dict[str, Any], feature_type: str) -> Optional[dict[str
     if not candidates:
         return None
     return max(candidates, key=lambda feature: float(feature.get("confidence", 0.0)))
+
+
+def _boundary_projection_metrics(
+    points: np.ndarray,
+    plane_axes: list[int],
+    bbox: dict[str, float],
+    boundary_area: float,
+) -> dict[str, float]:
+    if len(points) == 0 or len(plane_axes) != 2:
+        return {
+            "span_ratio_a": 0.0,
+            "span_ratio_b": 0.0,
+            "area_ratio": 0.0,
+            "fill_ratio": 0.0,
+        }
+
+    labels = ("x", "y", "z")
+    span_ratios: list[float] = []
+    for axis_index in plane_axes:
+        bbox_span = float(bbox[f"max_{labels[axis_index]}"] - bbox[f"min_{labels[axis_index]}"])
+        if bbox_span <= 1e-9:
+            span_ratios.append(0.0)
+            continue
+        point_span = float(np.ptp(points[:, axis_index]))
+        span_ratios.append(max(0.0, min(1.0, point_span / bbox_span)))
+
+    projected_bbox_area = float(
+        max(np.ptp(points[:, plane_axes[0]]), 0.0) * max(np.ptp(points[:, plane_axes[1]]), 0.0)
+    )
+    fill_ratio = 0.0
+    if projected_bbox_area > 1e-9:
+        fill_ratio = max(0.0, min(1.0, float(boundary_area) / projected_bbox_area))
+
+    return {
+        "span_ratio_a": span_ratios[0],
+        "span_ratio_b": span_ratios[1],
+        "area_ratio": float(span_ratios[0] * span_ratios[1]),
+        "fill_ratio": float(fill_ratio),
+    }
+
+
+def _tolerant_plate_confidence(
+    boundary_support: dict[str, dict[str, Any]],
+    bbox: dict[str, float],
+    total_area: float,
+    size: list[float],
+) -> float:
+    if total_area <= 1e-12 or len(size) != 3:
+        return 0.0
+
+    thickness_axis_index = int(np.argmin(size))
+    max_span = max(float(value) for value in size)
+    if max_span <= 1e-9 or float(size[thickness_axis_index]) / max_span > 0.18:
+        return 0.0
+
+    axis_name = ("x", "y", "z")[thickness_axis_index]
+    support = boundary_support.get(axis_name)
+    if support is None:
+        return 0.0
+
+    paired_support_ratio = (
+        float(support["negative_area"]) + float(support["positive_area"])
+    ) / total_area
+    negative_projection = support["negative_projection"]
+    positive_projection = support["positive_projection"]
+    min_span_ratio = min(
+        float(negative_projection["span_ratio_a"]),
+        float(negative_projection["span_ratio_b"]),
+        float(positive_projection["span_ratio_a"]),
+        float(positive_projection["span_ratio_b"]),
+    )
+    footprint_area_ratio = min(
+        float(negative_projection["area_ratio"]),
+        float(positive_projection["area_ratio"]),
+    )
+    footprint_fill_ratio = min(
+        float(negative_projection["fill_ratio"]),
+        float(positive_projection["fill_ratio"]),
+    )
+
+    if paired_support_ratio < 0.55:
+        return 0.0
+    if min_span_ratio < 0.75 or footprint_area_ratio < 0.60:
+        return 0.0
+    if footprint_fill_ratio < 0.85:
+        return 0.0
+
+    return min(1.0, 0.6 * paired_support_ratio + 0.4 * footprint_area_ratio)
 
 
 def _scad_vector(values: list[float]) -> str:

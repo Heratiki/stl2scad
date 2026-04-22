@@ -81,3 +81,7 @@ debug/
 # Test output artifacts
 tests/output/
 tests/.tmp_output/
+
+# Tuning artifacts
+artifacts/tuning/**/study.db
+artifacts/tuning/**/fixtures/

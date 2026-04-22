@@ -1130,6 +1130,9 @@ def _extract_cylinder_like_solid(
         lateral_areas = face_areas[lateral_mask]
         lateral_area = float(np.sum(lateral_areas))
 
+        if len(np.unique(np.round(lateral_normals, decimals=2), axis=0)) < 12:
+            continue
+
         if lateral_area > 1e-9 and vertices is not None and len(lateral_normals) > 0:
             # Approximate face centroids from vertex data passed in
             # vertices shape: (n_faces, 3, 3) or we use bbox centre fallback

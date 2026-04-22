@@ -1008,6 +1008,7 @@
           "expected_detection": {
             "plate_like_solid": false,
             "box_like_solid": false,
+            "cylinder_like_solid": false,
             "hole_count": 0,
             "slot_count": 0,
             "linear_pattern_count": 0,
@@ -1032,6 +1033,7 @@
           "expected_detection": {
             "plate_like_solid": false,
             "box_like_solid": false,
+            "cylinder_like_solid": false,
             "hole_count": 0,
             "slot_count": 0,
             "linear_pattern_count": 0,
@@ -1247,6 +1249,58 @@
           "expected_detection": {
             "plate_like_solid": true,
             "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "negative_cone",
+      "fixture_type": "cone",
+      "description": "Cone geometry as negative-class fixture to guard against cylinder over-detection.",
+      "output_filename": "negative_cone.scad",
+      "radius1": 10.0,
+      "radius2": 2.0,
+      "height": 20.0,
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "cylinder_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "negative_hex_prism",
+      "fixture_type": "prism",
+      "description": "Hexagonal prism geometry as negative-class fixture to guard against cylinder over-detection.",
+      "output_filename": "negative_hex_prism.scad",
+      "radius": 10.0,
+      "height": 20.0,
+      "sides": 6,
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "cylinder_like_solid": false,
             "hole_count": 0,
             "slot_count": 0,
             "linear_pattern_count": 0,

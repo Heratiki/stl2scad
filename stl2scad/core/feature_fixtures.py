@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterable, Optional, Union
 
-_SUPPORTED_FIXTURE_TYPES = {"plate", "box", "l_bracket", "sphere", "torus", "cylinder"}
+_SUPPORTED_FIXTURE_TYPES = {"plate", "box", "l_bracket", "sphere", "torus", "cylinder", "cone", "prism"}
 _AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
 _COUNT_EXPECTATION_TO_FEATURE = {
     "hole_count": "hole_like_cutout",
@@ -161,6 +161,10 @@ def generate_feature_fixture_scad(fixture: dict[str, Any]) -> str:
         return _generate_torus_fixture_scad(normalized)
     if fixture_type == "cylinder":
         return _generate_cylinder_fixture_scad(normalized)
+    if fixture_type == "cone":
+        return _generate_cone_fixture_scad(normalized)
+    if fixture_type == "prism":
+        return _generate_prism_fixture_scad(normalized)
     raise ValueError(f"Unsupported feature fixture type '{fixture_type}'")
 
 
@@ -324,6 +328,10 @@ def _validate_geometry_by_fixture_type(
         return _validate_torus_fixture_geometry(raw_fixture, fixture_name)
     if fixture_type == "cylinder":
         return _validate_cylinder_fixture_geometry(raw_fixture, fixture_name)
+    if fixture_type == "cone":
+        return _validate_cone_fixture_geometry(raw_fixture, fixture_name)
+    if fixture_type == "prism":
+        return _validate_prism_fixture_geometry(raw_fixture, fixture_name)
     raise ValueError(f"Unsupported feature fixture type '{fixture_type}'")
 
 
@@ -569,6 +577,46 @@ def _validate_cylinder_fixture_geometry(
         "diameter": diameter,
         "height": height,
         "axis": axis,
+        "explicit_hole_count": 0,
+        "explicit_slot_count": 0,
+        "explicit_counterbore_count": 0,
+        "explicit_rectangular_cutout_count": 0,
+        "explicit_rectangular_pocket_count": 0,
+    }
+
+
+def _validate_cone_fixture_geometry(
+    raw_fixture: dict[str, Any],
+    fixture_name: str,
+) -> dict[str, Any]:
+    radius1 = _as_positive_float(raw_fixture.get("radius1"), f"{fixture_name}.radius1")
+    radius2 = _as_positive_float(raw_fixture.get("radius2"), f"{fixture_name}.radius2")
+    height = _as_positive_float(raw_fixture.get("height"), f"{fixture_name}.height")
+    return {
+        "radius1": radius1,
+        "radius2": radius2,
+        "height": height,
+        "explicit_hole_count": 0,
+        "explicit_slot_count": 0,
+        "explicit_counterbore_count": 0,
+        "explicit_rectangular_cutout_count": 0,
+        "explicit_rectangular_pocket_count": 0,
+    }
+
+
+def _validate_prism_fixture_geometry(
+    raw_fixture: dict[str, Any],
+    fixture_name: str,
+) -> dict[str, Any]:
+    radius = _as_positive_float(raw_fixture.get("radius"), f"{fixture_name}.radius")
+    height = _as_positive_float(raw_fixture.get("height"), f"{fixture_name}.height")
+    sides = int(raw_fixture.get("sides", 6))
+    if sides < 3:
+        raise ValueError(f"{fixture_name}.sides must be at least 3")
+    return {
+        "radius": radius,
+        "height": height,
+        "sides": sides,
         "explicit_hole_count": 0,
         "explicit_slot_count": 0,
         "explicit_counterbore_count": 0,
@@ -1588,3 +1636,39 @@ def _require_positive(values: Iterable[float], label: str) -> None:
 
 def _format_vector(values: Iterable[float]) -> str:
     return "[" + ", ".join(f"{value:.6f}" for value in values) + "]"
+
+
+def _generate_cone_fixture_scad(fixture: dict[str, Any]) -> str:
+    radius1 = float(fixture["radius1"])
+    radius2 = float(fixture["radius2"])
+    height = float(fixture["height"])
+    lines = _fixture_header_lines(fixture)
+    lines.extend(
+        [
+            f"radius1 = {radius1:.6f};",
+            f"radius2 = {radius2:.6f};",
+            f"height = {height:.6f};",
+            "",
+            f"cylinder(r1=radius1, r2=radius2, h=height, $fn=128);",
+            ""
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _generate_prism_fixture_scad(fixture: dict[str, Any]) -> str:
+    radius = float(fixture["radius"])
+    height = float(fixture["height"])
+    sides = int(fixture["sides"])
+    lines = _fixture_header_lines(fixture)
+    lines.extend(
+        [
+            f"radius = {radius:.6f};",
+            f"height = {height:.6f};",
+            f"sides = {sides};",
+            "",
+            f"cylinder(r=radius, h=height, $fn=sides);",
+            ""
+        ]
+    )
+    return "\n".join(lines)

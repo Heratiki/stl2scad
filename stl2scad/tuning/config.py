@@ -75,6 +75,17 @@ class DetectorConfig:
     pocket_height_floor_ratio: float = 0.10
     pocket_height_ceiling_ratio: float = 0.95
 
+    # --- Cylinder thresholds ---
+    # Cap fill ratio: area of one flat cap / (span_a * span_b of that cap's bounding rect).
+    # A perfect circle fills π/4 ≈ 0.785; we allow generous slop for mesh approximation.
+    cylinder_cap_fill_ratio_min: float = 0.68
+    cylinder_cap_fill_ratio_max: float = 0.93  # above this → likely a rectangle, not a circle
+    # Cross-section squareness: min(perp_span) / max(perp_span). Ellipses score lower.
+    cylinder_cross_section_squareness_min: float = 0.80
+    # Minimum fraction of total surface area contributed by the two flat caps together.
+    cylinder_cap_area_fraction_min: float = 0.08
+    cylinder_confidence_min: float = 0.70
+
     # --- Pattern thresholds ---
     pattern_diameter_rounding_mm: float = 0.01
     pattern_regularity_error_max: float = 0.08

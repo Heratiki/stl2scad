@@ -63,13 +63,28 @@ def build_feature_graph_for_stl(
     normals = _normalized_normals(np.asarray(mesh.normals, dtype=np.float64))
     face_areas = _triangle_areas(vectors)
     bbox = _bbox(points)
-    features = _extract_axis_aligned_box_features(
+    box_features = _extract_axis_aligned_box_features(
         vectors,
         normals,
         face_areas,
         bbox,
         config=resolved,
     )
+    # Try cylinder detection.  If a cylinder is found with sufficient confidence
+    # it takes priority over plate/box classification — a disk is a cylinder,
+    # not a plate.  Axis-boundary-plane-pair entries are kept for triage metadata.
+    cylinder_features = _extract_cylinder_like_solid(
+        normals,
+        face_areas,
+        bbox,
+        vertices=vectors,
+        config=resolved,
+    )
+    if cylinder_features:
+        plane_pairs = [f for f in box_features if f.get("type") == "axis_boundary_plane_pair"]
+        features = plane_pairs + cylinder_features
+    else:
+        features = box_features
     features.extend(
         _extract_axis_aligned_through_holes(
             vectors,
@@ -184,6 +199,39 @@ def _build_feature_graph_for_folder_file(
         }
 
 
+def _emit_cylinder_scad_preview(graph: dict[str, Any], cylinder: dict[str, Any]) -> str:
+    """Emit parametric SCAD for a cylinder_like_solid."""
+    origin = [float(v) for v in cylinder["origin"]]
+    height = float(cylinder["height"])
+    diameter = float(cylinder["diameter"])
+    axis = str(cylinder.get("axis", "z"))
+
+    lines = [
+        "// Feature graph SCAD preview",
+        f"// source_file: {graph.get('source_file', '')}",
+        "// generated from conservative cylinder feature candidate",
+        "",
+        f"cylinder_origin = {_scad_vector(origin)};",
+        f"cylinder_height = {height:.6f};",
+        f"cylinder_diameter = {diameter:.6f};",
+        "",
+    ]
+
+    # For non-z axes, emit a rotation so OpenSCAD cylinder() (always along z) aligns correctly.
+    rotate_expr = {
+        "z": "",
+        "x": "rotate([0, 90, 0]) ",
+        "y": "rotate([-90, 0, 0]) ",
+    }.get(axis, "")
+
+    lines.extend([
+        "translate(cylinder_origin)",
+        f"  {rotate_expr}cylinder(h=cylinder_height, d=cylinder_diameter, center=false);",
+        "",
+    ])
+    return "\n".join(lines)
+
+
 def _emit_box_scad_preview(graph: dict[str, Any], box: dict[str, Any]) -> str:
     """Emit parametric SCAD for a box_like_solid with optional through-holes."""
     origin = [float(v) for v in box["origin"]]
@@ -256,12 +304,16 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
           rectangular_cutout, and rectangular_pocket features along the plate
           thickness axis
         - one box_like_solid with optional through-holes along any axis
+        - one cylinder_like_solid
     """
     plate = _best_feature(graph, "plate_like_solid")
     if plate is None or not _passes_preview_solid_confidence(plate.get("confidence")):
         box = _best_feature(graph, "box_like_solid")
         if box is None or not _passes_preview_solid_confidence(box.get("confidence")):
-            return None
+            cylinder = _best_feature(graph, "cylinder_like_solid")
+            if cylinder is None or not _passes_preview_solid_confidence(cylinder.get("confidence")):
+                return None
+            return _emit_cylinder_scad_preview(graph, cylinder)
         return _emit_box_scad_preview(graph, box)
 
     holes = [
@@ -525,6 +577,159 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
     lines.append("}")
     lines.append("")
     return "\n".join(lines)
+
+
+def _extract_cylinder_like_solid(
+    normals: np.ndarray,
+    face_areas: np.ndarray,
+    bbox: dict[str, float],
+    vertices: Optional[np.ndarray] = None,
+    config: DetectorConfig = DetectorConfig(),
+) -> list[dict[str, Any]]:
+    """
+    Detect a solid axis-aligned cylinder (boss / standoff / disk) by looking for:
+      - Two opposing flat circular caps on one axis (fill ratio ≈ π/4 ≈ 0.785).
+      - A roughly square cross-section in the plane perpendicular to that axis.
+      - No significant inward-pointing lateral surface area (which would indicate
+        an internal void / through-hole rather than a solid exterior).
+
+    Only one cylinder feature is returned (highest-confidence axis).
+    """
+    if len(normals) == 0 or len(face_areas) == 0:
+        return []
+
+    total_area = float(np.sum(face_areas))
+    if total_area <= 1e-12:
+        return []
+
+    axis_defs = [
+        ("x", 0, np.array([1.0, 0.0, 0.0])),
+        ("y", 1, np.array([0.0, 1.0, 0.0])),
+        ("z", 2, np.array([0.0, 0.0, 1.0])),
+    ]
+    bbox_spans = [
+        float(bbox["width"]),
+        float(bbox["height"]),
+        float(bbox["depth"]),
+    ]
+
+    # Mesh centroid (used to determine inward vs outward lateral normals)
+    mesh_center = np.array([
+        (float(bbox["min_x"]) + float(bbox["min_x"]) + float(bbox["width"])) / 2.0,
+        (float(bbox["min_y"]) + float(bbox["min_y"]) + float(bbox["height"])) / 2.0,
+        (float(bbox["min_z"]) + float(bbox["min_z"]) + float(bbox["depth"])) / 2.0,
+    ])
+    # Simpler: centre from bbox directly
+    mesh_center = np.array([
+        float(bbox["min_x"]) + float(bbox["width"]) / 2.0,
+        float(bbox["min_y"]) + float(bbox["height"]) / 2.0,
+        float(bbox["min_z"]) + float(bbox["depth"]) / 2.0,
+    ])
+
+    best: Optional[dict[str, Any]] = None
+    best_confidence = 0.0
+
+    for axis_name, axis_index, axis_vec in axis_defs:
+        cap_span = bbox_spans[axis_index]
+        if cap_span <= 1e-9:
+            continue
+
+        perp_indices = [i for i in range(3) if i != axis_index]
+        perp_spans = [bbox_spans[i] for i in perp_indices]
+        if min(perp_spans) <= 1e-9:
+            continue
+
+        # Squareness of the cross-section (perp plane must be roughly circular)
+        squareness = float(min(perp_spans)) / float(max(perp_spans))
+        if squareness < config.cylinder_cross_section_squareness_min:
+            continue
+
+        neg_mask = normals @ (-axis_vec) >= config.normal_axis_threshold
+        pos_mask = normals @ axis_vec >= config.normal_axis_threshold
+        neg_area = float(np.sum(face_areas[neg_mask]))
+        pos_area = float(np.sum(face_areas[pos_mask]))
+        cap_area = neg_area + pos_area
+
+        # Both caps must be present
+        if neg_area <= 0.0 or pos_area <= 0.0:
+            continue
+
+        cap_area_fraction = cap_area / total_area
+        if cap_area_fraction < config.cylinder_cap_area_fraction_min:
+            continue
+
+        # Cap fill ratio: actual cap area vs. bounding rectangle of the cap.
+        # For a circle: fill ≈ π/4 ≈ 0.785.  For a rectangle: fill ≈ 1.0.
+        cap_bbox_area = float(perp_spans[0]) * float(perp_spans[1])
+        avg_cap_area = cap_area / 2.0
+        cap_fill_ratio = avg_cap_area / cap_bbox_area if cap_bbox_area > 1e-9 else 0.0
+
+        if not (config.cylinder_cap_fill_ratio_min <= cap_fill_ratio <= config.cylinder_cap_fill_ratio_max):
+            continue
+
+        # Inward lateral face check: for a solid cylinder the outer surface normals
+        # all point away from the axis.  Any significant inward-pointing lateral area
+        # indicates an internal void (through-hole or cavity) — reject the candidate.
+        lateral_mask = ~neg_mask & ~pos_mask
+        lateral_normals = normals[lateral_mask]
+        lateral_areas = face_areas[lateral_mask]
+        lateral_area = float(np.sum(lateral_areas))
+
+        if lateral_area > 1e-9 and vertices is not None and len(lateral_normals) > 0:
+            # Approximate face centroids from vertex data passed in
+            # vertices shape: (n_faces, 3, 3) or we use bbox centre fallback
+            lat_vert = vertices[lateral_mask]  # (n_lat, 3, 3)
+            lat_centroids = lat_vert.mean(axis=1)  # (n_lat, 3)
+            to_centroid = lat_centroids - mesh_center  # vector from mesh centre to face
+            # Project onto perp plane only
+            to_c_perp = to_centroid[:, perp_indices]
+            lat_n_perp = lateral_normals[:, perp_indices]
+            dot = np.sum(to_c_perp * lat_n_perp, axis=1)
+            inward_lat_area = float(np.sum(lateral_areas[dot < 0]))
+            inward_frac = inward_lat_area / lateral_area
+        else:
+            inward_frac = 0.0
+
+        # More than 5% inward lateral area → internal surface present → not solid
+        if inward_frac > 0.05:
+            continue
+
+        # Confidence: reward fill ratio closeness to π/4 and squareness
+        ideal_fill = 3.14159265 / 4.0
+        fill_score = max(0.0, 1.0 - abs(cap_fill_ratio - ideal_fill) / ideal_fill)
+        confidence = float(fill_score * squareness)
+
+        if confidence < config.cylinder_confidence_min:
+            continue
+
+        if confidence > best_confidence:
+            best_confidence = confidence
+            height = cap_span
+            diameter = (perp_spans[0] + perp_spans[1]) / 2.0
+            origin = [
+                float(bbox["min_x"]),
+                float(bbox["min_y"]),
+                float(bbox["min_z"]),
+            ]
+            best = {
+                "type": "cylinder_like_solid",
+                "confidence": confidence,
+                "axis": axis_name,
+                "origin": origin,
+                "height": float(height),
+                "diameter": float(diameter),
+                "radius": float(diameter / 2.0),
+                "parameters": {
+                    "height": float(height),
+                    "diameter": float(diameter),
+                },
+                "note": (
+                    "Candidate for a cylinder(h, d) parametric feature "
+                    f"along the {axis_name}-axis."
+                ),
+            }
+
+    return [best] if best is not None else []
 
 
 def _extract_axis_aligned_box_features(

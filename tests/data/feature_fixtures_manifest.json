@@ -1146,6 +1146,84 @@
           }
         }
       ]
+    },
+    {
+      "name": "cylinder_plain",
+      "fixture_type": "cylinder",
+      "description": "Baseline solid cylinder along z-axis. Guards against false classification as plate or box.",
+      "output_filename": "cylinder_plain.scad",
+      "diameter": 20.0,
+      "height": 30.0,
+      "axis": "z",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "cylinder_along_z",
+          "confidence": 0.95,
+          "expected_detection": {
+            "cylinder_like_solid": true,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "cylinder_short_disk",
+      "fixture_type": "cylinder",
+      "description": "Short wide cylinder (disk form factor) to stress the plate/cylinder boundary.",
+      "output_filename": "cylinder_short_disk.scad",
+      "diameter": 40.0,
+      "height": 6.0,
+      "axis": "z",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "disk_cylinder",
+          "confidence": 0.90,
+          "expected_detection": {
+            "cylinder_like_solid": true,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "cylinder_x_axis",
+      "fixture_type": "cylinder",
+      "description": "Solid cylinder along x-axis to exercise non-z cylinder detection.",
+      "output_filename": "cylinder_x_axis.scad",
+      "diameter": 16.0,
+      "height": 40.0,
+      "axis": "x",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "cylinder_along_x",
+          "confidence": 0.90,
+          "expected_detection": {
+            "cylinder_like_solid": true,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
     }
   ]
 }

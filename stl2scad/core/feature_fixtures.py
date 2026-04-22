@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterable, Optional, Union
 
-_SUPPORTED_FIXTURE_TYPES = {"plate", "box", "l_bracket", "sphere", "torus"}
+_SUPPORTED_FIXTURE_TYPES = {"plate", "box", "l_bracket", "sphere", "torus", "cylinder"}
 _AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
 _COUNT_EXPECTATION_TO_FEATURE = {
     "hole_count": "hole_like_cutout",
@@ -22,6 +22,7 @@ _COUNT_EXPECTATION_TO_FEATURE = {
 _BOOLEAN_EXPECTATION_TO_FEATURE = {
     "plate_like_solid": "plate_like_solid",
     "box_like_solid": "box_like_solid",
+    "cylinder_like_solid": "cylinder_like_solid",
 }
 
 
@@ -158,6 +159,8 @@ def generate_feature_fixture_scad(fixture: dict[str, Any]) -> str:
         return _generate_sphere_fixture_scad(normalized)
     if fixture_type == "torus":
         return _generate_torus_fixture_scad(normalized)
+    if fixture_type == "cylinder":
+        return _generate_cylinder_fixture_scad(normalized)
     raise ValueError(f"Unsupported feature fixture type '{fixture_type}'")
 
 
@@ -319,6 +322,8 @@ def _validate_geometry_by_fixture_type(
         return _validate_sphere_fixture_geometry(raw_fixture, fixture_name)
     if fixture_type == "torus":
         return _validate_torus_fixture_geometry(raw_fixture, fixture_name)
+    if fixture_type == "cylinder":
+        return _validate_cylinder_fixture_geometry(raw_fixture, fixture_name)
     raise ValueError(f"Unsupported feature fixture type '{fixture_type}'")
 
 
@@ -543,6 +548,61 @@ def _validate_torus_fixture_geometry(
         "explicit_hole_count": 0,
         "explicit_slot_count": 0,
     }
+
+
+def _validate_cylinder_fixture_geometry(
+    raw_fixture: dict[str, Any],
+    fixture_name: str,
+) -> dict[str, Any]:
+    diameter = _as_positive_float(
+        raw_fixture.get("diameter"),
+        f"{fixture_name}.diameter",
+    )
+    height = _as_positive_float(
+        raw_fixture.get("height"),
+        f"{fixture_name}.height",
+    )
+    axis = str(raw_fixture.get("axis", "z")).strip().lower()
+    if axis not in ("x", "y", "z"):
+        raise ValueError(f"{fixture_name}.axis must be 'x', 'y', or 'z'")
+    return {
+        "diameter": diameter,
+        "height": height,
+        "axis": axis,
+        "explicit_hole_count": 0,
+        "explicit_slot_count": 0,
+        "explicit_counterbore_count": 0,
+        "explicit_rectangular_cutout_count": 0,
+        "explicit_rectangular_pocket_count": 0,
+    }
+
+
+def _generate_cylinder_fixture_scad(fixture: dict[str, Any]) -> str:
+    diameter = float(fixture["diameter"])
+    height = float(fixture["height"])
+    axis = str(fixture.get("axis", "z"))
+    lines = _fixture_header_lines(fixture)
+    lines.extend(
+        [
+            f"diameter = {diameter:.6f};",
+            f"height = {height:.6f};",
+            "",
+        ]
+    )
+    # Rotate so the cylinder axis aligns with the requested axis.
+    # OpenSCAD's cylinder() always runs along z.
+    rotate_prefix = {
+        "z": "",
+        "x": "rotate([0, 90, 0]) ",
+        "y": "rotate([-90, 0, 0]) ",
+    }.get(axis, "")
+    lines.extend(
+        [
+            f"{rotate_prefix}cylinder(h=height, d=diameter, center=false);",
+            "",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def _generate_plate_fixture_scad(fixture: dict[str, Any]) -> str:

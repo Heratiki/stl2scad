@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "label": "seed_pending_corpus",
+  "manifest_path": "tests/data/real_world_corpus_manifest.json",
+  "corpus_root": "tests/data/real_world_stls",
+  "files_present": 0,
+  "files_missing": 2,
+  "mean_score": 0.0,
+  "preview_ready_ratio": 0.0,
+  "feature_family_recall": {},
+  "per_case": [],
+  "notes": [
+    "Seed baseline committed before licensed/self-authored real-world STL files are added.",
+    "Update this artifact with scripts/score_real_world_corpus.py once the local corpus exists."
+  ]
+}

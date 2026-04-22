@@ -4,6 +4,7 @@ Tests for STL to SCAD conversion functionality.
 
 import pytest
 from stl2scad.core.converter import stl2scad, validate_stl, STLValidationError
+from stl2scad.core import converter as converter_module
 from stl2scad.core.benchmark_fixtures import ensure_benchmark_fixtures
 from stl2scad.core import recognition as recognition_module
 import stl
@@ -199,6 +200,38 @@ def test_invalid_recognition_backend_raises(sample_stl_file, test_output_dir):
             parametric=True,
             recognition_backend="does_not_exist",
         )
+
+
+def test_parametric_large_mesh_gate_uses_feature_graph_preview_fallback(
+    sample_stl_file, test_output_dir, monkeypatch
+):
+    """When native auto-gates large meshes, fallback preview should still be attempted."""
+    output_file = test_output_dir / "parametric_large_mesh_gate_fallback.scad"
+    monkeypatch.setenv("STL2SCAD_ENABLE_PREVIEW_FALLBACK", "1")
+
+    monkeypatch.setattr(
+        converter_module,
+        "_should_attempt_parametric",
+        lambda mesh, backend: (False, "auto_gate_native_large_mesh"),
+    )
+    monkeypatch.setattr(
+        converter_module,
+        "_detect_feature_graph_preview_for_stl",
+        lambda input_file: "cube([1, 2, 3]);\n",
+    )
+
+    stats = stl2scad(str(sample_stl_file), str(output_file), parametric=True)
+    content = output_file.read_text(encoding="utf-8")
+
+    assert "cube([1, 2, 3]);" in content
+    assert "polyhedron(" not in content
+    assert stats.metadata["recognition_attempted"] == "false"
+    assert stats.metadata["recognition_preview_attempted"] == "true"
+    assert stats.metadata["recognition_backend_used"] == "feature_graph_preview_fallback"
+    assert (
+        stats.metadata["recognition_fallback_reason"]
+        == "auto_gate_native_large_mesh;feature_graph_preview"
+    )
 
 
 def test_phase1_trimesh_backend_recognizes_sphere_fixture(test_data_dir, monkeypatch):

@@ -1,11 +1,10 @@
-"""
-Test configuration and fixtures for STL2SCAD tests.
-"""
+"""Test configuration and fixtures for STL2SCAD tests."""
+
+import shutil
+import uuid
+from pathlib import Path
 
 import pytest
-import shutil
-import tempfile
-from pathlib import Path
 
 
 @pytest.fixture
@@ -19,7 +18,19 @@ def test_output_dir():
     """Return an isolated temporary output directory for each test."""
     base_tmp = Path(__file__).parent / ".tmp_output"
     base_tmp.mkdir(exist_ok=True)
-    temp_dir = Path(tempfile.mkdtemp(prefix="test-", dir=base_tmp))
+    temp_dir = base_tmp / f"test-{uuid.uuid4().hex[:8]}"
+    temp_dir.mkdir()
+    yield temp_dir
+    shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+@pytest.fixture
+def tmp_path():
+    """Provide a repo-local tmp_path to avoid restricted system temp dirs."""
+    base_tmp = Path(__file__).parent / ".tmp_output"
+    base_tmp.mkdir(exist_ok=True)
+    temp_dir = base_tmp / f"pytest-{uuid.uuid4().hex[:8]}"
+    temp_dir.mkdir()
     yield temp_dir
     shutil.rmtree(temp_dir, ignore_errors=True)
 

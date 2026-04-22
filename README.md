@@ -239,6 +239,15 @@ Run recognition coverage sweep and emit a JSON artifact:
 python scripts/run_recognition_sweep.py --fixtures-dir tests/data/benchmark_fixtures --output artifacts/recognition_sweep.json --backends native,trimesh_manifold,cgal
 ```
 
+Score the labeled real-world corpus when local STL files are available:
+
+```bash
+python scripts/score_real_world_corpus.py --manifest tests/data/real_world_corpus_manifest.json --baseline artifacts/real_world_recall_baseline.json
+```
+
+The committed manifest and baseline define the reporting contract; the smoke test
+skips cleanly when the local corpus files are absent.
+
 Use gating thresholds for CI regression checks (multi-feature, not single-fixture):
 
 ```bash

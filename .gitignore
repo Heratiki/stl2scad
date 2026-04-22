@@ -72,8 +72,10 @@ tests/data/.generated/
 !tests/data/benchmark_fixtures/**/*.stl
 !tests/data/benchmark_fixtures/manifest.json
 !tests/data/feature_fixtures_manifest.json
+!tests/data/real_world_corpus_manifest.json
 !tests/data/feature_fixtures_scad/
 !tests/data/feature_fixtures_scad/*.scad
+!artifacts/real_world_recall_baseline.json
 
 # Ignore debug folder
 debug/
@@ -85,3 +87,8 @@ tests/.tmp_output/
 # Tuning artifacts
 artifacts/tuning/**/study.db
 artifacts/tuning/**/fixtures/
+
+# Generated verification output for external/non-project models
+artifacts/HMG7.3 Ender 5 V Wheel X Carriage V2_verification.html
+artifacts/HMG7.3 Ender 5 V Wheel X Carriage V2_verification.json
+artifacts/HMG7.3 Ender 5 V Wheel X Carriage V2_visualizations/

@@ -86,6 +86,7 @@ from .acceleration import (
     resolve_compute_backend,
 )
 from .cgal_backend import detect_primitive_with_cgal
+from .feature_graph import build_feature_graph_for_stl, emit_feature_graph_scad_preview
 from .recognition import (
     detect_primitive_with_diagnostics,
     get_available_recognition_backends,
@@ -489,6 +490,20 @@ def _should_attempt_parametric(
     return True, ""
 
 
+def _detect_feature_graph_preview_for_stl(input_file: str) -> Optional[str]:
+    """Try conservative feature-graph preview emission for one STL file."""
+    try:
+        graph = build_feature_graph_for_stl(input_file)
+        return emit_feature_graph_scad_preview(graph)
+    except Exception as exc:
+        logging.debug(
+            "Feature-graph preview fallback failed for %s: %s",
+            input_file,
+            str(exc),
+        )
+        return None
+
+
 def stl2scad(
     input_file: str,
     output_file: str,
@@ -620,8 +635,24 @@ def stl2scad(
         metadata["recognition_attempted"] = "true" if should_attempt else "false"
         if not should_attempt:
             fallback_reason = gate_reason
-            metadata["recognition_fallback_reason"] = fallback_reason
-            metadata["recognition_backend_used"] = "polyhedron_fallback"
+            preview_scad = None
+            preview_fallback_enabled = (
+                os.getenv("STL2SCAD_ENABLE_PREVIEW_FALLBACK", "0") == "1"
+            )
+            if gate_reason == "auto_gate_native_large_mesh" and preview_fallback_enabled:
+                metadata["recognition_preview_attempted"] = "true"
+                preview_scad = _detect_feature_graph_preview_for_stl(input_file)
+            if preview_scad:
+                primitive_scad = preview_scad.strip() + "\n"
+                backend_used = "feature_graph_preview_fallback"
+                primitive_type = "feature_graph_preview"
+                metadata["recognition_backend_used"] = backend_used
+                metadata["recognition_fallback_reason"] = (
+                    f"{fallback_reason};feature_graph_preview"
+                )
+            else:
+                metadata["recognition_fallback_reason"] = fallback_reason
+                metadata["recognition_backend_used"] = "polyhedron_fallback"
         elif selected_backend == "cgal":
             cgal_result = detect_primitive_with_cgal(stl_mesh, tolerance=tolerance)
             if cgal_result and cgal_result.detected and cgal_result.scad:

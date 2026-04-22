@@ -36,6 +36,14 @@ from stl2scad.core.feature_fixtures import (
 )
 from stl2scad.tuning.config import DetectorConfig
 from stl2scad.tuning.scoring import ManifestScore, score_manifest
+from stl2scad.tuning.real_world_corpus import (
+    compare_real_world_score_to_baseline,
+    list_missing_real_world_corpus_files,
+    load_real_world_corpus_manifest,
+    resolve_real_world_corpus_root,
+    score_real_world_corpus,
+    serialize_real_world_corpus_score,
+)
 from stl2scad.tuning.search_space import suggest_config
 from stl2scad.tuning.splits import leave_one_out, stratified_split
 
@@ -51,6 +59,15 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--holdout-ratio", type=float, default=0.25)
     parser.add_argument("--cross-validate", action="store_true")
+    parser.add_argument(
+        "--real-world-manifest",
+        default="tests/data/real_world_corpus_manifest.json",
+    )
+    parser.add_argument("--real-world-corpus-root", default=None)
+    parser.add_argument(
+        "--real-world-baseline",
+        default="artifacts/real_world_recall_baseline.json",
+    )
     args = parser.parse_args(argv)
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -122,6 +139,11 @@ def main(argv: list[str]) -> int:
             holdout=holdout,
             selected_config_source=selected_config_source,
         )
+        _write_real_world_reports(
+            args=args,
+            output_dir=args.output,
+            config=best_config,
+        )
 
     if args.cross_validate:
         fold_scores: list[float] = []
@@ -191,6 +213,47 @@ def _serialize_score(score: ManifestScore, fixtures: list[dict]) -> dict:
 
 def _dump(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def _write_real_world_reports(
+    args: argparse.Namespace,
+    output_dir: Path,
+    config: DetectorConfig,
+) -> None:
+    manifest_path = Path(args.real_world_manifest)
+    if not manifest_path.exists():
+        logger.info("Real-world manifest not found, skipping recall report: %s", manifest_path)
+        return
+
+    manifest = load_real_world_corpus_manifest(manifest_path)
+    corpus_root = resolve_real_world_corpus_root(
+        manifest_path,
+        manifest,
+        args.real_world_corpus_root,
+    )
+    missing = list_missing_real_world_corpus_files(manifest["cases"], corpus_root)
+    if missing:
+        logger.info(
+            "Real-world corpus files missing under %s; skipping recall scoring (%d missing).",
+            corpus_root,
+            len(missing),
+        )
+        return
+
+    score = score_real_world_corpus(
+        config=config,
+        manifest_path=manifest_path,
+        corpus_root=corpus_root,
+    )
+    _dump(output_dir / "real_world_recall.json", serialize_real_world_corpus_score(score))
+
+    baseline_path = Path(args.real_world_baseline)
+    if baseline_path.exists():
+        baseline_payload = json.loads(baseline_path.read_text(encoding="utf-8"))
+        _dump(
+            output_dir / "real_world_recall_delta.json",
+            compare_real_world_score_to_baseline(score, baseline_payload),
+        )
 
 
 def _write_report(path: Path, **ctx) -> None:

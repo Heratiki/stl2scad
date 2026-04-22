@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "corpus_root": "real_world_stls",
+  "cases": [
+    {
+      "name": "drill_guide_plate",
+      "relative_path": "drill_guide_plate.stl",
+      "fixture_type": "plate",
+      "description": "Self-authored drill guide plate with two repeated through-holes.",
+      "source": "local_self_authored",
+      "license": "private-local",
+      "plate_size": [40.0, 20.0, 6.0],
+      "holes": [
+        { "center": [-10.0, 0.0], "diameter": 4.0 },
+        { "center": [10.0, 0.0], "diameter": 4.0 }
+      ],
+      "expected_detection": {
+        "plate_like_solid": true,
+        "box_like_solid": false,
+        "hole_count": 2,
+        "slot_count": 0,
+        "rectangular_cutout_count": 0,
+        "rectangular_pocket_count": 0,
+        "linear_pattern_count": 1,
+        "grid_pattern_count": 0,
+        "counterbore_count": 0
+      },
+      "fingerprint": {
+        "sha256": ""
+      }
+    },
+    {
+      "name": "x_carriage_spacer_block",
+      "relative_path": "x_carriage_spacer_block.stl",
+      "fixture_type": "box",
+      "description": "Self-authored spacer block with one axial through-hole.",
+      "source": "local_self_authored",
+      "license": "private-local",
+      "box_size": [24.0, 16.0, 12.0],
+      "holes": [
+        { "axis": "z", "center": [0.0, 0.0, 0.0], "diameter": 4.0 }
+      ],
+      "expected_detection": {
+        "plate_like_solid": false,
+        "box_like_solid": true,
+        "hole_count": 1,
+        "slot_count": 0,
+        "rectangular_cutout_count": 0,
+        "rectangular_pocket_count": 0,
+        "linear_pattern_count": 0,
+        "grid_pattern_count": 0,
+        "counterbore_count": 0
+      },
+      "fingerprint": {
+        "sha256": ""
+      }
+    }
+  ]
+}

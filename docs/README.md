@@ -9,7 +9,8 @@ This directory holds all project documentation.
   (the detector roadmap), [cgal_integration_boundary.md](planning/cgal_integration_boundary.md),
   [parametric_conversion_roadmap.md](planning/parametric_conversion_roadmap.md),
   [phase2_release_checklist.md](planning/phase2_release_checklist.md), and
-  [debug_test_plan.md](planning/debug_test_plan.md).
+  [debug_test_plan.md](planning/debug_test_plan.md), and
+  [terminal_execution_reliability.md](planning/terminal_execution_reliability.md).
 - **[reviews/](reviews/)** — Past review artifacts (one `.docx` snapshot).
 - **[memory-bank/](memory-bank/)** — Cline-style session memory notes
   (gitignored; local-only). Structure: `activeContext.md`, `progress.md`,

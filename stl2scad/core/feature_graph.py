@@ -19,9 +19,20 @@ from stl.mesh import Mesh
 from .feature_inventory import _bbox, _normalized_normals, _triangle_areas
 
 STL_SUFFIXES = {".stl"}
+PREVIEW_SOLID_CONFIDENCE_THRESHOLD = 0.70
+# Allow tiny numeric drift around the preview threshold while staying conservative.
+PREVIEW_SOLID_CONFIDENCE_EPSILON = 0.002
 
 
 from stl2scad.tuning.config import DetectorConfig
+
+
+def _passes_preview_solid_confidence(confidence: Any) -> bool:
+    try:
+        value = float(confidence)
+    except (TypeError, ValueError):
+        return False
+    return value + PREVIEW_SOLID_CONFIDENCE_EPSILON >= PREVIEW_SOLID_CONFIDENCE_THRESHOLD
 
 def build_feature_graph_for_stl(
     stl_file: Union[Path, str],
@@ -247,9 +258,9 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         - one box_like_solid with optional through-holes along any axis
     """
     plate = _best_feature(graph, "plate_like_solid")
-    if plate is None or float(plate.get("confidence", 0.0)) < 0.70:
+    if plate is None or not _passes_preview_solid_confidence(plate.get("confidence")):
         box = _best_feature(graph, "box_like_solid")
-        if box is None or float(box.get("confidence", 0.0)) < 0.70:
+        if box is None or not _passes_preview_solid_confidence(box.get("confidence")):
             return None
         return _emit_box_scad_preview(graph, box)
 

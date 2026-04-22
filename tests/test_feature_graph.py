@@ -376,6 +376,38 @@ def test_feature_graph_scad_preview_emits_grid_hole_loop(test_output_dir):
     assert scad.count("cylinder(") == 1
 
 
+def test_feature_graph_scad_preview_allows_tiny_near_threshold_plate_confidence():
+    near_threshold_graph = {
+        "source_file": "near_threshold_plate.stl",
+        "features": [
+            {
+                "type": "plate_like_solid",
+                "origin": [0.0, 0.0, 0.0],
+                "size": [30.0, 20.0, 6.0],
+                "confidence": 0.6985,
+            }
+        ],
+    }
+    below_threshold_graph = {
+        "source_file": "below_threshold_plate.stl",
+        "features": [
+            {
+                "type": "plate_like_solid",
+                "origin": [0.0, 0.0, 0.0],
+                "size": [30.0, 20.0, 6.0],
+                "confidence": 0.6970,
+            }
+        ],
+    }
+
+    near_scad = emit_feature_graph_scad_preview(near_threshold_graph)
+    below_scad = emit_feature_graph_scad_preview(below_threshold_graph)
+
+    assert near_scad is not None
+    assert "cube(plate_size)" in near_scad
+    assert below_scad is None
+
+
 def test_feature_graph_extracts_counterbore_hole(test_output_dir):
     stl_file = test_output_dir / "plate_with_counterbore.stl"
     through_radius = 2.0

@@ -95,7 +95,7 @@ def analyze_stl_folder(
                     progress_callback(done_count, total, str(path))
             results = [result_map[path] for path in files]
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "input_dir": str(input_path),
         "config": {
@@ -175,7 +175,7 @@ def build_feature_graphs_from_inventory(
     source_inventory = str(inventory) if isinstance(inventory, (str, Path)) else None
 
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "inventory_source": source_inventory,
         "input_dir": str(input_dir) if input_dir is not None else None,
@@ -352,7 +352,7 @@ def _build_feature_graph_from_inventory_file(
         return build_feature_graph_for_stl(path, root_dir=root_dir)
     except Exception as exc:
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "source_file": _relative_or_absolute(path, root_dir),
             "status": "error",
             "error": str(exc),
@@ -603,6 +603,11 @@ def _coordinate_spacing_signals(
                 plausible_parametric_levels and len(diffs) >= 2 and regularity >= 0.8
             ),
         }
+        if signals[axis_name]["regular"]:
+            signals[axis_name]["region_hint"] = {
+                "min": float(np.min(values)),
+                "max": float(np.max(values)),
+            }
     return signals
 
 
@@ -643,11 +648,31 @@ def _classify_inventory(payload: dict[str, Any]) -> dict[str, Any]:
     if nonzero_dims < 3:
         primary = "degenerate_or_flat_candidate"
 
+    plate_confidence = 0.0
+    box_confidence = 0.0
+    cylinder_confidence = 0.0
+
+    if nonzero_dims >= 3:
+        plate_confidence = min(axis_ratio * 0.7 + len(regular_axes) * 0.1, 1.0)
+        box_confidence = min(axis_ratio * 0.5 + len(regular_axes) * 0.17, 1.0)
+
+        cluster_areas = sorted([float(info.get("area_ratio", 0.0)) for info in normal_profile.get("clusters", {}).values()], reverse=True)
+        sum_top_two = sum(cluster_areas[:2])
+        if sum_top_two > 0:
+            cylinder_like = sum_top_two / max(axis_ratio, 1e-9)
+            if cylinder_like > 0.9 and symmetry_sum >= 1.5:
+                cylinder_confidence = min(cylinder_like * (symmetry_sum / 2.0), 1.0)
+
     return {
         "primary": primary,
         "mechanical_score": float(min(mechanical_score, 1.0)),
         "organic_score": float(min(organic_score, 1.0)),
         "regular_axes": regular_axes,
+        "family_confidences": {
+            "plate": float(plate_confidence),
+            "box": float(box_confidence),
+            "cylinder": float(cylinder_confidence),
+        },
     }
 
 

@@ -25,6 +25,10 @@ def test_analyze_stl_file_detects_box_feature_signals(test_data_dir):
     assert result["status"] == "ok"
     assert result["triangles"] == 12
     assert result["classification"]["primary"] == "mechanical_candidate"
+    assert "family_confidences" in result["classification"]
+    assert result["classification"]["family_confidences"]["box"] >= 0.4
+    assert result["classification"]["family_confidences"]["cylinder"] == 0.0
+
     feature_types = {feature["type"] for feature in result["candidate_features"]}
     assert "dominant_axis_aligned_planes" in feature_types
     assert "mirror_symmetry" in feature_types

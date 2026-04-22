@@ -19,10 +19,10 @@ class DetectorConfig:
     # --- Plate/box gating ---
     plate_paired_axes_min: int = 2
     plate_confidence_min: float = 0.55
-    plate_thin_ratio_max: float = 0.18
+    plate_thin_ratio_max: float = 0.25
     plate_tolerant_confidence_min: float = 0.70
     box_paired_axes_required: int = 3
-    box_confidence_min: float = 0.80
+    box_confidence_min: float = 0.70
     box_tolerant_confidence_min: float = 0.70
 
     # --- Tolerant plate confidence thresholds ---

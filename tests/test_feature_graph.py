@@ -12,6 +12,7 @@ from stl2scad.core.benchmark_fixtures import ensure_benchmark_fixtures
 from stl2scad.core.feature_graph import (
     build_feature_graph_for_folder,
     build_feature_graph_for_stl,
+    build_triage_report,
     emit_feature_graph_scad_preview,
 )
 
@@ -1059,3 +1060,222 @@ def _jitter_mesh_vertices(output_file, scale=0.02, seed=0):
     vectors = flat.reshape(vectors.shape)
     mesh.vectors[:] = vectors
     mesh.save(str(output_file))
+
+
+# ---------------------------------------------------------------------------
+# Track A: triage report tests
+# ---------------------------------------------------------------------------
+
+def _make_parametric_preview_graph(test_output_dir) -> dict:
+    """Build a graph that produces a parametric preview (plate with holes)."""
+    stl_file = test_output_dir / "triage_plate_with_holes.stl"
+    _create_plate_with_holes(stl_file)
+    return build_feature_graph_for_stl(stl_file)
+
+
+def _make_error_graph() -> dict:
+    """Synthetic error graph."""
+    return {
+        "schema_version": 1,
+        "source_file": "bad_file.stl",
+        "status": "error",
+        "error": "simulated error",
+        "features": [],
+    }
+
+
+def _make_axis_pairs_only_graph(surface_area: float = 600.0, boundary_area_per_pair: float = 100.0) -> dict:
+    """Synthetic graph with only axis_boundary_plane_pair features.
+
+    surface_area controls planar_support_fraction:
+    - default (600 total, 300 boundary) → PSF=0.5 → medium_planar_support_no_candidate
+    - pass surface_area=300 → PSF=1.0 → high_planar_support_no_candidate (box-like)
+    - pass surface_area=3000 → PSF=0.1 → low_planar_support_complex_geometry (organic)
+    """
+    half = boundary_area_per_pair / 2.0
+    return {
+        "schema_version": 1,
+        "source_file": "sphere.stl",
+        "mesh": {
+            "triangles": 20,
+            "surface_area": surface_area,
+            "bounding_box": {"width": 10.0, "height": 10.0, "depth": 10.0},
+        },
+        "features": [
+            {
+                "type": "axis_boundary_plane_pair",
+                "axis": "x",
+                "negative_coord": 0.0,
+                "positive_coord": 10.0,
+                "negative_area": half,
+                "positive_area": half,
+                "paired": True,
+            },
+            {
+                "type": "axis_boundary_plane_pair",
+                "axis": "y",
+                "negative_coord": 0.0,
+                "positive_coord": 10.0,
+                "negative_area": half,
+                "positive_area": half,
+                "paired": True,
+            },
+            {
+                "type": "axis_boundary_plane_pair",
+                "axis": "z",
+                "negative_coord": 0.0,
+                "positive_coord": 10.0,
+                "negative_area": half,
+                "positive_area": half,
+                "paired": True,
+            },
+        ],
+    }
+
+
+def _make_polyhedron_fallback_graph() -> dict:
+    """Synthetic graph with no features at all."""
+    return {
+        "schema_version": 1,
+        "source_file": "organic.stl",
+        "mesh": {"triangles": 500, "surface_area": 200.0, "bounding_box": {"width": 5.0, "height": 8.0, "depth": 3.0}},
+        "features": [],
+    }
+
+
+def test_triage_report_schema(test_output_dir):
+    """Triage report has the required top-level keys."""
+    graphs = [_make_error_graph()]
+    report = build_triage_report(graphs, top_n=3, input_dir="/some/dir")
+
+    assert report["schema_version"] == 1
+    assert "generated_at_utc" in report
+    assert report["input_dir"] == "/some/dir"
+    assert report["top_n"] == 3
+    assert report["files_processed"] == 1
+    assert "bucket_counts" in report
+    assert "ranked_failure_patterns" in report
+    assert "per_file" in report
+    for key in ("parametric_preview", "feature_graph_no_preview", "axis_pairs_only", "polyhedron_fallback", "error"):
+        assert key in report["bucket_counts"]
+
+
+def test_triage_report_bucket_accounting(test_output_dir):
+    """bucket_counts values must sum to files_processed for all bucket combinations."""
+    preview_graph = _make_parametric_preview_graph(test_output_dir)
+    graphs = [
+        preview_graph,
+        _make_axis_pairs_only_graph(surface_area=300.0),
+        _make_axis_pairs_only_graph(surface_area=300.0),
+        _make_polyhedron_fallback_graph(),
+        _make_error_graph(),
+    ]
+    report = build_triage_report(graphs, top_n=5)
+
+    counts = report["bucket_counts"]
+    total = sum(counts.values())
+    assert total == report["files_processed"]
+    assert total == len(graphs)
+    assert counts["parametric_preview"] == 1
+    assert counts["axis_pairs_only"] == 2
+    assert counts["polyhedron_fallback"] == 1
+    assert counts["error"] == 1
+
+
+def test_triage_report_ranked_failure_patterns_shape(test_output_dir):
+    """ranked_failure_patterns entries have required fields and count <= top_n."""
+    # Use high-PSF graphs so they all land in the same pattern bucket
+    graphs = [_make_axis_pairs_only_graph(surface_area=300.0) for _ in range(4)]
+    graphs.append(_make_polyhedron_fallback_graph())
+    report = build_triage_report(graphs, top_n=3)
+
+    patterns = report["ranked_failure_patterns"]
+    assert len(patterns) <= 3
+    for entry in patterns:
+        assert "pattern" in entry
+        assert "count" in entry
+        assert "representative_file" in entry
+        assert isinstance(entry["count"], int)
+        assert entry["count"] > 0
+
+
+def test_triage_report_ranked_patterns_only_cover_non_preview_buckets(test_output_dir):
+    """Ranked failure patterns must not include parametric_preview or error files."""
+    preview_graph = _make_parametric_preview_graph(test_output_dir)
+    graphs = [
+        preview_graph,
+        _make_error_graph(),
+        _make_axis_pairs_only_graph(surface_area=300.0),
+    ]
+    report = build_triage_report(graphs, top_n=5)
+
+    pattern_counts = report["bucket_counts"]
+    assert pattern_counts["parametric_preview"] == 1
+    assert pattern_counts["error"] == 1
+    # ranked_failure_patterns total count must equal axis_pairs_only + feature_graph_no_preview
+    ranked_total = sum(e["count"] for e in report["ranked_failure_patterns"])
+    expected = pattern_counts["axis_pairs_only"] + pattern_counts["feature_graph_no_preview"]
+    assert ranked_total == expected
+
+
+def test_triage_report_failure_shape_metadata_present_for_non_preview(test_output_dir):
+    """Non-preview, non-error, non-polyhedron graphs must carry failure_shape_metadata."""
+    graphs = [_make_axis_pairs_only_graph()]
+    report = build_triage_report(graphs)
+
+    assert report["per_file"][0]["bucket"] == "axis_pairs_only"
+    metadata = report["per_file"][0]["failure_shape_metadata"]
+    assert "axis_pair_count" in metadata
+    assert "paired_axis_count" in metadata
+    assert "thinnest_axis" in metadata
+    assert "thinnest_axis_paired" in metadata
+    assert "planar_support_fraction" in metadata
+    assert "plate_candidate_confidence" in metadata
+    assert "box_candidate_confidence" in metadata
+    assert "dominant_axis_pair_confidence" not in metadata
+
+
+def test_triage_report_error_and_polyhedron_graphs_have_no_failure_metadata():
+    """Error and polyhedron-fallback graph entries must not carry failure_shape_metadata."""
+    graphs = [_make_error_graph(), _make_polyhedron_fallback_graph()]
+    report = build_triage_report(graphs)
+
+    for entry in report["per_file"]:
+        assert "failure_shape_metadata" not in entry
+
+
+def test_triage_report_integrates_with_benchmark_fixtures(test_data_dir, test_output_dir):
+    """build_triage_report works end-to-end against real benchmark fixtures."""
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+
+    output_json = test_output_dir / "triage_test_graph.json"
+    report = build_feature_graph_for_folder(fixtures_dir, output_json, max_files=4)
+    triage = build_triage_report(report["graphs"], input_dir=str(fixtures_dir))
+
+    counts = triage["bucket_counts"]
+    assert sum(counts.values()) == triage["files_processed"]
+    assert triage["files_processed"] == 4
+    for entry in triage["per_file"]:
+        assert entry["bucket"] in counts
+
+
+def test_triage_report_planar_support_fraction_splits_organic_from_box(test_data_dir):
+    """planar_support_fraction distinguishes organic geometry from box-like candidates."""
+    # High PSF (all surface is flat/boundary) → high_planar_support_no_candidate
+    high_psf = _make_axis_pairs_only_graph(surface_area=300.0, boundary_area_per_pair=100.0)
+    # Medium PSF
+    med_psf = _make_axis_pairs_only_graph(surface_area=600.0, boundary_area_per_pair=100.0)
+    # Low PSF (organic, e.g. 3DBenchy) → low_planar_support_complex_geometry
+    low_psf = _make_axis_pairs_only_graph(surface_area=3000.0, boundary_area_per_pair=100.0)
+
+    report = build_triage_report([high_psf, med_psf, low_psf], top_n=5)
+    patterns = {e["pattern"] for e in report["ranked_failure_patterns"]}
+
+    assert "high_planar_support_no_candidate" in patterns
+    assert "low_planar_support_complex_geometry" in patterns
+
+    # Verify per-file metadata
+    high_entry = next(e for e in report["per_file"] if e["source_file"] == "sphere.stl"
+                      and e["failure_shape_metadata"]["planar_support_fraction"] >= 0.65)
+    assert high_entry["failure_shape_metadata"]["planar_support_fraction"] >= 0.65

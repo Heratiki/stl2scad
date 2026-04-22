@@ -725,6 +725,33 @@
       ]
     },
     {
+      "name": "plate_thick",
+      "fixture_type": "plate",
+      "description": "Thick plate with thin_ratio of 0.20, validating detection in the 0.18–0.25 band unlocked by plate_thin_ratio_max=0.25.",
+      "output_filename": "plate_thick.scad",
+      "plate_size": [
+        30.0,
+        20.0,
+        6.0
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
       "name": "box_z_through_hole",
       "fixture_type": "box",
       "description": "Centered box with one through-hole along the z axis.",

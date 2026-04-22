@@ -77,6 +77,7 @@ def build_feature_graph_for_stl(
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "mesh": {
             "triangles": int(len(vectors)),
+            "surface_area": float(np.sum(face_areas)),
             "bounding_box": bbox,
         },
         "features": features,
@@ -172,6 +173,68 @@ def _build_feature_graph_for_folder_file(
         }
 
 
+def _emit_box_scad_preview(graph: dict[str, Any], box: dict[str, Any]) -> str:
+    """Emit parametric SCAD for a box_like_solid with optional through-holes."""
+    origin = [float(v) for v in box["origin"]]
+    size = [float(v) for v in box["size"]]
+    axis_depth = {"x": size[0], "y": size[1], "z": size[2]}
+
+    holes = [
+        f
+        for f in graph.get("features", [])
+        if f.get("type") == "hole_like_cutout"
+        and float(f.get("confidence", 0.0)) >= 0.70
+        and f.get("axis") in axis_depth
+    ]
+
+    lines = [
+        "// Feature graph SCAD preview",
+        f"// source_file: {graph.get('source_file', '')}",
+        "// generated from conservative box/hole feature candidates",
+        "",
+        f"box_origin = {_scad_vector(origin)};",
+        f"box_size = {_scad_vector(size)};",
+    ]
+
+    for hole_index, hole in enumerate(holes):
+        center = [float(v) for v in hole["center"]]
+        lines.extend(
+            [
+                f"hole_{hole_index}_center = {_scad_vector(center)};",
+                f"hole_{hole_index}_diameter = {float(hole['diameter']):.6f};",
+            ]
+        )
+
+    axes_used = sorted({h["axis"] for h in holes})
+    for axis in axes_used:
+        depth = axis_depth[axis] + 0.2
+        lines.extend(
+            [
+                "",
+                f"module hole_cutout_{axis}(center, diameter) {{",
+                *_hole_cutout_module_body(depth, axis),
+                "}",
+            ]
+        )
+
+    lines.extend(
+        [
+            "",
+            "difference() {",
+            "  translate(box_origin) cube(box_size);",
+        ]
+    )
+
+    for hole_index, hole in enumerate(holes):
+        axis = hole["axis"]
+        lines.append(
+            f"  hole_cutout_{axis}(hole_{hole_index}_center, hole_{hole_index}_diameter);"
+        )
+
+    lines.extend(["}", ""])
+    return "\n".join(lines)
+
+
 def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
     """
     Emit conservative SCAD preview for supported feature graph patterns.
@@ -181,10 +244,14 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         - optional hole_like_cutout, counterbore_hole, slot_like_cutout,
           rectangular_cutout, and rectangular_pocket features along the plate
           thickness axis
+        - one box_like_solid with optional through-holes along any axis
     """
     plate = _best_feature(graph, "plate_like_solid")
     if plate is None or float(plate.get("confidence", 0.0)) < 0.70:
-        return None
+        box = _best_feature(graph, "box_like_solid")
+        if box is None or float(box.get("confidence", 0.0)) < 0.70:
+            return None
+        return _emit_box_scad_preview(graph, box)
 
     holes = [
         feature
@@ -674,7 +741,7 @@ def _tolerant_plate_confidence(
 
     thickness_axis_index = int(np.argmin(size))
     max_span = max(float(value) for value in size)
-    if max_span <= 1e-9 or float(size[thickness_axis_index]) / max_span > 0.18:
+    if max_span <= 1e-9 or float(size[thickness_axis_index]) / max_span > config.plate_thin_ratio_max:
         return 0.0
 
     axis_name = ("x", "y", "z")[thickness_axis_index]
@@ -1765,4 +1832,200 @@ def _summarize_graphs(graphs: list[dict[str, Any]]) -> dict[str, Any]:
         "file_count": len(graphs),
         "error_count": error_count,
         "feature_counts": feature_counts,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Track A: triage report
+# ---------------------------------------------------------------------------
+
+_TRIAGE_BUCKETS = (
+    "parametric_preview",
+    "feature_graph_no_preview",
+    "axis_pairs_only",
+    "polyhedron_fallback",
+    "error",
+)
+
+
+def _classify_graph_bucket(graph: dict[str, Any]) -> str:
+    """Assign a single graph to one of the five triage buckets.
+
+    Bucket priority (highest wins):
+    1. ``error``              – graph has ``status == "error"``
+    2. ``parametric_preview`` – ``emit_feature_graph_scad_preview`` returns SCAD
+    3. ``feature_graph_no_preview`` – has plate or box candidates (any confidence)
+       but preview was not emitted
+    4. ``axis_pairs_only``    – only ``axis_boundary_plane_pair`` features present
+    5. ``polyhedron_fallback`` – no features at all
+    """
+    if graph.get("status") == "error":
+        return "error"
+    if emit_feature_graph_scad_preview(graph) is not None:
+        return "parametric_preview"
+    features = graph.get("features", [])
+    feature_types = {str(f.get("type", "")) for f in features}
+    solid_types = {"plate_like_solid", "box_like_solid"}
+    if feature_types & solid_types:
+        return "feature_graph_no_preview"
+    non_pair = feature_types - {"axis_boundary_plane_pair"}
+    if not non_pair and feature_types:
+        return "axis_pairs_only"
+    return "polyhedron_fallback"
+
+
+def _failure_shape_metadata(graph: dict[str, Any]) -> dict[str, Any]:
+    """Extract failure-shape diagnostics for non-preview graphs.
+
+    Returns a dict with:
+    - ``axis_pair_count``           number of axis_boundary_plane_pair features
+    - ``paired_axis_count``         subset where both planes are present
+    - ``thinnest_axis``             bounding-box axis with smallest extent
+    - ``thinnest_axis_paired``      whether that axis has both planes present
+    - ``planar_support_fraction``   boundary_area / total_surface_area (0–1).
+                                    The real discriminator: high values mean the mesh
+                                    surface is dominated by axis-aligned flat faces
+                                    (genuine box/plate candidate); low values mean the
+                                    mesh is mostly curved/complex (e.g. 3DBenchy).
+    - ``plate_candidate_confidence``  confidence of best plate_like_solid, or null
+    - ``box_candidate_confidence``    confidence of best box_like_solid, or null
+    """
+    features = graph.get("features", [])
+    bbox = graph.get("mesh", {}).get("bounding_box", {})
+    surface_area = float(graph.get("mesh", {}).get("surface_area", 0.0))
+
+    axis_pairs = [f for f in features if f.get("type") == "axis_boundary_plane_pair"]
+    paired_axes = [f for f in axis_pairs if f.get("paired", False)]
+
+    dims = {
+        "x": float(bbox.get("width", 0.0)),
+        "y": float(bbox.get("height", 0.0)),
+        "z": float(bbox.get("depth", 0.0)),
+    }
+    thinnest_axis: Optional[str] = min(dims, key=dims.get) if dims else None  # type: ignore[arg-type]
+    thinnest_axis_paired = any(
+        f.get("axis") == thinnest_axis and f.get("paired", False)
+        for f in axis_pairs
+    )
+
+    total_boundary_area = sum(
+        f.get("negative_area", 0.0) + f.get("positive_area", 0.0)
+        for f in axis_pairs
+    )
+    planar_support_fraction = (
+        round(total_boundary_area / surface_area, 4)
+        if surface_area > 0.0
+        else 0.0
+    )
+
+    plate = _best_feature(graph, "plate_like_solid")
+    box = _best_feature(graph, "box_like_solid")
+    plate_confidence = round(float(plate["confidence"]), 4) if plate else None
+    box_confidence = round(float(box["confidence"]), 4) if box else None
+
+    return {
+        "axis_pair_count": len(axis_pairs),
+        "paired_axis_count": len(paired_axes),
+        "thinnest_axis": thinnest_axis,
+        "thinnest_axis_paired": thinnest_axis_paired,
+        "planar_support_fraction": planar_support_fraction,
+        "plate_candidate_confidence": plate_confidence,
+        "box_candidate_confidence": box_confidence,
+    }
+
+
+def _failure_pattern_key(metadata: dict[str, Any]) -> str:
+    """Derive a short human-readable pattern key from failure-shape metadata.
+
+    Pattern hierarchy (first match wins):
+    - plate/box candidate present → use confidence band
+    - no candidate → split by ``planar_support_fraction``:
+        ≥ 0.65 → high planar support, likely a real box/plate with edge tolerancing issue
+        0.35–0.65 → medium planar support, ambiguous
+        < 0.35 → low planar support, genuinely complex/organic geometry (e.g. 3DBenchy)
+    """
+    plate_conf = metadata.get("plate_candidate_confidence")
+    box_conf = metadata.get("box_candidate_confidence")
+    paired = int(metadata.get("paired_axis_count", 0))
+    psf = float(metadata.get("planar_support_fraction", 0.0))
+
+    if plate_conf is not None:
+        if float(plate_conf) >= 0.50:
+            return "plate_candidate_near_threshold"
+        return "plate_candidate_low_confidence"
+    if box_conf is not None:
+        return "box_candidate_no_preview"
+    if paired < 3:
+        if paired > 0:
+            return "axis_pairs_partial_paired"
+        return "no_paired_axis_planes"
+    # All 3 axes paired, no plate/box candidate — split by planar support
+    if psf >= 0.65:
+        return "high_planar_support_no_candidate"
+    if psf >= 0.35:
+        return "medium_planar_support_no_candidate"
+    return "low_planar_support_complex_geometry"
+
+
+def build_triage_report(
+    graphs: list[dict[str, Any]],
+    top_n: int = 5,
+    input_dir: Optional[str] = None,
+) -> dict[str, Any]:
+    """Build a triage report from a list of feature graphs.
+
+    Each graph is assigned to one of the five buckets defined by
+    :func:`_classify_graph_bucket`.  For the ``axis_pairs_only`` and
+    ``feature_graph_no_preview`` buckets, failure-shape metadata is extracted and
+    used to produce a ranked top-N failure-pattern summary.
+
+    Args:
+        graphs: list of feature-graph dicts (as returned by
+            :func:`build_feature_graph_for_stl` / :func:`build_feature_graph_for_folder`).
+        top_n:  maximum number of entries in ``ranked_failure_patterns``.
+        input_dir: optional path string recorded in the report header.
+
+    Returns:
+        A triage-report dict with the keys documented in the Track A spec.
+    """
+    bucket_counts: dict[str, int] = {bucket: 0 for bucket in _TRIAGE_BUCKETS}
+    per_file: list[dict[str, Any]] = []
+    pattern_counts: dict[str, int] = {}
+    pattern_examples: dict[str, str] = {}
+
+    for graph in graphs:
+        bucket = _classify_graph_bucket(graph)
+        bucket_counts[bucket] += 1
+        source_file = str(graph.get("source_file", ""))
+
+        entry: dict[str, Any] = {"source_file": source_file, "bucket": bucket}
+        if bucket in {"axis_pairs_only", "feature_graph_no_preview"}:
+            metadata = _failure_shape_metadata(graph)
+            entry["failure_shape_metadata"] = metadata
+            pattern = _failure_pattern_key(metadata)
+            pattern_counts[pattern] = pattern_counts.get(pattern, 0) + 1
+            if pattern not in pattern_examples:
+                pattern_examples[pattern] = source_file
+        per_file.append(entry)
+
+    ranked = sorted(pattern_counts.items(), key=lambda kv: kv[1], reverse=True)
+    ranked_failure_patterns = [
+        {
+            "pattern": pattern,
+            "count": count,
+            "representative_file": pattern_examples.get(pattern, ""),
+        }
+        for pattern, count in ranked[:top_n]
+    ]
+
+    files_processed = len(graphs)
+    return {
+        "schema_version": 1,
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "input_dir": input_dir,
+        "top_n": top_n,
+        "files_processed": files_processed,
+        "bucket_counts": bucket_counts,
+        "ranked_failure_patterns": ranked_failure_patterns,
+        "per_file": per_file,
     }

@@ -17,6 +17,7 @@ if str(REPO_ROOT) not in sys.path:
 from stl2scad.core.feature_graph import (
     build_feature_graph_for_folder,
     build_feature_graph_for_stl,
+    build_triage_report,
     emit_feature_graph_scad_preview,
 )
 from stl2scad.core.feature_inventory import (
@@ -90,6 +91,17 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow non-degenerate non-mechanical primary classifications if score thresholds pass.",
     )
+    parser.add_argument(
+        "--triage-output",
+        default=None,
+        help="Optional path for per-file triage JSON report when input_path is a directory.",
+    )
+    parser.add_argument(
+        "--triage-top-n",
+        type=int,
+        default=5,
+        help="Number of failure patterns to include in the triage ranked summary (default: 5).",
+    )
     return parser
 
 
@@ -124,6 +136,8 @@ def main() -> int:
         )
     if has_inventory_selection_filters and not args.inventory_prefilter:
         raise ValueError("--inventory-* selection options require --inventory-prefilter.")
+    if args.triage_output is not None and not input_path.is_dir():
+        raise ValueError("--triage-output requires a directory input.")
     if input_path.is_dir():
         workers = _resolve_workers(args.workers)
 
@@ -221,6 +235,29 @@ def main() -> int:
         print(f"Workers: {workers}")
         print(f"Errors: {summary['error_count']}")
         print(f"Features: {summary['feature_counts']}")
+        if args.triage_output:
+            graphs = report.get("graphs") or []
+            triage = build_triage_report(
+                graphs,
+                top_n=args.triage_top_n,
+                input_dir=str(input_path),
+            )
+            triage_path = Path(args.triage_output)
+            triage_path.parent.mkdir(parents=True, exist_ok=True)
+            triage_path.write_text(json.dumps(triage, indent=2), encoding="utf-8")
+            counts = triage["bucket_counts"]
+            print(f"Triage report written to: {triage_path}")
+            print(
+                f"  parametric_preview={counts['parametric_preview']}"
+                f"  feature_graph_no_preview={counts['feature_graph_no_preview']}"
+                f"  axis_pairs_only={counts['axis_pairs_only']}"
+                f"  polyhedron_fallback={counts['polyhedron_fallback']}"
+                f"  error={counts['error']}"
+            )
+            if triage["ranked_failure_patterns"]:
+                print("  Top failure patterns:")
+                for entry in triage["ranked_failure_patterns"]:
+                    print(f"    [{entry['count']}] {entry['pattern']}")
         return 0
 
     graph = build_feature_graph_for_stl(input_path)

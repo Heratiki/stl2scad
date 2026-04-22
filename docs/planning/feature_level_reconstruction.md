@@ -118,7 +118,7 @@ Detects axis-aligned boxes, through-holes, slots, and repeated hole patterns (li
 - Only handles axis-aligned geometry — rotated features are invisible
 - Pattern detection depends on hole centers being near-exactly spaced; real-world STLs from meshed CAD may have enough floating-point noise to break it
 - `plate_like_solid` requires strictly rectangular top/bottom faces — any chamfer or fillet on a plate edge drops detection to `axis_boundary_plane_pair` only and blocks SCAD preview emission. Observed on multiple real FDM parts (2026-04-20 sample); dominant real-world failure mode.
-- No `box_like_solid` primitive — pure axis-aligned cuboids (e.g. Test_Cube) produce only axis-pair features, never a parametric preview.
+- `box_like_solid` is detected (including a tolerant-confidence variant) but `emit_feature_graph_scad_preview` only consumes `plate_like_solid` — pure axis-aligned cuboids (e.g. Test_Cube) end up as a feature-graph entry with no parametric preview emitted.
 
 ## Real-World Feedback Loop (2026-04-22)
 
@@ -182,3 +182,129 @@ Once the round-trip is asserting dimensions, the fixture pipeline becomes the ba
 2. Add targeted detectors for the most common candidate feature families.
 3. Emit feature-based SCAD templates only when confidence is high; otherwise fall back.
 4. Add optional user-assisted labeling for ambiguous features.
+
+## Next Work Package (2026-04-22 to 2026-05-31)
+
+This package turns the immediate priorities into a short, test-first execution sequence. It is intentionally scoped to improve real-world parametric-preview recall before adding broader detector families.
+
+This package covers Phase 1 (Track A) and Phase 2 (Track B) of the Real-World Feedback Loop, plus supporting infrastructure (Tracks C and D). Phase 3 (ABC dataset integration) is deliberately excluded — it remains a separate future investment once Phase 2 has measurably lifted real-world pass-rate.
+
+### Track A: Real-world triage harness (unlabeled)
+
+Goal: make "where and why detection fails" measurable on the user's corpus, not anecdotal.
+
+1. Add a triage report mode to `scripts/build_feature_graph.py` for directory inputs:
+   - per-file terminal bucket (`parametric_preview`, `feature_graph_no_preview`, `axis_pairs_only`, `polyhedron_fallback`, `error`)
+   - top-level aggregate counts and percentages
+   - optional `--triage-output artifacts/feature_graph_triage.json`
+2. Include failure-shape metadata for non-preview cases:
+   - dominant axis pair confidence summary
+   - whether opposing major planes exist on the thinnest axis
+   - whether plate/box rectangular footprint checks failed
+3. Emit a ranked top-N failure-pattern summary (default N=5) across the `axis_pairs_only` and `feature_graph_no_preview` buckets, keyed on the failure-shape metadata above, weighted by part count. This is the evidence Track B uses to pick which tolerant-detection variant to build first — without it, Phase 2 prioritization is guesswork.
+4. Add fixture-independent regression checks in `tests/test_feature_graph.py` for triage schema, bucket accounting, and ranked-pattern shape.
+
+Acceptance criteria:
+
+1. Running `feature-graph` on a directory with `--triage-output` always emits a valid JSON report, even when some files error.
+2. The report totals reconcile: `sum(bucket_counts.values()) == files_processed`.
+3. The report includes a `ranked_failure_patterns` array with at most N entries, each carrying a shape signature, a part count, and a representative example filename.
+4. Existing CLI behavior remains unchanged when triage flags are omitted.
+
+### Track B: Tolerant box/plate generalization
+
+Goal: close the dominant real-world failure mode where fillets/chamfers break strict side-edge assumptions, and bring box preview emission to parity with plates.
+
+1. Extend tolerant rectangular-footprint logic for plate edges (chamfered plate is already covered):
+   - filleted plate edges
+2. Bring axis-aligned cuboids to parity with plates. The detector already emits `box_like_solid` with tolerant-confidence handling at [stl2scad/core/feature_graph.py:579](../../stl2scad/core/feature_graph.py#L579); the real gap is the preview emitter:
+   - verify tolerant box detection covers filleted/chamfered outer edges with the same rigor as the chamfered-plate path, and extend it where gaps are found
+   - extend `emit_feature_graph_scad_preview` (currently early-returns at [stl2scad/core/feature_graph.py:185-187](../../stl2scad/core/feature_graph.py#L185-L187) when no `plate_like_solid` is present) to emit a `cube()` / `translate()` parametric preview for a high-confidence `box_like_solid` base, with supported cutouts on its faces
+3. Keep conservative gating:
+   - require strong opposing support on candidate principal axes
+   - retain high-confidence thresholds for preview emission
+4. Add new manifest fixtures (generated + checked-in):
+   - `plate_plain_filleted_edges`
+   - `box_plain_filleted_edges`
+   - one mixed plate case combining filleted perimeter and a regular hole pattern
+
+Acceptance criteria:
+
+1. `python -m pytest tests/test_feature_fixtures.py -v` passes with regenerated fixture SCAD files.
+2. The new fixtures round-trip with expected counts and dimensions under current tolerances.
+3. A pure axis-aligned cuboid fixture (e.g. `box_plain_filleted_edges`) produces a non-empty parametric SCAD preview and the preview round-trips via `test_feature_fixture_preview_round_trip_detection`.
+4. Existing sharp-edge fixture behavior is unchanged.
+
+### Track C: Real-world labeled micro-corpus + recall metric
+
+Goal: prevent synthetic-only optimization by tracking a small but explicit real-world score.
+
+1. Introduce a checked-in mini-corpus manifest for real STLs (small, curated, and stable):
+   - provenance metadata (`source`, `license`); only include STLs that are self-authored or carry an explicitly permissive license (CC0, CC-BY, public domain). STLs lacking clear provenance do not enter the corpus, even if they are diagnostically interesting — triage (Track A) can still process them locally without them being committed.
+   - file fingerprint metadata (sha256, bounds) to detect drift
+   - authored `expected_detection` counts and selected dimensions
+2. Add `tests/test_feature_real_world_smoke.py` (or equivalent) that runs locally when corpus files are present and skips cleanly (not fails) when absent. CI wiring for the corpus is out of scope for this package; the test is local-only for now.
+3. Add a simple recall score artifact emitted by the test run:
+   - per-feature-family recall
+   - preview-ready part ratio
+4. Commit an initial baseline recall artifact produced from the local run; future changes diff against it.
+
+Acceptance criteria:
+
+1. Missing corpus files produce a clear, actionable skip when the test is run locally; absence is not a failure at this stage.
+2. A baseline recall artifact is produced locally and committed as the seed baseline. CI archival is deferred to a later package.
+3. Changes to detector thresholds must not merge without reporting delta against the committed baseline — this is the merge-gate form of the "do not tune against synthetic-only" trap.
+
+### Track D: Grid-pattern parametric SCAD emission
+
+Goal: use existing `grid_hole_pattern` metadata to emit editable nested loops instead of literal center lists.
+
+1. Update SCAD preview emitter to use:
+   - `grid_origin`
+   - `grid_row_step` / `grid_col_step`
+   - `grid_rows` / `grid_cols`
+2. Keep existing per-hole fallback when grid metadata is incomplete or low-confidence.
+3. Add preview round-trip assertions so generated loops still re-detect expected grid counts and spacings.
+
+Acceptance criteria:
+
+1. At least one grid fixture preview emits nested loop structure with named row/column variables.
+2. Preview re-render still passes `test_feature_fixture_preview_round_trip_detection` for grid cases.
+3. SCAD remains deterministic (stable ordering and variable naming) to avoid noisy fixture diffs.
+
+## Exit Criteria For This Package
+
+The package is considered complete when all of the following are true:
+
+1. Triage reports quantify bucketed real-world outcomes for a target directory, and emit a ranked top-N failure-pattern summary that informs Phase 2 prioritization.
+2. Tolerant detection covers both chamfered and filleted plate/box edge variants in fixtures, and pure axis-aligned cuboids emit a parametric preview.
+3. A small labeled real-world corpus exists with reproducible recall reporting and a committed baseline artifact.
+4. Grid-pattern previews are loop-parameterized and pass round-trip assertions.
+5. The feature-fixture invariants remain intact:
+   - byte-exact fixture regeneration
+   - dimensional round-trip verification
+   - roadmap stress-case coverage
+
+## Execution Order & Dependencies
+
+Plans in this doc span four sections (Real-World Feedback Loop, Immediate priorities, Beyond dimensional parity, Ongoing) plus the Next Work Package. This section is the sequencing rulebook that keeps them from stepping on each other and routes effort toward the project's end goal — parametric SCAD output for arbitrary user STLs.
+
+**Rules (dependency order):**
+
+1. **Fixture invariants are always gates, never lag indicators.** The three invariants from [CLAUDE.md](../../CLAUDE.md) (byte-exact regeneration, dimensional round-trip, roadmap stress-case coverage) must pass through every change. If any invariant breaks, fix it before touching anything else — do not relax the invariant to unblock downstream work.
+2. **Track A (triage) must ship before Track B commits to specific variants.** Track A's ranked failure-pattern output is what picks which tolerant-detection variant Track B builds first. Running B on guessed priorities risks building the wrong thing.
+3. **Track C (labeled corpus + recall merge-gate) must exist before `scripts/tune_detector.py` is ever run as an optimization target.** Until the merge-gate exists, tuning against the synthetic fixture corpus will overfit that distribution at the cost of real parts. This is the mechanical form of the tuning trap.
+4. **Track D (grid-pattern SCAD emission) is independent.** It has no dependency on A/B/C and can run in parallel with any of them — use it as filler work when a blocker appears on the critical path.
+5. **Immediate priorities #4 (rotated/composite fixtures) and #5 (inventory-guided selection) come after Track B is stable.** They expand the geometry surface that Track B's tolerant logic must hold up on.
+6. **"Beyond dimensional parity" items come after Immediate priorities are cleared.** They promote schema/ranking infrastructure, which pays off once the baseline detector is hitting more real parts. Running them earlier produces infrastructure for geometry the detector still can't handle.
+7. **Phase 3 (ABC dataset integration) is the last investment.** Start it only after Track C's recall baseline shows Phase 2 has measurably lifted real-world pass-rate. Supervised data cannot productively train a detector that cannot yet represent the features being supervised.
+8. **"Ongoing" items (tighter thresholds, user-assisted labeling, confidence gating) run cross-cutting.** They are not milestone-gated, but they should not overtake a blocked track — finish the blocked track first.
+
+**Cadence rule (regression fence):** after each Track completes, re-run triage (Track A) and re-score recall (Track C) before starting the next Track. A regression in either stops forward motion until the regression is explained or reverted. This prevents one Track's optimization from silently hurting another's target.
+
+**Parallelism summary:**
+
+- Critical path: A → B → #4 → #5 → Beyond-dimensional-parity → Phase 3
+- Parallel to anything: D
+- Sequenced but later-gated: C (must ship before tuning)
+- Cross-cutting: Ongoing items

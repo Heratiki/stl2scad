@@ -728,6 +728,7 @@ def _tolerant_box_confidence(
     }
     axis_confidences: list[float] = []
     supporting_area = 0.0
+    full_fill_axes = 0
     for axis_name, ideal_face_area in ideal_face_areas.items():
         if ideal_face_area <= 1e-9:
             return 0.0
@@ -764,8 +765,10 @@ def _tolerant_box_confidence(
 
         if min_span_ratio < config.tolerant_box_min_span_ratio or footprint_area_ratio < config.tolerant_box_footprint_area_ratio:
             return 0.0
-        if footprint_fill_ratio < config.tolerant_box_footprint_fill_ratio:
+        if footprint_fill_ratio < config.tolerant_box_relaxed_fill_ratio:
             return 0.0
+        if footprint_fill_ratio >= config.tolerant_box_footprint_fill_ratio:
+            full_fill_axes += 1
 
         axis_confidences.append(
             min(
@@ -776,6 +779,9 @@ def _tolerant_box_confidence(
                 + 0.1 * footprint_fill_ratio,
             )
         )
+
+    if full_fill_axes < config.tolerant_box_full_fill_axes_min:
+        return 0.0
 
     overall_support_ratio = supporting_area / total_area
     if overall_support_ratio < config.tolerant_box_overall_support_ratio:

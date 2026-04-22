@@ -974,6 +974,38 @@
       ]
     },
     {
+      "name": "box_rounded_edges_with_top_notch",
+      "fixture_type": "box",
+      "description": "Rounded-edge box with a top-face notch. The detector should preserve a tolerant box_like_solid base while also recovering the blind rectangular pocket volume.",
+      "output_filename": "box_rounded_edges_with_top_notch.scad",
+      "box_size": [24.0, 16.0, 12.0],
+      "edge_radius": 2.0,
+      "cutouts": [
+        {
+          "center": [0.0, 0.0, 3.0],
+          "size": [8.0, 8.0, 6.0]
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": true,
+            "hole_count": 0,
+            "slot_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 1,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
       "name": "box_hollow_ambiguous",
       "fixture_type": "box",
       "description": "Hollow box with interior cavity - can be interpreted as single hollow box OR as six separate wall plates",

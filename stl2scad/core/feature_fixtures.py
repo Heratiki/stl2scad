@@ -10,17 +10,19 @@ from typing import Any, Iterable, Optional, Union
 
 _SUPPORTED_FIXTURE_TYPES = {"plate", "box", "l_bracket", "sphere", "torus"}
 _AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
-_COUNTED_FEATURE_TYPES = (
-    "plate_like_solid",
-    "box_like_solid",
-    "hole_like_cutout",
-    "slot_like_cutout",
-    "rectangular_cutout",
-    "rectangular_pocket",
-    "linear_hole_pattern",
-    "grid_hole_pattern",
-    "counterbore_hole",
-)
+_COUNT_EXPECTATION_TO_FEATURE = {
+    "hole_count": "hole_like_cutout",
+    "slot_count": "slot_like_cutout",
+    "rectangular_cutout_count": "rectangular_cutout",
+    "rectangular_pocket_count": "rectangular_pocket",
+    "linear_pattern_count": "linear_hole_pattern",
+    "grid_pattern_count": "grid_hole_pattern",
+    "counterbore_count": "counterbore_hole",
+}
+_BOOLEAN_EXPECTATION_TO_FEATURE = {
+    "plate_like_solid": "plate_like_solid",
+    "box_like_solid": "box_like_solid",
+}
 
 
 def load_feature_fixture_manifest(
@@ -186,11 +188,11 @@ def iter_expected_feature_counts(
 
 def summarize_detected_feature_counts(graph: dict[str, Any]) -> dict[str, int]:
     """Count detector output entries for the feature types tracked by fixtures."""
-    feature_counts = {feature_type: 0 for feature_type in _COUNTED_FEATURE_TYPES}
+    feature_counts: dict[str, int] = {}
     for feature in graph.get("features", []):
         feature_type = str(feature.get("type", ""))
-        if feature_type in feature_counts:
-            feature_counts[feature_type] += 1
+        if feature_type:
+            feature_counts[feature_type] = feature_counts.get(feature_type, 0) + 1
     return feature_counts
 
 
@@ -204,27 +206,28 @@ def rank_feature_fixture_candidates(
         schema_version=_fixture_schema_version(fixture),
     )
     actual_counts = summarize_detected_feature_counts(graph)
-    confidence_by_type: dict[str, list[float]] = {
-        feature_type: [] for feature_type in _COUNTED_FEATURE_TYPES
-    }
+    confidence_by_type: dict[str, list[float]] = {}
     for feature in graph.get("features", []):
         feature_type = str(feature.get("type", ""))
-        if feature_type not in confidence_by_type:
+        if not feature_type:
             continue
-        confidence_by_type[feature_type].append(float(feature.get("confidence", 0.0)))
+        confidence_by_type.setdefault(feature_type, []).append(
+            float(feature.get("confidence", 0.0))
+        )
     for confidences in confidence_by_type.values():
         confidences.sort(reverse=True)
 
     rankings: list[dict[str, Any]] = []
     for candidate in normalized["candidates"]:
         expected_counts = _expected_feature_counts(candidate["expected_detection"])
+        compared_feature_types = sorted(expected_counts)
         total_delta = sum(
-            abs(actual_counts[feature_type] - expected_counts[feature_type])
-            for feature_type in _COUNTED_FEATURE_TYPES
+            abs(actual_counts.get(feature_type, 0) - expected_counts.get(feature_type, 0))
+            for feature_type in compared_feature_types
         )
         normalization = sum(
-            max(actual_counts[feature_type], expected_counts[feature_type], 1)
-            for feature_type in _COUNTED_FEATURE_TYPES
+            max(actual_counts.get(feature_type, 0), expected_counts.get(feature_type, 0), 1)
+            for feature_type in compared_feature_types
         )
         match_score = max(0.0, 1.0 - float(total_delta) / float(normalization))
         support_confidence = _candidate_support_confidence(
@@ -261,17 +264,20 @@ def rank_feature_fixture_candidates(
 
 
 def _expected_feature_counts(expected: dict[str, Any]) -> dict[str, int]:
-    return {
-        "plate_like_solid": 1 if expected["plate_like_solid"] else 0,
-        "box_like_solid": 1 if expected["box_like_solid"] else 0,
-        "hole_like_cutout": expected["hole_count"],
-        "slot_like_cutout": expected["slot_count"],
-        "rectangular_cutout": expected["rectangular_cutout_count"],
-        "rectangular_pocket": expected["rectangular_pocket_count"],
-        "linear_hole_pattern": expected["linear_pattern_count"],
-        "grid_hole_pattern": expected["grid_pattern_count"],
-        "counterbore_hole": expected["counterbore_count"],
-    }
+    feature_counts: dict[str, int] = {}
+    for key, value in expected.items():
+        if key in _BOOLEAN_EXPECTATION_TO_FEATURE:
+            feature_counts[_BOOLEAN_EXPECTATION_TO_FEATURE[key]] = 1 if bool(value) else 0
+            continue
+        if key in _COUNT_EXPECTATION_TO_FEATURE:
+            feature_counts[_COUNT_EXPECTATION_TO_FEATURE[key]] = int(value)
+            continue
+        if key.endswith("_like_solid"):
+            feature_counts[key] = 1 if bool(value) else 0
+            continue
+        if key.endswith("_count"):
+            feature_counts[key[: -len("_count")]] = int(value)
+    return feature_counts
 
 
 def _candidate_support_confidence(
@@ -940,6 +946,21 @@ def _validate_expected_detection(
             f"{fixture_name}.expected_detection.counterbore_count",
         ),
     }
+    for key, value in raw_expected.items():
+        if key in expected:
+            continue
+        if key.endswith("_like_solid"):
+            expected[key] = bool(value)
+            continue
+        if key.endswith("_count"):
+            expected[key] = _as_non_negative_int(
+                value,
+                f"{fixture_name}.expected_detection.{key}",
+            )
+            continue
+        raise ValueError(
+            f"{fixture_name}.expected_detection.{key} is unsupported. Use *_like_solid or *_count naming."
+        )
     return expected
 
 

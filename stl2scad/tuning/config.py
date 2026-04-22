@@ -35,6 +35,8 @@ class DetectorConfig:
     tolerant_box_min_span_ratio: float = 0.68
     tolerant_box_footprint_area_ratio: float = 0.50
     tolerant_box_footprint_fill_ratio: float = 0.94
+    tolerant_box_relaxed_fill_ratio: float = 0.55
+    tolerant_box_full_fill_axes_min: int = 2
     tolerant_box_overall_support_ratio: float = 0.60
 
     # --- Hole (circular cutout) thresholds ---

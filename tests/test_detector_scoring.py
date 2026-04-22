@@ -13,6 +13,7 @@ from stl2scad.tuning.scoring import (
 )
 from stl2scad.core.feature_fixtures import load_feature_fixture_manifest, write_feature_fixture_library
 from stl2scad.core.converter import get_openscad_path, run_openscad
+from stl2scad.core.feature_fixtures import iter_expected_feature_counts
 
 
 @pytest.fixture(scope="module")
@@ -73,3 +74,63 @@ def test_score_manifest_aggregates(rendered_fixture_dir):
     # On the default config the mean should be high — the manifest was
     # curated to work with today's detector.
     assert result.mean >= 0.90
+
+
+def test_iter_expected_feature_counts_supports_future_count_keys():
+    fixture = {
+        "name": "synthetic_future_feature",
+        "expected_detection": {
+            "plate_like_solid": False,
+            "box_like_solid": False,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0,
+            "boss_count": 2,
+        },
+    }
+
+    counts = iter_expected_feature_counts(fixture)
+
+    assert counts["boss"] == 2
+
+
+def test_score_fixture_penalizes_generic_future_feature_counts():
+    fixture = {
+        "name": "synthetic_future_feature",
+        "fixture_type": "plate",
+        "plate_size": [20.0, 10.0, 2.0],
+        "expected_detection": {
+            "plate_like_solid": True,
+            "box_like_solid": False,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0,
+            "boss_count": 1,
+        },
+    }
+    from stl2scad.tuning.scoring import score_fixture_against_graph
+
+    graph = {
+        "features": [
+            {
+                "type": "plate_like_solid",
+                "confidence": 0.95,
+                "size": [20.0, 10.0, 2.0],
+                "origin": [0, 0, 0],
+            }
+        ]
+    }
+
+    score = score_fixture_against_graph(fixture, graph)
+
+    assert score.count_score < 1.0
+    assert score.detail["expected"]["boss"] == 1
+    assert score.detail["actual"].get("boss", 0) == 0

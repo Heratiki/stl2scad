@@ -1007,6 +1007,12 @@ def test_feature_fixture_manifest_covers_roadmap_stress_cases(test_data_dir):
         fixture["fixture_type"] == "box" and float(fixture.get("edge_radius", 0.0)) > 0.0
         for fixture in fixtures
     ), "Manifest must include at least one rounded-edge box fixture"
+    assert any(
+        fixture["fixture_type"] == "box"
+        and float(fixture.get("edge_radius", 0.0)) > 0.0
+        and len(fixture.get("cutouts", [])) > 0
+        for fixture in fixtures
+    ), "Manifest must include at least one rounded-edge composite box fixture with cutouts"
 
 
 def test_feature_fixture_generation_supports_box_and_l_bracket():

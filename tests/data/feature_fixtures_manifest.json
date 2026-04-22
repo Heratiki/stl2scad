@@ -752,6 +752,78 @@
       ]
     },
     {
+      "name": "plate_plain_filleted_edges",
+      "fixture_type": "plate",
+      "description": "Plain plate with uniform vertical-edge fillet (rounded corners) that breaks strict side-boundary-plane coverage while preserving the flat top/bottom faces.",
+      "output_filename": "plate_plain_filleted_edges.scad",
+      "plate_size": [
+        20.0,
+        10.0,
+        2.0
+      ],
+      "edge_radius": 1.5,
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_filleted_linear_holes",
+      "fixture_type": "plate",
+      "description": "Filleted-edge plate with a two-hole linear pattern, combining edge fillet with repeated holes on a single plate.",
+      "output_filename": "plate_filleted_linear_holes.scad",
+      "plate_size": [
+        24.0,
+        14.0,
+        2.0
+      ],
+      "edge_radius": 1.0,
+      "holes": [
+        {
+          "center": [
+            -4.0,
+            0.0
+          ],
+          "diameter": 4.0
+        },
+        {
+          "center": [
+            4.0,
+            0.0
+          ],
+          "diameter": 4.0
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 2,
+            "slot_count": 0,
+            "linear_pattern_count": 1,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
       "name": "box_z_through_hole",
       "fixture_type": "box",
       "description": "Centered box with one through-hole along the z axis.",

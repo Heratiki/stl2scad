@@ -332,19 +332,32 @@ def _validate_plate_fixture_geometry(
         raw_fixture.get("edge_chamfer", 0.0),
         f"{fixture_name}.edge_chamfer",
     )
+    edge_radius = _as_non_negative_float(
+        raw_fixture.get("edge_radius", 0.0),
+        f"{fixture_name}.edge_radius",
+    )
+    if edge_chamfer > 0.0 and edge_radius > 0.0:
+        raise ValueError(
+            f"{fixture_name}: edge_chamfer and edge_radius are mutually exclusive"
+        )
     if edge_chamfer * 2.0 >= min(plate_size[0], plate_size[1]):
         raise ValueError(
             f"{fixture_name}.edge_chamfer must leave a positive top face footprint"
         )
+    if edge_radius * 2.0 >= min(plate_size[0], plate_size[1]):
+        raise ValueError(
+            f"{fixture_name}.edge_radius must leave a positive inner plate core"
+        )
     feature_plate_size = [
-        plate_size[0] - 2.0 * edge_chamfer,
-        plate_size[1] - 2.0 * edge_chamfer,
+        plate_size[0] - 2.0 * max(edge_chamfer, edge_radius),
+        plate_size[1] - 2.0 * max(edge_chamfer, edge_radius),
         plate_size[2],
     ]
 
     spec: dict[str, Any] = {
         "plate_size": plate_size,
         "edge_chamfer": edge_chamfer,
+        "edge_radius": edge_radius,
         "holes": [],
         "counterbores": [],
         "linear_hole_patterns": [],
@@ -535,6 +548,7 @@ def _validate_torus_fixture_geometry(
 def _generate_plate_fixture_scad(fixture: dict[str, Any]) -> str:
     plate_size = fixture["plate_size"]
     edge_chamfer = float(fixture.get("edge_chamfer", 0.0))
+    edge_radius = float(fixture.get("edge_radius", 0.0))
     half_x = plate_size[0] * 0.5
     half_y = plate_size[1] * 0.5
     thickness = plate_size[2]
@@ -594,15 +608,31 @@ def _generate_plate_fixture_scad(fixture: dict[str, Any]) -> str:
                 "",
             ]
         )
+    if edge_radius > 0.0:
+        inner_sq = [plate_size[0] - 2.0 * edge_radius, plate_size[1] - 2.0 * edge_radius]
+        lines.extend(
+            [
+                f"plate_edge_radius = {edge_radius:.6f};",
+                f"plate_inner_square = {_format_vector(inner_sq)};",
+                "",
+            ]
+        )
 
     transform = fixture.get("transform", _identity_transform())
     has_transform = _has_non_identity_transform(transform)
-    plate_base_line = (
-        "  linear_extrude(height=plate_size[2], scale=plate_top_scale)"
-        " square([plate_size[0], plate_size[1]], center=true);"
-        if edge_chamfer > 0.0
-        else "  translate(plate_origin) cube(plate_size);"
-    )
+    if edge_chamfer > 0.0:
+        plate_base_line = (
+            "  linear_extrude(height=plate_size[2], scale=plate_top_scale)"
+            " square([plate_size[0], plate_size[1]], center=true);"
+        )
+    elif edge_radius > 0.0:
+        plate_base_line = (
+            "  linear_extrude(height=plate_size[2])"
+            " offset(r=plate_edge_radius, $fn=48)"
+            " square(plate_inner_square, center=true);"
+        )
+    else:
+        plate_base_line = "  translate(plate_origin) cube(plate_size);"
     if has_transform:
         lines.extend(
             [

@@ -535,6 +535,11 @@ def _box_cutout_axis(cutout, box_size):
     return touched_axes[0]
 
 
+def _assert_preview_named_variables_box(fixture, preview_scad):
+    assert "box_origin = [" in preview_scad
+    assert "box_size = [" in preview_scad
+
+
 def _assert_preview_named_variables(fixture, preview_scad):
     assert "plate_origin = [" in preview_scad
     assert "plate_size = [" in preview_scad
@@ -1239,7 +1244,7 @@ def test_feature_fixture_preview_round_trip_detection(test_data_dir, test_output
         pytest.skip(f"OpenSCAD not available: {exc}")
 
     for fixture in fixtures:
-        if fixture["fixture_type"] != "plate":
+        if fixture["fixture_type"] not in ("plate", "box"):
             continue
 
         scad_path = test_output_dir / fixture["output_filename"]
@@ -1257,12 +1262,18 @@ def test_feature_fixture_preview_round_trip_detection(test_data_dir, test_output
         graph = build_feature_graph_for_stl(stl_path)
         preview_scad = emit_feature_graph_scad_preview(graph)
 
-        if not fixture["expected_detection"].get("plate_like_solid", False):
+        expects_plate = fixture["expected_detection"].get("plate_like_solid", False)
+        expects_box = fixture["expected_detection"].get("box_like_solid", False)
+
+        if not expects_plate and not expects_box:
             assert preview_scad is None
             continue
 
         assert preview_scad is not None, f"{fixture['name']} expected a SCAD preview"
-        _assert_preview_named_variables(fixture, preview_scad)
+        if expects_plate:
+            _assert_preview_named_variables(fixture, preview_scad)
+        else:
+            _assert_preview_named_variables_box(fixture, preview_scad)
 
         preview_path = test_output_dir / f"{fixture['name']}.preview.scad"
         preview_stl_path = test_output_dir / f"{fixture['name']}.preview.stl"
@@ -1284,12 +1295,17 @@ def test_feature_fixture_preview_round_trip_detection(test_data_dir, test_output
             feature_type = feature["type"]
             feature_counts[feature_type] = feature_counts.get(feature_type, 0) + 1
 
-        for feature_type, expected_count in iter_expected_feature_counts(fixture).items():
-            assert (
-                feature_counts.get(feature_type, 0) == expected_count
-            ), f"{fixture['name']} preview expected {expected_count} {feature_type} entries, got {feature_counts.get(feature_type, 0)}"
-
-        _assert_fixture_dimensions(fixture, preview_graph["features"])
+        if expects_plate:
+            for feature_type, expected_count in iter_expected_feature_counts(fixture).items():
+                assert (
+                    feature_counts.get(feature_type, 0) == expected_count
+                ), f"{fixture['name']} preview expected {expected_count} {feature_type} entries, got {feature_counts.get(feature_type, 0)}"
+            _assert_fixture_dimensions(fixture, preview_graph["features"])
+        else:
+            # Box preview only guarantees the base shape; only check box_like_solid count.
+            assert feature_counts.get("box_like_solid", 0) == 1, (
+                f"{fixture['name']} box preview expected 1 box_like_solid, got {feature_counts.get('box_like_solid', 0)}"
+            )
 
 
 def test_feature_fixture_ambiguous_candidate_round_trip_ranking(

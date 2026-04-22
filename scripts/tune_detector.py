@@ -18,8 +18,14 @@ import argparse
 import dataclasses
 import json
 import logging
+import statistics
 import sys
+from collections import defaultdict
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import optuna
 
@@ -32,8 +38,6 @@ from stl2scad.tuning.config import DetectorConfig
 from stl2scad.tuning.scoring import ManifestScore, score_manifest
 from stl2scad.tuning.search_space import suggest_config
 from stl2scad.tuning.splits import leave_one_out, stratified_split
-import statistics
-from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +62,8 @@ def main(argv: list[str]) -> int:
 
     train, holdout = stratified_split(fixtures, holdout_ratio=args.holdout_ratio, seed=args.seed)
     logger.info("Train: %d fixtures, Holdout: %d fixtures", len(train), len(holdout))
+    baseline_train = score_manifest(DetectorConfig(), train, stl_dir)
+    baseline_holdout = score_manifest(DetectorConfig(), holdout, stl_dir) if holdout else None
 
     if not args.cross_validate:
         baseline_full = score_manifest(DetectorConfig(), fixtures, stl_dir)
@@ -78,18 +84,30 @@ def main(argv: list[str]) -> int:
             return score_manifest(config, train, stl_dir).mean
 
         study.optimize(objective, n_trials=args.trials, show_progress_bar=True)
-        best_config = _reconstruct_config(study.best_params)
-        _dump(args.output / "best_config.json", dataclasses.asdict(best_config))
         logger.info("Best train score: %.4f", study.best_value)
 
+        best_config = _reconstruct_config(study.best_params)
         tuned_train = score_manifest(best_config, train, stl_dir)
         tuned_holdout = score_manifest(best_config, holdout, stl_dir) if holdout else None
+        selected_config_source = "optuna_best"
+
+        # Guardrail: never recommend a regressive config when search misses baseline.
+        if tuned_train.mean < baseline_train.mean:
+            logger.info(
+                "Best sampled config underperformed baseline on train (%.4f < %.4f); "
+                "falling back to DetectorConfig defaults.",
+                tuned_train.mean,
+                baseline_train.mean,
+            )
+            best_config = DetectorConfig()
+            tuned_train = baseline_train
+            tuned_holdout = baseline_holdout if holdout else None
+            selected_config_source = "baseline_fallback"
+
+        _dump(args.output / "best_config.json", dataclasses.asdict(best_config))
         _dump(args.output / "train_scores.json", _serialize_score(tuned_train, train))
         if tuned_holdout is not None:
             _dump(args.output / "holdout_scores.json", _serialize_score(tuned_holdout, holdout))
-
-        baseline_train = score_manifest(DetectorConfig(), train, stl_dir)
-        baseline_holdout = score_manifest(DetectorConfig(), holdout, stl_dir) if holdout else None
 
         _write_report(
             args.output / "report.md",
@@ -102,6 +120,7 @@ def main(argv: list[str]) -> int:
             fixtures=fixtures,
             train=train,
             holdout=holdout,
+            selected_config_source=selected_config_source,
         )
 
     if args.cross_validate:
@@ -180,6 +199,7 @@ def _write_report(path: Path, **ctx) -> None:
              f"- Trials: {args.trials}",
              f"- Seed: {args.seed}",
              f"- Train: {len(ctx['train'])} fixtures — Holdout: {len(ctx['holdout'])} fixtures",
+             f"- Selected config source: {ctx['selected_config_source']}",
              "",
              "## Aggregate scores",
              "",

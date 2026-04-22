@@ -145,6 +145,17 @@ The [ABC Dataset](https://deep-geometry.github.io/abc-dataset/) (~1M CAD models 
 
 ## Next Milestones
 
+### Recently completed (2026-04-22)
+
+The Next Work Package scoped for 2026-04-22 → 2026-05-31 (Tracks A–D) shipped ahead of schedule; Tracks A/C/D are complete and Track B is substantially complete (filleted plate + rounded-edge box fixtures landed; verify box preview emission parity before closing).
+
+- **Track A — Real-world triage harness** (commits `d981455`, `b29d1f1`, `2c1c4ca`). `scripts/build_feature_graph.py` accepts `--triage-output`; `scripts/summarize_feature_triage.py` produces the ranked failure-pattern summary used to drive Track B prioritization.
+- **Track B — Tolerant plate/box generalization** (commits `e50e04a`, `11a9cee`, `d981455`, plus `d79026a`). Manifest now carries `plate_plain_filleted_edges`, `plate_filleted_linear_holes`, `box_rounded_edges`, and `box_rounded_edges_with_top_notch`. Box detection was enhanced; final check is that `emit_feature_graph_scad_preview` emits a parametric preview for high-confidence `box_like_solid` bases at parity with plates.
+- **Track C — Real-world labeled micro-corpus + recall merge-gate** (commits `9e80cc9`, `5ee5081`). `tests/test_real_world_corpus.py`, `tests/test_feature_real_world_smoke.py`, `tests/test_score_real_world_corpus.py`, and `scripts/score_real_world_corpus.py` enforce the baseline merge-gate; detector threshold changes now diff against the committed baseline.
+- **Track D — Grid-pattern parametric SCAD emission** (in [stl2scad/core/feature_graph.py:524-525](../../stl2scad/core/feature_graph.py#L524-L525)). Grid patterns emit nested `for (row = ...) for (col = ...)` loops with named `_rows`/`_cols` variables; preview round-trip holds.
+- **Detector auto-tuning infrastructure** (commits `fbff9ca`, `74191ab`, `11ff8b4`, `463655a`, `86a3311`, `450523e`, `f733894`, `7fc25e5`, `432cff1`, `aa8aede`). `DetectorConfig` replaces hardcoded thresholds; [scripts/tune_detector.py](../../scripts/tune_detector.py) drives an Optuna search across 25 thresholds with stratified train/holdout and LOO CV; writeup in [detector_autotune_results.md](detector_autotune_results.md). Running tuning was allowed only after Track C's merge-gate existed (Execution Order rule 3).
+- **Detector IR vocabulary defined** — [detector_ir.md](detector_ir.md) documents the target IR (Interpretation / Boolean / Transform / Pattern / Primitive / Cutout / Sketch / ExtrudeLinear / Edge / Strategy layers) and maps every current `feature_graph` node type onto it. Non-executable contract; referenced by Immediate priorities below.
+
 ### Recently completed (2026-04-20)
 
 - **Tolerant chamfered-plate detection** — `plate_like_solid` no longer requires intact side boundary planes when the thinnest axis still has strong opposing planar support and those faces fill an axis-aligned rectangular footprint. This closes the specific failure mode where simple edge-chamfered plates fell through to `axis_boundary_plane_pair` only. The feature-fixture corpus now includes `plate_plain_chamfered_edges` as a checked-in regression case.
@@ -158,23 +169,27 @@ The [ABC Dataset](https://deep-geometry.github.io/abc-dataset/) (~1M CAD models 
 
 ### Immediate priorities
 
-Reprioritized 2026-04-20. A 6-STL sample from a real FDM collection (`D:\3D Files\FDM`) produced a parametric SCAD preview for only 1 part; four of the other five were symmetric plates or boxes that fell through to `axis_boundary_plane_pair` only. Fixture pass-rate is no longer a proxy for real-world pass-rate — the synthetic corpus is axis-aligned and has sharp edges, while real mechanical parts almost always carry chamfers or fillets on broken edges.
+Reprioritized 2026-04-22 after Tracks A–D shipped. Old items 1 (tolerant plate/box), 2 (real-world recall metric), and 3 (grid-pattern SCAD emission) are complete and moved to *Recently completed*. The active front is now split between **finishing the Track B box-preview tail**, **extending the detector beyond axis-aligned plates/boxes**, and **restructuring the detector output around the IR** so the next primitive (cylinder) does not repeat the polarity mistakes seen in the current WIP branch.
 
-1. **Finish tolerant plate/box detection** — simple edge-chamfered plates are now covered, but filleted variants and box/cuboid detection still need the same tolerance so broken outer edges do not collapse otherwise-obvious parametric bases back to boundary-plane-only output.
-2. **Noise + real-world recall as a first-class metric** — add controlled-perturbation fixtures (vertex jitter, flipped normals, small non-manifold gaps) and a handful of real-world STLs with authored `expected_detection` counts, so "real-world recall" becomes a number we track alongside synthetic fixture pass-rate. Promoted from "Beyond dimensional parity" because synthetic-only coverage is now the dominant failure mode.
-3. **Grid-pattern SCAD emission** — detector already emits `grid_hole_pattern` with full `grid_origin`/`grid_rows`/`grid_cols` metadata, but the preview emitter falls back to a hardcoded center list. Wire the existing metadata into nested row/column loops so grid-hole parts produce fully parametric SCAD.
-4. **Expand beyond axis-aligned fixtures** — add rotated and more composite non-plate fixtures once the conservative baseline remains stable.
-5. **Improve inventory-guided selection quality** — move beyond a binary whole-file mechanical/organic gate so inventory can contribute richer, detector-relevant prioritization.
+1. **Close Track B: positive-primitive box preview parity.** Verify `emit_feature_graph_scad_preview` emits a parametric `cube()`/`translate()` preview for high-confidence `box_like_solid` bases with supported face cutouts, at parity with the plate path. Round-trip via `test_feature_fixture_preview_round_trip_detection` on `box_rounded_edges` and a mixed filleted-box-with-holes case. This is the last Track B gap.
+2. **Boolean + Transform IR wrapping of today's flat feature list** ([detector_ir.md](detector_ir.md) Gap #1). Zero new detectors. Wrap every detected primitive in an explicit `BooleanUnion` / `BooleanDifference` parent and factor placements into `TransformTranslate` / `TransformRotate` / `TransformMirror` nodes. This is a prerequisite for rotated-feature support (priority #4) and for adding cylinder as a positive primitive (priority #5) — a cylinder detector without boolean-sign context fires on both pins and holes, which is the failure mode already observed on the current WIP cylinder branch.
+3. **Promote Chamfer/Fillet to first-class IR nodes** ([detector_ir.md](detector_ir.md) Gap #2). Today they are tolerance behavior inside the plate/box detector; promoting them to `ChamferEdge`/`FilletEdge` children lets the emitter print editable chamfer/fillet parameters rather than silently approximating them. Low implementation risk given Track B's tolerant detection already localizes the signal.
+4. **Expand beyond axis-aligned fixtures.** Rotated and composite non-plate fixtures, gated on priority #2 landing so rotated features have a `TransformRotate` IR node to land in.
+5. **Cylinder as a positive primitive** ([detector_ir.md](detector_ir.md) Gap #6). Active WIP branch (uncommitted `cylinder_plain.scad`, `cylinder_short_disk.scad`, `cylinder_x_axis.scad` fixtures). Do **not** merge until priority #2 lands — without boolean-sign context, cylinder recognition keeps mis-firing on hole surfaces.
+6. **Improve inventory-guided selection quality** — move beyond a binary whole-file mechanical/organic gate so inventory can contribute richer, detector-relevant prioritization (region-level hints, per-family confidence).
+7. **Negative-class fixtures** — promoted from "Beyond dimensional parity". As new primitives (cylinder, sphere, cone) come online, guard against over-reach with deliberately non-mechanical and near-primitive shapes asserting the detector stays silent or falls through to polyhedron.
 
 ### Beyond dimensional parity
 
-Once the round-trip is asserting dimensions, the fixture pipeline becomes the backbone for the parametric-SCAD work. The natural follow-ons:
+Once the IR wrapping (priority #2) lands, the detector output becomes a tree, and these next steps become tractable:
 
-1. **Detector-native interpretation ranking** — schema-v2 fixtures and harness-side candidate ranking are now in place, including a real hollow-box ambiguity fixture. The next step is to make the detector emit ranked interpretation candidates directly so the fixture harness can compare declared ranking/confidence against detector-produced ranking/confidence, not only against observed feature-count matches.
-2. **Negative-class fixtures** — add deliberately non-mechanical and ambiguous shapes (organic blobs, near-primitives that should NOT classify as primitives, L-brackets with and without a bracket primitive implemented) and assert the detector stays silent or falls through to polyhedron. Guards against detector over-reach as new primitives come online.
-3. **Promote the manifest schema to a versioned contract** — `schema_version` already exists; start enforcing it on load and document the schema so third-party fixture authors (or future detectors) have a stable target.
+1. **Detector-native interpretation ranking** — schema-v2 fixtures and harness-side candidate ranking are already in place, including a real hollow-box ambiguity fixture. Next step: make the detector emit ranked `Interpretation` candidates directly (per [detector_ir.md](detector_ir.md)) so the fixture harness can compare declared ranking/confidence against detector-produced ranking/confidence, not only against observed feature-count matches.
+2. **Manifest schema as a versioned contract** — `schema_version` is already enforced on load; next is documenting the schema so third-party fixture authors (or future detectors) have a stable target.
+3. **Tier-2 primitive expansion** — cone/frustum, sphere, ellipsoid. Gated on the boolean-wrapping refactor (Immediate #2) for the same polarity reason that gates cylinders.
+4. **Sketch2D + ExtrudeLinear / ExtrudeRevolve recovery from mesh cross-sections** — largest single win available in the roadmap (most mechanical parts are "profile + extrude" in intent) and also the largest scope. Do not start before Tier-2 primitives are stable.
 
-(Noise-injection fixtures were promoted out of this section into "Immediate priorities" on 2026-04-20; see item 2 above.)
+(Noise-injection fixtures were promoted out of this section on 2026-04-20 and landed via Track C on 2026-04-22.)
+(Negative-class fixtures were promoted to Immediate priority #7 on 2026-04-22.)
 
 ### Ongoing
 
@@ -183,7 +198,15 @@ Once the round-trip is asserting dimensions, the fixture pipeline becomes the ba
 3. Emit feature-based SCAD templates only when confidence is high; otherwise fall back.
 4. Add optional user-assisted labeling for ambiguous features.
 
-## Next Work Package (2026-04-22 to 2026-05-31)
+## Next Work Package — status: substantially shipped (2026-04-22)
+
+The Tracks A–D package originally scoped for 2026-04-22 → 2026-05-31 shipped early. Tracks A, C, and D are complete; Track B is substantially complete pending the box-preview-parity check called out in Immediate priority #1. The next work package is being drafted around Immediate priorities #1–#5 (close Track B, IR wrapping, chamfer/fillet IR promotion, rotated fixtures, cylinder-as-positive-primitive); it will replace this section once written.
+
+The track definitions below are retained for provenance and for the acceptance-criteria language they establish.
+
+---
+
+## Next Work Package (original: 2026-04-22 to 2026-05-31)
 
 This package turns the immediate priorities into a short, test-first execution sequence. It is intentionally scoped to improve real-world parametric-preview recall before adding broader detector families.
 
@@ -292,19 +315,20 @@ Plans in this doc span four sections (Real-World Feedback Loop, Immediate priori
 **Rules (dependency order):**
 
 1. **Fixture invariants are always gates, never lag indicators.** The three invariants from [CLAUDE.md](../../CLAUDE.md) (byte-exact regeneration, dimensional round-trip, roadmap stress-case coverage) must pass through every change. If any invariant breaks, fix it before touching anything else — do not relax the invariant to unblock downstream work.
-2. **Track A (triage) must ship before Track B commits to specific variants.** Track A's ranked failure-pattern output is what picks which tolerant-detection variant Track B builds first. Running B on guessed priorities risks building the wrong thing.
-3. **Track C (labeled corpus + recall merge-gate) must exist before `scripts/tune_detector.py` is ever run as an optimization target.** Until the merge-gate exists, tuning against the synthetic fixture corpus will overfit that distribution at the cost of real parts. This is the mechanical form of the tuning trap.
-4. **Track D (grid-pattern SCAD emission) is independent.** It has no dependency on A/B/C and can run in parallel with any of them — use it as filler work when a blocker appears on the critical path.
-5. **Immediate priorities #4 (rotated/composite fixtures) and #5 (inventory-guided selection) come after Track B is stable.** They expand the geometry surface that Track B's tolerant logic must hold up on.
-6. **"Beyond dimensional parity" items come after Immediate priorities are cleared.** They promote schema/ranking infrastructure, which pays off once the baseline detector is hitting more real parts. Running them earlier produces infrastructure for geometry the detector still can't handle.
-7. **Phase 3 (ABC dataset integration) is the last investment.** Start it only after Track C's recall baseline shows Phase 2 has measurably lifted real-world pass-rate. Supervised data cannot productively train a detector that cannot yet represent the features being supervised.
-8. **"Ongoing" items (tighter thresholds, user-assisted labeling, confidence gating) run cross-cutting.** They are not milestone-gated, but they should not overtake a blocked track — finish the blocked track first.
+2. ~~**Track A (triage) must ship before Track B commits to specific variants.**~~ *Satisfied 2026-04-22. Triage shipped and was used to scope Track B's filleted-edge work.*
+3. ~~**Track C (labeled corpus + recall merge-gate) must exist before `scripts/tune_detector.py` is ever run as an optimization target.**~~ *Satisfied 2026-04-22. Merge-gate shipped in commit `5ee5081`; auto-tuning run followed, with results in [detector_autotune_results.md](detector_autotune_results.md).*
+4. ~~**Track D (grid-pattern SCAD emission) is independent.**~~ *Satisfied 2026-04-22. Grid-loop emission shipped.*
+5. **Boolean + Transform IR wrapping (Immediate #2) must ship before new positive primitives merge.** This is the new structural gate. Cylinder-as-positive-primitive (Immediate #5) and any future Tier-2 primitive (cone/frustum/sphere) depend on it for boolean-sign context; merging a cylinder detector without it reproduces the hole-surface misfire already observed on the current WIP branch.
+6. **Immediate priority #4 (rotated/composite fixtures) comes after Immediate #2 (IR wrapping).** Rotated features need a `TransformRotate` IR node to land in; adding rotated fixtures before the IR refactor produces output that has to be re-keyed later.
+7. **"Beyond dimensional parity" items come after Immediate priorities are cleared.** They promote schema/ranking infrastructure, which pays off once the baseline detector is hitting more real parts. Running them earlier produces infrastructure for geometry the detector still can't handle.
+8. **Phase 3 (ABC dataset integration) is the last investment.** Start it only after Track C's recall baseline shows real-world pass-rate has measurably lifted. Supervised data cannot productively train a detector that cannot yet represent the features being supervised.
+9. **"Ongoing" items (tighter thresholds, user-assisted labeling, confidence gating) run cross-cutting.** They are not milestone-gated, but they should not overtake a blocked track — finish the blocked track first.
 
 **Cadence rule (regression fence):** after each Track completes, re-run triage (Track A) and re-score recall (Track C) before starting the next Track. A regression in either stops forward motion until the regression is explained or reverted. This prevents one Track's optimization from silently hurting another's target.
 
-**Parallelism summary:**
+**Parallelism summary (updated 2026-04-22):**
 
-- Critical path: A → B → #4 → #5 → Beyond-dimensional-parity → Phase 3
-- Parallel to anything: D
-- Sequenced but later-gated: C (must ship before tuning)
-- Cross-cutting: Ongoing items
+- Completed: Tracks A, C, D (full) and B (substantially — box-preview parity is Immediate #1).
+- Critical path: Immediate #1 (close Track B) → Immediate #2 (IR wrapping) → Immediate #3 (Chamfer/Fillet IR) → Immediate #4 (rotated fixtures) → Immediate #5 (cylinder as positive primitive) → Immediate #6 (inventory-guided selection) → Beyond-dimensional-parity → Phase 3 (ABC).
+- Parallel to anything: Immediate #7 (negative-class fixtures) — valuable regression fence for any new primitive; Ongoing items.
+- Cadence rule still applies: after each Immediate priority closes, re-run triage and re-score recall before starting the next.

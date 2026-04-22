@@ -120,6 +120,29 @@ Detects axis-aligned boxes, through-holes, slots, and repeated hole patterns (li
 - `plate_like_solid` requires strictly rectangular top/bottom faces — any chamfer or fillet on a plate edge drops detection to `axis_boundary_plane_pair` only and blocks SCAD preview emission. Observed on multiple real FDM parts (2026-04-20 sample); dominant real-world failure mode.
 - No `box_like_solid` primitive — pure axis-aligned cuboids (e.g. Test_Cube) produce only axis-pair features, never a parametric preview.
 
+## Real-World Feedback Loop (2026-04-22)
+
+The 2026-04-20 sample made it clear that fixture pass-rate no longer predicts real-world pass-rate. The highest-ROI path toward the project's intent — parametric SCAD output for arbitrary user STLs — is a three-phase loop that goes "measure real failures → close the dominant pattern → expand with supervised data." The detailed items under *Immediate priorities* below are the tactical checklist; this section is the framing that explains their ordering.
+
+### Phase 1: Triage loop over unlabeled real STLs (days)
+
+Run a folder of real STLs (starting with `D:\3D Files\FDM`) through `feature-graph` and bucket the outcomes by detector result: produced a parametric preview, detected features but below confidence threshold, fell through to `axis_boundary_plane_pair` only, or fell through to polyhedron. Rank buckets by which broken-edge pattern or geometry style costs the most parts. The triage loop does not itself fix anything — it replaces guesswork about "which detector gap matters most" with ranked evidence drawn from the user's actual corpus. Cheap to build on top of the existing folder-mode `feature-graph` and the confidence scores the detector already emits.
+
+This is distinct from *Immediate priority #2* ("real-world STLs with authored `expected_detection` counts"): triage works on unlabeled STLs, no hand-authored ground truth required. The two complement each other — triage identifies *which* real parts deserve the investment of authoring ground truth.
+
+### Phase 2: Close the dominant real-world failure pattern (weeks)
+
+Extend the tolerant-detection approach that already works for `plate_plain_chamfered_edges` to whichever geometry the Phase 1 triage ranks highest. On the 2026-04-20 sample that is most likely filleted plate and box edges, which would satisfy *Immediate priority #1*. Each pattern closed moves real-world pass-rate directly; triage re-run after each closure tells us whether the fix generalized and what the next dominant pattern is.
+
+### Phase 3: ABC dataset as a supervised corpus (months)
+
+The [ABC Dataset](https://deep-geometry.github.io/abc-dataset/) (~1M CAD models with STEP/B-rep ground truth, Koch et al. 2019) is the only public dataset that supplies real parametric supervision for what this project emits. STEP files carry feature trees (holes, fillets, extrusions) that can be compared directly against detector output. Wiring it in is weeks of STEP-parser work per feature family, so this is a phase-3 investment — valuable only once Phase 2 has lifted real-world pass-rate meaningfully above today's baseline, because extra supervision cannot be consumed productively while common real-world geometry still fails to detect at all.
+
+### Traps to avoid
+
+- **Do not run `tune_detector` against the synthetic fixture corpus as the project's optimization target.** With synthetic pass-rate decoupled from real-world pass-rate, tuning in this regime overfits the synthetic distribution at the cost of real parts. Defer tuning until a real-world-weighted scoring function exists (scored via Phase 1 triage data plus the labeled real-world fixtures from *Immediate priority #2*).
+- **Do not start Phase 3 before Phase 2 raises the detector's floor.** Supervised data only helps a detector that can already represent the features being supervised.
+
 ## Next Milestones
 
 ### Recently completed (2026-04-20)

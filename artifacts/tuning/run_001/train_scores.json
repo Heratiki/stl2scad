@@ -1,0 +1,132 @@
+{
+  "mean": 0.9965734896870225,
+  "by_type": {
+    "box": 0.9828680015408162,
+    "l_bracket": 1.0,
+    "sphere": 1.0,
+    "torus": 1.0,
+    "plate": 0.9999998298136297
+  },
+  "per_fixture": [
+    {
+      "name": "box_hollow_ambiguous",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "box_rounded_edges",
+      "count_score": 1.0,
+      "dimension_score": 0.8286819458007812,
+      "total": 0.9314727783203125
+    },
+    {
+      "name": "box_with_top_notch",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "box_z_through_hole",
+      "count_score": 1.0,
+      "dimension_score": 0.9999980696073816,
+      "total": 0.9999992278429526
+    },
+    {
+      "name": "l_bracket_plain",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "negative_sphere",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "negative_torus",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_counterbore_depth_near_thickness",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_counterbore_small_clearance",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_large_hole_pair",
+      "count_score": 1.0,
+      "dimension_score": 0.9999973284170708,
+      "total": 0.9999989313668283
+    },
+    {
+      "name": "plate_mixed_linear_and_slot",
+      "count_score": 1.0,
+      "dimension_score": 0.9999985420249459,
+      "total": 0.9999994168099784
+    },
+    {
+      "name": "plate_multi_pattern_mixed_edge",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_near_boundary_linear",
+      "count_score": 1.0,
+      "dimension_score": 0.9999985985009494,
+      "total": 0.9999994394003797
+    },
+    {
+      "name": "plate_plain",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_plain_chamfered_edges",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_plain_rotated_z30",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_rectangular_through_cutout",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_rectangular_top_pocket",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_single_counterbore",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_small_hole_grid",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    }
+  ]
+}

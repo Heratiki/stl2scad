@@ -1,0 +1,45 @@
+{
+  "mean": 0.9999997175152164,
+  "by_type": {
+    "box": 0.9999996139214764,
+    "plate": 0.9999997693120863
+  },
+  "per_fixture": [
+    {
+      "name": "box_x_through_hole",
+      "count_score": 1.0,
+      "dimension_score": 0.999998069607382,
+      "total": 0.9999992278429528
+    },
+    {
+      "name": "box_z_through_hole_rotated_z25",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_grid_two_by_three",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_linear_two_holes",
+      "count_score": 1.0,
+      "dimension_score": 0.999997693120864,
+      "total": 0.9999990772483456
+    },
+    {
+      "name": "plate_long_aspect_linear",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_single_slot",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    }
+  ]
+}

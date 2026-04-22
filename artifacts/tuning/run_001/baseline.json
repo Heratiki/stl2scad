@@ -1,0 +1,168 @@
+{
+  "mean": 0.9973641576473751,
+  "by_type": {
+    "plate": 0.9999998155779726,
+    "box": 0.9885785390010363,
+    "l_bracket": 1.0,
+    "sphere": 1.0,
+    "torus": 1.0
+  },
+  "per_fixture": [
+    {
+      "name": "plate_plain",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_plain_chamfered_edges",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_plain_rotated_z30",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_linear_two_holes",
+      "count_score": 1.0,
+      "dimension_score": 0.999997693120864,
+      "total": 0.9999990772483456
+    },
+    {
+      "name": "plate_grid_two_by_three",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_single_slot",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_rectangular_through_cutout",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_rectangular_top_pocket",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_single_counterbore",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_counterbore_depth_near_thickness",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_counterbore_small_clearance",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_mixed_linear_and_slot",
+      "count_score": 1.0,
+      "dimension_score": 0.9999985420249459,
+      "total": 0.9999994168099784
+    },
+    {
+      "name": "plate_multi_pattern_mixed_edge",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_near_boundary_linear",
+      "count_score": 1.0,
+      "dimension_score": 0.9999985985009494,
+      "total": 0.9999994394003797
+    },
+    {
+      "name": "plate_long_aspect_linear",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_small_hole_grid",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "plate_large_hole_pair",
+      "count_score": 1.0,
+      "dimension_score": 0.9999973284170708,
+      "total": 0.9999989313668283
+    },
+    {
+      "name": "box_z_through_hole",
+      "count_score": 1.0,
+      "dimension_score": 0.9999980696073816,
+      "total": 0.9999992278429526
+    },
+    {
+      "name": "box_x_through_hole",
+      "count_score": 1.0,
+      "dimension_score": 0.999998069607382,
+      "total": 0.9999992278429528
+    },
+    {
+      "name": "box_rounded_edges",
+      "count_score": 1.0,
+      "dimension_score": 0.8286819458007812,
+      "total": 0.9314727783203125
+    },
+    {
+      "name": "box_z_through_hole_rotated_z25",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "l_bracket_plain",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "negative_sphere",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "negative_torus",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "box_with_top_notch",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    },
+    {
+      "name": "box_hollow_ambiguous",
+      "count_score": 1.0,
+      "dimension_score": 1.0,
+      "total": 1.0
+    }
+  ]
+}

@@ -6,8 +6,11 @@ OpenSCAD format and verifying conversion accuracy.
 """
 
 import argparse
+from dataclasses import dataclass
 import json
 import os
+import shlex
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -77,6 +80,14 @@ def _unit_interval_float(value: str) -> float:
     if parsed < 0.0 or parsed > 1.0:
         raise argparse.ArgumentTypeError("Value must be between 0.0 and 1.0")
     return parsed
+
+
+@dataclass(frozen=True)
+class MaintainerStep:
+    """A single command in the maintainer pipeline."""
+
+    name: str
+    command: List[str]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -394,6 +405,92 @@ def build_parser() -> argparse.ArgumentParser:
         handler=feature_graph_from_inventory_command
     )
 
+    maintainer_parser = subparsers.add_parser(
+        "maintainer",
+        help="Run a chained maintainer workflow for tests, sweeps, and optional corpus analysis",
+    )
+    maintainer_parser.add_argument(
+        "--mode",
+        choices=["quick", "full"],
+        default="quick",
+        help="Workflow profile. quick runs fast safety checks; full adds fixture regeneration (default: quick)",
+    )
+    maintainer_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print commands without running them",
+    )
+    maintainer_parser.add_argument(
+        "--continue-on-error",
+        action="store_true",
+        help="Continue running remaining steps even if one step fails",
+    )
+    maintainer_parser.add_argument(
+        "--skip-recognition-sweep",
+        action="store_true",
+        help="Skip benchmark recognition sweep",
+    )
+    maintainer_parser.add_argument(
+        "--skip-perf-baseline",
+        action="store_true",
+        help="Skip performance baseline run",
+    )
+    maintainer_parser.add_argument(
+        "--recognition-backends",
+        default="native,trimesh_manifold,cgal",
+        help="Comma-separated backends for recognition sweep (default: native,trimesh_manifold,cgal)",
+    )
+    maintainer_parser.add_argument(
+        "--recognition-output",
+        default="artifacts/recognition_sweep_maintainer.json",
+        help="Output path for recognition sweep JSON",
+    )
+    maintainer_parser.add_argument(
+        "--perf-output",
+        default="artifacts/perf_baseline_maintainer.json",
+        help="Output path for perf baseline JSON",
+    )
+    maintainer_parser.add_argument(
+        "--perf-repeat",
+        type=_non_negative_int,
+        default=1,
+        help="Repeat count for perf baseline (default: 1)",
+    )
+    maintainer_parser.add_argument(
+        "--perf-recognition-backend",
+        choices=list(SUPPORTED_RECOGNITION_BACKENDS),
+        default="native",
+        help="Recognition backend used by perf baseline (default: native)",
+    )
+    maintainer_parser.add_argument(
+        "--stl-dir",
+        default=None,
+        help="Optional STL directory for inventory + inventory-prefiltered feature graph",
+    )
+    maintainer_parser.add_argument(
+        "--inventory-output",
+        default="artifacts/feature_inventory_maintainer.json",
+        help="Output path for optional inventory JSON",
+    )
+    maintainer_parser.add_argument(
+        "--feature-graph-output",
+        default="artifacts/feature_graph_maintainer.json",
+        help="Output path for optional feature-graph JSON",
+    )
+    maintainer_parser.add_argument(
+        "--workers",
+        type=_non_negative_int,
+        default=0,
+        help="Workers for optional STL inventory/graph steps. Use 0 for auto",
+    )
+    maintainer_parser.add_argument(
+        "--max-files",
+        type=_non_negative_int,
+        default=None,
+        help="Optional cap for STL files in optional inventory/graph steps",
+    )
+    maintainer_parser.set_defaults(handler=maintainer_command)
+
     return parser
 
 
@@ -498,6 +595,183 @@ def _resolve_workers(value: int) -> int:
     if value == 0:
         return max(1, min(os.cpu_count() or 1, 32))
     return value
+
+
+def _format_command(command: List[str]) -> str:
+    """Render a subprocess command for terminal output."""
+    return " ".join(shlex.quote(part) for part in command)
+
+
+def _repo_root() -> Path:
+    """Resolve the repository root from this module path."""
+    return Path(__file__).resolve().parents[1]
+
+
+def _build_maintainer_steps(args: argparse.Namespace) -> List[MaintainerStep]:
+    """Create a list of commands for the requested maintainer profile."""
+    python_exe = sys.executable
+    steps: List[MaintainerStep] = []
+
+    if args.mode == "full":
+        steps.append(
+            MaintainerStep(
+                name="Regenerate feature fixtures",
+                command=[python_exe, "scripts/generate_feature_fixtures.py"],
+            )
+        )
+
+    steps.extend(
+        [
+            MaintainerStep(
+                name="Fixture round-trip safety test",
+                command=[python_exe, "-m", "pytest", "tests/test_feature_fixtures.py", "-v"],
+            ),
+            MaintainerStep(
+                name="Feature detector tests",
+                command=[
+                    python_exe,
+                    "-m",
+                    "pytest",
+                    "tests/test_feature_graph.py",
+                    "tests/test_feature_inventory.py",
+                    "-q",
+                ],
+            ),
+            MaintainerStep(
+                name="CLI regression tests",
+                command=[python_exe, "-m", "pytest", "tests/test_cli.py", "-q"],
+            ),
+        ]
+    )
+
+    if not args.skip_recognition_sweep:
+        steps.append(
+            MaintainerStep(
+                name="Recognition sweep",
+                command=[
+                    python_exe,
+                    "scripts/run_recognition_sweep.py",
+                    "--fixtures-dir",
+                    "tests/data/benchmark_fixtures",
+                    "--output",
+                    args.recognition_output,
+                    "--backends",
+                    args.recognition_backends,
+                ],
+            )
+        )
+
+    if not args.skip_perf_baseline:
+        steps.append(
+            MaintainerStep(
+                name="Performance baseline",
+                command=[
+                    python_exe,
+                    "scripts/run_perf_baseline.py",
+                    "--fixtures-dir",
+                    "tests/data/benchmark_fixtures",
+                    "--output",
+                    args.perf_output,
+                    "--repeat",
+                    str(args.perf_repeat),
+                    "--recognition-backend",
+                    args.perf_recognition_backend,
+                ],
+            )
+        )
+
+    if args.stl_dir:
+        steps.append(
+            MaintainerStep(
+                name="Corpus feature inventory",
+                command=[
+                    python_exe,
+                    "-m",
+                    "stl2scad",
+                    "feature-inventory",
+                    args.stl_dir,
+                    "--output",
+                    args.inventory_output,
+                    "--workers",
+                    str(args.workers),
+                ],
+            )
+        )
+        graph_command = [
+            python_exe,
+            "-m",
+            "stl2scad",
+            "feature-graph",
+            args.stl_dir,
+            "--output",
+            args.feature_graph_output,
+            "--workers",
+            str(args.workers),
+            "--inventory-prefilter",
+            "--inventory-output",
+            args.inventory_output,
+        ]
+        if args.max_files is not None:
+            graph_command.extend(["--max-files", str(args.max_files)])
+        steps.append(
+            MaintainerStep(
+                name="Corpus feature graph (inventory-prefilter)",
+                command=graph_command,
+            )
+        )
+
+    return steps
+
+
+def maintainer_command(args: argparse.Namespace) -> int:
+    """Execute the chained maintainer workflow."""
+    try:
+        if args.perf_repeat < 1:
+            raise ValueError("--perf-repeat must be >= 1")
+
+        steps = _build_maintainer_steps(args)
+        if not steps:
+            print("No maintainer steps selected.")
+            return 0
+
+        repo_root = _repo_root()
+        failures: List[tuple[str, int]] = []
+
+        print(f"Maintainer workflow mode: {args.mode}")
+        print(f"Repository root: {repo_root}")
+        print(f"Steps: {len(steps)}")
+
+        for index, step in enumerate(steps, start=1):
+            print(f"\n[{index}/{len(steps)}] {step.name}")
+            print(f"$ {_format_command(step.command)}")
+
+            if args.dry_run:
+                continue
+
+            result = subprocess.run(step.command, cwd=repo_root)
+            if result.returncode != 0:
+                failures.append((step.name, int(result.returncode)))
+                print(
+                    f"Step failed ({step.name}) with exit code {result.returncode}.",
+                    file=sys.stderr,
+                )
+                if not args.continue_on_error:
+                    break
+
+        if failures:
+            print("\nMaintainer workflow completed with failures:", file=sys.stderr)
+            for name, code in failures:
+                print(f"  - {name}: exit code {code}", file=sys.stderr)
+            return 1
+
+        if args.dry_run:
+            print("\nDry run complete: no commands were executed.")
+        else:
+            print("\nMaintainer workflow completed successfully.")
+        return 0
+    except Exception as exc:
+        print(f"Error: {str(exc)}", file=sys.stderr)
+        return 1
 
 
 def acceleration_command(args: argparse.Namespace) -> int:

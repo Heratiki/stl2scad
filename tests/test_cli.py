@@ -105,6 +105,18 @@ def test_feature_graph_from_inventory_parser_accepts_scad_preview_dir():
     assert args.scad_preview_dir == "preview_dir"
 
 
+def test_maintainer_parser_defaults():
+    """Maintainer command should parse with sensible defaults."""
+    parser = cli.build_parser()
+    args = parser.parse_args(["maintainer"])
+    assert isinstance(args, argparse.Namespace)
+    assert args.mode == "quick"
+    assert args.dry_run is False
+    assert args.continue_on_error is False
+    assert args.skip_recognition_sweep is False
+    assert args.skip_perf_baseline is False
+
+
 from unittest.mock import patch, MagicMock
 
 
@@ -373,5 +385,27 @@ def test_feature_graph_from_inventory_writes_scad_previews(
 
     assert exit_code == 0
     mock_build_graphs.assert_called_once()
-    assert (preview_dir / "parts" / "plate_a.preview.scad").read_text(encoding="utf-8") == "difference() {}"
+    assert (preview_dir / "parts" / "plate_a.preview.scad").read_text(
+        encoding="utf-8"
+    ) == "difference() {}"
     assert not (preview_dir / "parts" / "plate_b.preview.scad").exists()
+
+
+@patch("stl2scad.cli.subprocess.run")
+def test_maintainer_command_runs_expected_step_prefix(mock_run):
+    """Maintainer quick mode should chain commands through subprocess."""
+    mock_run.return_value = MagicMock(returncode=0)
+
+    exit_code = cli.main(
+        [
+            "maintainer",
+            "--skip-recognition-sweep",
+            "--skip-perf-baseline",
+        ]
+    )
+
+    assert exit_code == 0
+    # Fixture, feature detector, and CLI tests should run in quick mode.
+    assert mock_run.call_count == 3
+    first_call_cmd = mock_run.call_args_list[0].args[0]
+    assert first_call_cmd[1:] == ["-m", "pytest", "tests/test_feature_fixtures.py", "-v"]

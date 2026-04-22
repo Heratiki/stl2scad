@@ -199,6 +199,22 @@ pytest tests/test_conversion.py -q -k "not debug"
 pytest tests/test_conversion.py -q -k "phase1_"
 ```
 
+Run the chained maintainer workflow (single command for common checks):
+
+```bash
+# Quick profile: fixture/feature/CLI tests + recognition sweep + perf baseline
+python -m stl2scad maintainer
+
+# Full profile: includes fixture regeneration before checks
+python -m stl2scad maintainer --mode full
+
+# Dry-run: print the command chain without executing
+python -m stl2scad maintainer --dry-run
+
+# Optional corpus run: inventory + inventory-prefiltered feature graph
+python -m stl2scad maintainer --stl-dir "C:\path\to\stls" --workers 0 --max-files 100
+```
+
 Generate/update benchmark fixtures (Phase 0 baseline set):
 
 ```bash

@@ -436,6 +436,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip performance baseline run",
     )
     maintainer_parser.add_argument(
+        "--skip-real-world-gate",
+        action="store_true",
+        help="Skip real-world recall merge-gate scoring step",
+    )
+    maintainer_parser.add_argument(
         "--recognition-backends",
         default="native,trimesh_manifold,cgal",
         help="Comma-separated backends for recognition sweep (default: native,trimesh_manifold,cgal)",
@@ -461,6 +466,31 @@ def build_parser() -> argparse.ArgumentParser:
         choices=list(SUPPORTED_RECOGNITION_BACKENDS),
         default="native",
         help="Recognition backend used by perf baseline (default: native)",
+    )
+    maintainer_parser.add_argument(
+        "--real-world-manifest",
+        default="tests/data/real_world_corpus_manifest.json",
+        help="Manifest path for real-world recall merge-gate scoring",
+    )
+    maintainer_parser.add_argument(
+        "--real-world-baseline",
+        default="artifacts/real_world_recall_baseline.json",
+        help="Baseline path for real-world recall merge-gate scoring",
+    )
+    maintainer_parser.add_argument(
+        "--real-world-corpus-root",
+        default=None,
+        help="Optional corpus root override for real-world merge-gate scoring",
+    )
+    maintainer_parser.add_argument(
+        "--real-world-output",
+        default="artifacts/real_world_recall_maintainer.json",
+        help="Output path for maintainer real-world recall report",
+    )
+    maintainer_parser.add_argument(
+        "--real-world-delta-output",
+        default="artifacts/real_world_recall_delta_maintainer.json",
+        help="Output path for maintainer real-world recall delta report",
     )
     maintainer_parser.add_argument(
         "--stl-dir",
@@ -677,6 +707,29 @@ def _build_maintainer_steps(args: argparse.Namespace) -> List[MaintainerStep]:
                     "--recognition-backend",
                     args.perf_recognition_backend,
                 ],
+            )
+        )
+
+    if not args.skip_real_world_gate:
+        merge_gate_command = [
+            python_exe,
+            "scripts/score_real_world_corpus.py",
+            "--manifest",
+            args.real_world_manifest,
+            "--baseline",
+            args.real_world_baseline,
+            "--output",
+            args.real_world_output,
+            "--delta-output",
+            args.real_world_delta_output,
+            "--merge-gate",
+        ]
+        if args.real_world_corpus_root:
+            merge_gate_command.extend(["--corpus-root", args.real_world_corpus_root])
+        steps.append(
+            MaintainerStep(
+                name="Real-world recall merge-gate",
+                command=merge_gate_command,
             )
         )
 

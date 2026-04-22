@@ -115,6 +115,7 @@ def test_maintainer_parser_defaults():
     assert args.continue_on_error is False
     assert args.skip_recognition_sweep is False
     assert args.skip_perf_baseline is False
+    assert args.skip_real_world_gate is False
 
 
 from unittest.mock import patch, MagicMock
@@ -405,7 +406,10 @@ def test_maintainer_command_runs_expected_step_prefix(mock_run):
     )
 
     assert exit_code == 0
-    # Fixture, feature detector, and CLI tests should run in quick mode.
-    assert mock_run.call_count == 3
+    # Fixture, feature detector, CLI tests, and Track C merge-gate run in quick mode.
+    assert mock_run.call_count == 4
     first_call_cmd = mock_run.call_args_list[0].args[0]
     assert first_call_cmd[1:] == ["-m", "pytest", "tests/test_feature_fixtures.py", "-v"]
+    last_call_cmd = mock_run.call_args_list[-1].args[0]
+    assert last_call_cmd[1] == "scripts/score_real_world_corpus.py"
+    assert "--merge-gate" in last_call_cmd

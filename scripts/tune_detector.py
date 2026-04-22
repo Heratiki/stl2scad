@@ -68,6 +68,14 @@ def main(argv: list[str]) -> int:
         "--real-world-baseline",
         default="artifacts/real_world_recall_baseline.json",
     )
+    parser.add_argument(
+        "--allow-missing-real-world-gate",
+        action="store_true",
+        help=(
+            "Allow tune runs when real-world corpus files or baseline are missing. "
+            "Use only for exploratory local runs; disabled by default to enforce Track C."
+        ),
+    )
     args = parser.parse_args(argv)
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -222,8 +230,14 @@ def _write_real_world_reports(
 ) -> None:
     manifest_path = Path(args.real_world_manifest)
     if not manifest_path.exists():
-        logger.info("Real-world manifest not found, skipping recall report: %s", manifest_path)
-        return
+        message = f"Real-world manifest not found: {manifest_path}"
+        if args.allow_missing_real_world_gate:
+            logger.info("%s; skipping recall report", message)
+            return
+        raise RuntimeError(
+            message
+            + ". Track C merge-gate requires recall + delta reporting before tuning."
+        )
 
     manifest = load_real_world_corpus_manifest(manifest_path)
     corpus_root = resolve_real_world_corpus_root(
@@ -233,12 +247,17 @@ def _write_real_world_reports(
     )
     missing = list_missing_real_world_corpus_files(manifest["cases"], corpus_root)
     if missing:
-        logger.info(
-            "Real-world corpus files missing under %s; skipping recall scoring (%d missing).",
-            corpus_root,
-            len(missing),
+        message = (
+            "Real-world corpus files missing under "
+            f"{corpus_root}; {len(missing)} files missing."
         )
-        return
+        if args.allow_missing_real_world_gate:
+            logger.info("%s Skipping recall scoring.", message)
+            return
+        raise RuntimeError(
+            message
+            + " Track C merge-gate requires recall + delta reporting before tuning."
+        )
 
     score = score_real_world_corpus(
         config=config,
@@ -254,6 +273,16 @@ def _write_real_world_reports(
             output_dir / "real_world_recall_delta.json",
             compare_real_world_score_to_baseline(score, baseline_payload),
         )
+        return
+
+    message = f"Real-world baseline artifact not found: {baseline_path}"
+    if args.allow_missing_real_world_gate:
+        logger.info("%s; skipping delta report", message)
+        return
+    raise RuntimeError(
+        message
+        + ". Track C merge-gate requires baseline delta reporting before tuning."
+    )
 
 
 def _write_report(path: Path, **ctx) -> None:

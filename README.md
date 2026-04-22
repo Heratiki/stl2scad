@@ -208,12 +208,19 @@ python -m stl2scad maintainer
 # Full profile: includes fixture regeneration before checks
 python -m stl2scad maintainer --mode full
 
+# Skip Track C real-world merge-gate for exploratory local runs only
+python -m stl2scad maintainer --skip-real-world-gate
+
 # Dry-run: print the command chain without executing
 python -m stl2scad maintainer --dry-run
 
 # Optional corpus run: inventory + inventory-prefiltered feature graph
 python -m stl2scad maintainer --stl-dir "C:\path\to\stls" --workers 0 --max-files 100
 ```
+
+By default, `maintainer` includes a Track C real-world recall merge-gate step via
+`scripts/score_real_world_corpus.py --merge-gate`, which requires corpus files and
+baseline-delta reporting.
 
 Generate/update benchmark fixtures (Phase 0 baseline set):
 
@@ -242,11 +249,15 @@ python scripts/run_recognition_sweep.py --fixtures-dir tests/data/benchmark_fixt
 Score the labeled real-world corpus when local STL files are available:
 
 ```bash
-python scripts/score_real_world_corpus.py --manifest tests/data/real_world_corpus_manifest.json --baseline artifacts/real_world_recall_baseline.json
+python scripts/score_real_world_corpus.py --manifest tests/data/real_world_corpus_manifest.json --baseline artifacts/real_world_recall_baseline.json --merge-gate
 ```
 
 The committed manifest and baseline define the reporting contract; the smoke test
 skips cleanly when the local corpus files are absent.
+
+`--merge-gate` exits with code `2` if corpus files are missing or baseline delta
+reporting cannot be produced. `scripts/tune_detector.py` enforces the same gate by
+default; use `--allow-missing-real-world-gate` only for exploratory local runs.
 
 Use gating thresholds for CI regression checks (multi-feature, not single-fixture):
 

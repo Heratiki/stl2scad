@@ -22,6 +22,9 @@ from stl2scad.tuning.real_world_corpus import (
 )
 
 
+_EXIT_MERGE_GATE_FAILED = 2
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -49,6 +52,14 @@ def main(argv: list[str]) -> int:
         default="artifacts/real_world_recall_delta.json",
         help="Output JSON path for the baseline delta report.",
     )
+    parser.add_argument(
+        "--merge-gate",
+        action="store_true",
+        help=(
+            "Fail with exit code 2 when corpus files are missing or when a baseline "
+            "delta cannot be produced."
+        ),
+    )
     args = parser.parse_args(argv)
 
     manifest = load_real_world_corpus_manifest(args.manifest)
@@ -64,6 +75,12 @@ def main(argv: list[str]) -> int:
             f"Missing {len(missing)} files under {corpus_root}",
             file=sys.stderr,
         )
+        if args.merge_gate:
+            print(
+                "Merge gate failed: corpus files must be present to produce recall delta.",
+                file=sys.stderr,
+            )
+            return _EXIT_MERGE_GATE_FAILED
         return 0
 
     score = score_real_world_corpus(
@@ -84,6 +101,7 @@ def main(argv: list[str]) -> int:
     print(f"Feature-family recall: {score.feature_family_recall}")
 
     baseline_path = Path(args.baseline)
+    delta_written = False
     if baseline_path.exists():
         baseline_payload = json.loads(baseline_path.read_text(encoding="utf-8"))
         delta = compare_real_world_score_to_baseline(score, baseline_payload)
@@ -91,6 +109,14 @@ def main(argv: list[str]) -> int:
         delta_path.parent.mkdir(parents=True, exist_ok=True)
         delta_path.write_text(json.dumps(delta, indent=2), encoding="utf-8")
         print(f"Real-world recall delta written to: {delta_path}")
+        delta_written = True
+
+    if args.merge_gate and not delta_written:
+        print(
+            "Merge gate failed: baseline artifact missing; cannot produce recall delta.",
+            file=sys.stderr,
+        )
+        return _EXIT_MERGE_GATE_FAILED
 
     return 0
 

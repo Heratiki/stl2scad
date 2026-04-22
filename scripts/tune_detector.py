@@ -31,7 +31,9 @@ from stl2scad.core.feature_fixtures import (
 from stl2scad.tuning.config import DetectorConfig
 from stl2scad.tuning.scoring import ManifestScore, score_manifest
 from stl2scad.tuning.search_space import suggest_config
-from stl2scad.tuning.splits import stratified_split
+from stl2scad.tuning.splits import leave_one_out, stratified_split
+import statistics
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--trials", type=int, default=200)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--holdout-ratio", type=float, default=0.25)
+    parser.add_argument("--cross-validate", action="store_true")
     args = parser.parse_args(argv)
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -56,49 +59,72 @@ def main(argv: list[str]) -> int:
     train, holdout = stratified_split(fixtures, holdout_ratio=args.holdout_ratio, seed=args.seed)
     logger.info("Train: %d fixtures, Holdout: %d fixtures", len(train), len(holdout))
 
-    baseline_full = score_manifest(DetectorConfig(), fixtures, stl_dir)
-    _dump(args.output / "baseline.json", _serialize_score(baseline_full, fixtures))
-    logger.info("Baseline (full manifest) mean: %.4f", baseline_full.mean)
+    if not args.cross_validate:
+        baseline_full = score_manifest(DetectorConfig(), fixtures, stl_dir)
+        _dump(args.output / "baseline.json", _serialize_score(baseline_full, fixtures))
+        logger.info("Baseline (full manifest) mean: %.4f", baseline_full.mean)
 
-    storage = f"sqlite:///{(args.output / 'study.db').as_posix()}"
-    study = optuna.create_study(
-        study_name="detector_autotune",
-        direction="maximize",
-        sampler=optuna.samplers.TPESampler(seed=args.seed),
-        storage=storage,
-        load_if_exists=True,
-    )
+        storage = f"sqlite:///{(args.output / 'study.db').as_posix()}"
+        study = optuna.create_study(
+            study_name="detector_autotune",
+            direction="maximize",
+            sampler=optuna.samplers.TPESampler(seed=args.seed),
+            storage=storage,
+            load_if_exists=True,
+        )
 
-    def objective(trial: optuna.Trial) -> float:
-        config = suggest_config(trial)
-        return score_manifest(config, train, stl_dir).mean
+        def objective(trial: optuna.Trial) -> float:
+            config = suggest_config(trial)
+            return score_manifest(config, train, stl_dir).mean
 
-    study.optimize(objective, n_trials=args.trials, show_progress_bar=True)
-    best_config = _reconstruct_config(study.best_params)
-    _dump(args.output / "best_config.json", dataclasses.asdict(best_config))
-    logger.info("Best train score: %.4f", study.best_value)
+        study.optimize(objective, n_trials=args.trials, show_progress_bar=True)
+        best_config = _reconstruct_config(study.best_params)
+        _dump(args.output / "best_config.json", dataclasses.asdict(best_config))
+        logger.info("Best train score: %.4f", study.best_value)
 
-    tuned_train = score_manifest(best_config, train, stl_dir)
-    tuned_holdout = score_manifest(best_config, holdout, stl_dir) if holdout else None
-    _dump(args.output / "train_scores.json", _serialize_score(tuned_train, train))
-    if tuned_holdout is not None:
-        _dump(args.output / "holdout_scores.json", _serialize_score(tuned_holdout, holdout))
+        tuned_train = score_manifest(best_config, train, stl_dir)
+        tuned_holdout = score_manifest(best_config, holdout, stl_dir) if holdout else None
+        _dump(args.output / "train_scores.json", _serialize_score(tuned_train, train))
+        if tuned_holdout is not None:
+            _dump(args.output / "holdout_scores.json", _serialize_score(tuned_holdout, holdout))
 
-    baseline_train = score_manifest(DetectorConfig(), train, stl_dir)
-    baseline_holdout = score_manifest(DetectorConfig(), holdout, stl_dir) if holdout else None
+        baseline_train = score_manifest(DetectorConfig(), train, stl_dir)
+        baseline_holdout = score_manifest(DetectorConfig(), holdout, stl_dir) if holdout else None
 
-    _write_report(
-        args.output / "report.md",
-        args=args,
-        baseline_full=baseline_full,
-        baseline_train=baseline_train,
-        baseline_holdout=baseline_holdout,
-        tuned_train=tuned_train,
-        tuned_holdout=tuned_holdout,
-        fixtures=fixtures,
-        train=train,
-        holdout=holdout,
-    )
+        _write_report(
+            args.output / "report.md",
+            args=args,
+            baseline_full=baseline_full,
+            baseline_train=baseline_train,
+            baseline_holdout=baseline_holdout,
+            tuned_train=tuned_train,
+            tuned_holdout=tuned_holdout,
+            fixtures=fixtures,
+            train=train,
+            holdout=holdout,
+        )
+
+    if args.cross_validate:
+        fold_scores: list[float] = []
+        fold_params: list[dict] = []
+        for fold_index, (fold_train, fold_holdout) in enumerate(leave_one_out(fixtures)):
+            study = optuna.create_study(
+                study_name=f"cv_fold_{fold_index}",
+                direction="maximize",
+                sampler=optuna.samplers.TPESampler(seed=args.seed + fold_index),
+            )
+            study.optimize(
+                lambda trial: score_manifest(suggest_config(trial), fold_train, stl_dir).mean,
+                n_trials=max(10, args.trials // len(fixtures)),
+                show_progress_bar=False,
+            )
+            fold_config = _reconstruct_config(study.best_params)
+            fold_holdout_score = score_manifest(fold_config, fold_holdout, stl_dir).mean
+            fold_scores.append(fold_holdout_score)
+            fold_params.append(study.best_params)
+            logger.info("Fold %d/%d: holdout=%.4f", fold_index + 1, len(fixtures), fold_holdout_score)
+        _write_cv_report(args.output / "cv_report.md", fold_scores, fold_params, fixtures)
+
     return 0
 
 
@@ -178,6 +204,42 @@ def _write_report(path: Path, **ctx) -> None:
                       "",
                       "A gap close to 0 means the tuned config generalises. A gap ≥ train gain",
                       "means the gain was entirely fixture-specific."])
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _write_cv_report(path: Path, fold_scores: list[float], fold_params: list[dict], fixtures: list[dict]) -> None:
+    lines = ["# Cross-Validation Report", ""]
+    mean_score = sum(fold_scores) / len(fold_scores) if fold_scores else 0.0
+    std_score = statistics.stdev(fold_scores) if len(fold_scores) > 1 else 0.0
+
+    lines.extend([
+        f"- **Mean holdout score**: {mean_score:.4f}",
+        f"- **Std dev across folds**: {std_score:.4f}",
+        ""
+    ])
+
+    lines.extend(["## Per-fold scores", ""])
+    for i, (score, fixture) in enumerate(zip(fold_scores, fixtures)):
+        lines.append(f"- Fold {i + 1} (held out {fixture['name']}): {score:.4f}")
+    lines.append("")
+
+    lines.extend(["## Parameter Stability", ""])
+    lines.append("A stable parameter is a credible signal. An unstable parameter is overfit.")
+    lines.append("")
+
+    param_values = defaultdict(list)
+    for p in fold_params:
+        for k, v in p.items():
+            param_values[k].append(v)
+
+    lines.extend(["| Parameter | Min | Max | Span | Mean | Std Dev |", "|---|---|---|---|---|---|"])
+    for k, vals in sorted(param_values.items()):
+        p_min, p_max = min(vals), max(vals)
+        p_mean = sum(vals) / len(vals)
+        p_std = statistics.stdev(vals) if len(vals) > 1 else 0.0
+        span = p_max - p_min
+        lines.append(f"| {k} | {p_min:.4f} | {p_max:.4f} | {span:.4f} | {p_mean:.4f} | {p_std:.4f} |")
+
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

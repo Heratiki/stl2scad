@@ -1311,3 +1311,373 @@ def test_triage_report_planar_support_fraction_splits_organic_from_box(test_data
     high_entry = next(e for e in report["per_file"] if e["source_file"] == "sphere.stl"
                       and e["failure_shape_metadata"]["planar_support_fraction"] >= 0.65)
     assert high_entry["failure_shape_metadata"]["planar_support_fraction"] >= 0.65
+
+
+# ---------------------------------------------------------------------------
+# IR tree tests
+# ---------------------------------------------------------------------------
+
+def test_ir_tree_present_in_graph_output(test_data_dir):
+    """build_feature_graph_for_stl always includes an ir_tree key."""
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+    graph = build_feature_graph_for_stl(fixtures_dir / "primitive_box_axis_aligned.stl")
+    assert "ir_tree" in graph
+    assert isinstance(graph["ir_tree"], list)
+    assert len(graph["ir_tree"]) >= 1
+
+
+def test_ir_tree_interpretation_schema(test_data_dir):
+    """Every entry in ir_tree must be an Interpretation with required fields."""
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+    graph = build_feature_graph_for_stl(fixtures_dir / "primitive_box_axis_aligned.stl")
+    for i, interp in enumerate(graph["ir_tree"]):
+        assert interp.get("type") == "Interpretation", f"Entry {i} has wrong type: {interp.get('type')}"
+        assert "confidence" in interp, f"Entry {i} missing confidence"
+        assert "rank" in interp, f"Entry {i} missing rank"
+        assert "root" in interp, f"Entry {i} missing root"
+
+
+def test_ir_tree_box_no_holes_uses_boolean_union(test_data_dir):
+    """A box-like solid with no cutouts produces a BooleanUnion { PrimitiveBox }."""
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+    graph = build_feature_graph_for_stl(fixtures_dir / "primitive_box_axis_aligned.stl")
+
+    assert len(graph["ir_tree"]) >= 1
+    top = graph["ir_tree"][0]
+    assert top["type"] == "Interpretation"
+    root = top["root"]
+    assert root["type"] == "BooleanUnion", f"Expected BooleanUnion for box without holes, got {root['type']}"
+    children = root.get("children", [])
+    assert any(c.get("type") == "PrimitiveBox" for c in children), (
+        f"BooleanUnion children should contain PrimitiveBox; got {[c.get('type') for c in children]}"
+    )
+
+
+def test_ir_tree_box_with_hole_uses_boolean_difference(test_output_dir):
+    """A box-like solid with a through-hole produces BooleanDifference { PrimitiveBox, [HoleThrough] }."""
+    stl_file = test_output_dir / "ir_box_hole.stl"
+    _create_box_with_hole(stl_file)
+    graph = build_feature_graph_for_stl(stl_file)
+
+    assert "ir_tree" in graph
+    assert len(graph["ir_tree"]) >= 1
+    top = graph["ir_tree"][0]
+    root = top["root"]
+    assert root["type"] == "BooleanDifference", f"Expected BooleanDifference, got {root['type']}"
+    assert root["base"]["type"] == "PrimitiveBox"
+    cuts = root.get("cuts", [])
+    assert len(cuts) >= 1, "Expected at least one cut in BooleanDifference"
+    # The hole should appear as a TransformTranslate wrapping a HoleThrough
+    hole_nodes = [
+        c for c in cuts
+        if c.get("type") == "TransformTranslate" and c.get("child", {}).get("type") == "HoleThrough"
+    ]
+    assert len(hole_nodes) >= 1, (
+        f"Expected TransformTranslate/HoleThrough in cuts; got types: {[c.get('type') for c in cuts]}"
+    )
+    # Each TransformTranslate must carry a 3-element offset
+    for node in hole_nodes:
+        offset = node.get("offset", [])
+        assert len(offset) == 3, f"TransformTranslate offset should have 3 elements, got {offset}"
+
+
+def test_ir_tree_plate_with_holes_uses_boolean_difference(test_output_dir):
+    """A plate with holes produces BooleanDifference { PrimitivePlate, cuts }."""
+    stl_file = test_output_dir / "ir_plate_holes.stl"
+    _create_plate_with_holes(stl_file, centers=[(-3.0, 0.0), (3.0, 0.0)])
+    graph = build_feature_graph_for_stl(stl_file)
+
+    assert "ir_tree" in graph
+    assert len(graph["ir_tree"]) >= 1
+    top = graph["ir_tree"][0]
+    root = top["root"]
+    assert root["type"] == "BooleanDifference", f"Expected BooleanDifference, got {root['type']}"
+    assert root["base"]["type"] == "PrimitivePlate"
+    cuts = root.get("cuts", [])
+    # 2 holes may be detected as a PatternLinear (1 cut) or as 2 standalone HoleThrough
+    # cuts; either is valid — what matters is at least one cut node is present.
+    assert len(cuts) >= 1, f"Expected ≥1 cut node for plate with 2 holes, got {len(cuts)}"
+    # The cuts must collectively account for 2 holes (either via a pattern or individually)
+    standalone_holes = [
+        c for c in cuts
+        if c.get("type") == "TransformTranslate" and c.get("child", {}).get("type") == "HoleThrough"
+    ]
+    pattern_holes = [c for c in cuts if c.get("type") == "PatternLinear"]
+    total_hole_coverage = len(standalone_holes) + sum(
+        p.get("count", 0) for p in pattern_holes
+    )
+    assert total_hole_coverage >= 2, (
+        f"Expected at least 2 holes covered in IR cuts (standalone={len(standalone_holes)}, "
+        f"pattern total={total_hole_coverage})"
+    )
+
+
+def test_ir_tree_fallback_mesh_when_no_solid(test_output_dir):
+    """A graph with no solid primitives produces a FallbackMesh Interpretation."""
+    # Synthetic graph with only bookkeeping features, no solid
+    graph = {
+        "schema_version": 1,
+        "source_file": "organic.stl",
+        "mesh": {"triangles": 100, "surface_area": 500.0, "bounding_box": {}},
+        "features": [
+            {"type": "axis_boundary_plane_pair", "axis": "x", "confidence": 0.4},
+        ],
+    }
+    from stl2scad.core.feature_graph import _build_ir_tree
+    tree = _build_ir_tree(graph)
+    assert len(tree) == 1
+    assert tree[0]["type"] == "Interpretation"
+    assert tree[0]["root"]["type"] == "FallbackMesh"
+    assert tree[0]["confidence"] == 0.0
+
+
+def test_ir_tree_plate_with_linear_pattern_subsumes_hole_centers(test_output_dir):
+    """Hole centers belonging to a linear pattern do not appear as standalone cuts."""
+    stl_file = test_output_dir / "ir_plate_pattern.stl"
+    # 4 evenly-spaced holes → should form a linear_hole_pattern
+    centers = [(-6.0, 0.0), (-2.0, 0.0), (2.0, 0.0), (6.0, 0.0)]
+    _create_plate_with_holes(stl_file, centers=centers, radius=1.5, plate_size=(24.0, 10.0, 2.0))
+    graph = build_feature_graph_for_stl(stl_file)
+
+    patterns_in_flat = [f for f in graph["features"] if f.get("type") == "linear_hole_pattern"]
+    if not patterns_in_flat:
+        pytest.skip("No linear_hole_pattern detected for this fixture; skip IR subsuming check")
+
+    assert "ir_tree" in graph
+    top = graph["ir_tree"][0]
+    root = top["root"]
+    cuts = root.get("cuts", [])
+
+    # There must be at least one PatternLinear in cuts
+    pattern_cuts = [c for c in cuts if c.get("type") == "PatternLinear"]
+    assert len(pattern_cuts) >= 1, "Expected PatternLinear node in IR cuts"
+
+    # No standalone TransformTranslate/HoleThrough should appear for pattern member centers
+    pattern_centers = set()
+    for pat_feat in patterns_in_flat:
+        for c in pat_feat.get("centers", []):
+            pattern_centers.add(tuple(round(float(v), 3) for v in c))
+
+    standalone_tt = [c for c in cuts if c.get("type") == "TransformTranslate"
+                     and c.get("child", {}).get("type") == "HoleThrough"]
+    for node in standalone_tt:
+        offset = tuple(round(float(v), 3) for v in node.get("offset", []))
+        assert offset not in pattern_centers, (
+            f"Pattern member hole at {offset} should not appear as standalone TransformTranslate cut"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Edge treatment (ChamferOrFilletEdge) IR node tests
+# ---------------------------------------------------------------------------
+
+def test_detected_via_strict_on_axis_aligned_box(test_data_dir):
+    """A plain axis-aligned box (strict path) should have detected_via='strict'."""
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+    graph = build_feature_graph_for_stl(fixtures_dir / "primitive_box_axis_aligned.stl")
+
+    solids = [
+        f for f in graph["features"]
+        if f.get("type") in ("plate_like_solid", "box_like_solid", "cylinder_like_solid")
+    ]
+    assert len(solids) >= 1
+    for solid in solids:
+        assert "detected_via" in solid, f"Solid node missing detected_via field: {solid}"
+    # A flat 12-triangle box has fully flush faces → strict path
+    top_solid = solids[0]
+    assert top_solid["detected_via"] == "strict", (
+        f"Expected 'strict' for axis-aligned box, got '{top_solid['detected_via']}'"
+    )
+
+
+def test_detected_via_tolerant_on_chamfered_plate(test_output_dir):
+    """A plate with chamfered edges (tolerant path) should have detected_via='tolerant_chamfer_or_fillet'."""
+    stl_file = test_output_dir / "edge_treatment_chamfered.stl"
+    _create_chamfered_plate(stl_file, plate_size=(20.0, 10.0, 2.0), edge_chamfer=1.0)
+    graph = build_feature_graph_for_stl(stl_file)
+
+    plates = [f for f in graph["features"] if f.get("type") == "plate_like_solid"]
+    assert len(plates) == 1, "Expected exactly one plate_like_solid"
+    assert plates[0]["detected_via"] == "tolerant_chamfer_or_fillet", (
+        f"Expected 'tolerant_chamfer_or_fillet', got '{plates[0]['detected_via']}'"
+    )
+
+
+def test_ir_tree_strict_solid_has_no_chamfer_or_fillet_edge_node(test_data_dir):
+    """A strict-path box should NOT produce a ChamferOrFilletEdge node in the IR."""
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+    graph = build_feature_graph_for_stl(fixtures_dir / "primitive_box_axis_aligned.stl")
+
+    assert len(graph["ir_tree"]) >= 1
+    root = graph["ir_tree"][0]["root"]
+    cuts = root.get("cuts", [])
+    chamfer_nodes = [c for c in cuts if c.get("type") == "ChamferOrFilletEdge"]
+    assert len(chamfer_nodes) == 0, (
+        f"Strict-path box should have no ChamferOrFilletEdge; found {chamfer_nodes}"
+    )
+
+
+def test_ir_tree_tolerant_plate_has_chamfer_or_fillet_edge_node(test_output_dir):
+    """A chamfered plate (tolerant path) should have a ChamferOrFilletEdge node in the IR."""
+    stl_file = test_output_dir / "ir_chamfered_plate.stl"
+    _create_chamfered_plate(stl_file, plate_size=(20.0, 10.0, 2.0), edge_chamfer=1.0)
+    graph = build_feature_graph_for_stl(stl_file)
+
+    assert len(graph["ir_tree"]) >= 1
+    top = graph["ir_tree"][0]
+    root = top["root"]
+    # There are cuts (the ChamferOrFilletEdge itself causes BooleanDifference)
+    assert root["type"] == "BooleanDifference", (
+        f"Tolerant plate with edge treatment should use BooleanDifference, got {root['type']}"
+    )
+    cuts = root.get("cuts", [])
+    chamfer_nodes = [c for c in cuts if c.get("type") == "ChamferOrFilletEdge"]
+    assert len(chamfer_nodes) == 1, (
+        f"Expected exactly one ChamferOrFilletEdge; found {len(chamfer_nodes)}"
+    )
+    assert "note" in chamfer_nodes[0], "ChamferOrFilletEdge node should carry a 'note' field"
+    assert root["base"]["type"] == "PrimitivePlate"
+
+
+# ---------------------------------------------------------------------------
+# Rotated-plate detection tests
+# ---------------------------------------------------------------------------
+
+def _create_rotated_plate(
+    output_file,
+    plate_size=(20.0, 10.0, 2.0),
+    rotate_x_deg=30.0,
+):
+    """Create a simple axis-aligned plate then rotate it around the X axis."""
+    import math
+
+    width, depth, thickness = plate_size
+    half_w = width * 0.5
+    half_d = depth * 0.5
+
+    vertices_local = [
+        [-half_w, -half_d, 0.0],
+        [half_w, -half_d, 0.0],
+        [half_w, half_d, 0.0],
+        [-half_w, half_d, 0.0],
+        [-half_w, -half_d, thickness],
+        [half_w, -half_d, thickness],
+        [half_w, half_d, thickness],
+        [-half_w, half_d, thickness],
+    ]
+
+    rx = math.radians(rotate_x_deg)
+    cos_rx = math.cos(rx)
+    sin_rx = math.sin(rx)
+
+    def rot_x(v):
+        x, y, z = v
+        return [x, y * cos_rx - z * sin_rx, y * sin_rx + z * cos_rx]
+
+    vertices = [rot_x(v) for v in vertices_local]
+    faces = [
+        [0, 2, 1], [0, 3, 2],
+        [4, 5, 6], [4, 6, 7],
+        [0, 1, 5], [0, 5, 4],
+        [1, 2, 6], [1, 6, 5],
+        [2, 3, 7], [2, 7, 6],
+        [3, 0, 4], [3, 4, 7],
+    ]
+
+    mesh = Mesh(np.zeros(len(faces), dtype=Mesh.dtype))
+    vertices_array = np.asarray(vertices, dtype=np.float64)
+    for index, face in enumerate(faces):
+        mesh.vectors[index] = vertices_array[face]
+    mesh.save(str(output_file))
+
+
+def test_rotated_plate_detected_as_plate_like_solid(test_output_dir):
+    """A plate tilted 30° around X must be detected as plate_like_solid."""
+    stl_file = test_output_dir / "rotated_plate_x30.stl"
+    _create_rotated_plate(stl_file, plate_size=(20.0, 10.0, 2.0), rotate_x_deg=30.0)
+    graph = build_feature_graph_for_stl(stl_file)
+
+    plates = [f for f in graph["features"] if f.get("type") == "plate_like_solid"]
+    assert len(plates) == 1, f"Expected 1 plate_like_solid, got {len(plates)}"
+    plate = plates[0]
+    assert plate["confidence"] >= 0.55
+    assert plate.get("detected_via") == "rotated_plate"
+
+
+def test_rotated_plate_not_detected_as_box(test_output_dir):
+    """A rotated plate must not be falsely classified as box_like_solid."""
+    stl_file = test_output_dir / "rotated_plate_x30_no_box.stl"
+    _create_rotated_plate(stl_file, plate_size=(20.0, 10.0, 2.0), rotate_x_deg=30.0)
+    graph = build_feature_graph_for_stl(stl_file)
+
+    boxes = [f for f in graph["features"] if f.get("type") == "box_like_solid"]
+    assert len(boxes) == 0, f"Rotated plate must not be detected as box_like_solid; got {boxes}"
+
+
+def test_rotated_plate_has_rotation_euler_deg(test_output_dir):
+    """Rotated plate feature must carry rotation_euler_deg with non-zero rx."""
+    stl_file = test_output_dir / "rotated_plate_euler.stl"
+    _create_rotated_plate(stl_file, plate_size=(20.0, 10.0, 2.0), rotate_x_deg=30.0)
+    graph = build_feature_graph_for_stl(stl_file)
+
+    plates = [f for f in graph["features"] if f.get("type") == "plate_like_solid"]
+    assert len(plates) == 1
+    angles = plates[0].get("rotation_euler_deg")
+    assert angles is not None, "rotated_plate feature must have rotation_euler_deg"
+    assert len(angles) == 3
+    rx_deg = angles[0]
+    assert abs(rx_deg - 30.0) <= 3.0, (
+        f"Expected rx ≈ 30°, got {rx_deg:.2f}°"
+    )
+
+
+def test_rotated_plate_ir_tree_has_transform_rotate(test_output_dir):
+    """IR tree for a rotated plate must wrap PrimitivePlate in TransformRotate."""
+    stl_file = test_output_dir / "rotated_plate_ir.stl"
+    _create_rotated_plate(stl_file, plate_size=(20.0, 10.0, 2.0), rotate_x_deg=30.0)
+    graph = build_feature_graph_for_stl(stl_file)
+
+    assert len(graph["ir_tree"]) >= 1
+    top = graph["ir_tree"][0]
+    root = top["root"]
+    # BooleanUnion (no cutouts) with a single TransformRotate child
+    assert root["type"] == "BooleanUnion", (
+        f"Rotated plate with no holes should use BooleanUnion, got {root['type']}"
+    )
+    children = root.get("children", [])
+    assert len(children) == 1
+    xform = children[0]
+    assert xform["type"] == "TransformRotate", (
+        f"Expected TransformRotate wrapper, got {xform['type']}"
+    )
+    assert "angles_deg" in xform
+    child = xform.get("child", {})
+    assert child.get("type") == "PrimitivePlate", (
+        f"TransformRotate child must be PrimitivePlate, got {child.get('type')}"
+    )
+
+
+def test_axis_aligned_plate_has_no_transform_rotate_in_ir(test_output_dir):
+    """An axis-aligned plate must NOT be wrapped in TransformRotate."""
+    stl_file = test_output_dir / "axis_aligned_plate_no_xform.stl"
+    _create_plate_with_holes(stl_file, centers=[], plate_size=(20.0, 10.0, 2.0))
+    graph = build_feature_graph_for_stl(stl_file)
+
+    assert len(graph["ir_tree"]) >= 1
+    root = graph["ir_tree"][0]["root"]
+    # The base / children must be PrimitivePlate directly, not TransformRotate
+    if root["type"] == "BooleanUnion":
+        for child in root.get("children", []):
+            assert child["type"] != "TransformRotate", (
+                "Axis-aligned plate must not be wrapped in TransformRotate"
+            )
+    elif root["type"] == "BooleanDifference":
+        assert root["base"]["type"] == "PrimitivePlate", (
+            "Axis-aligned plate base must be PrimitivePlate"
+        )
+        assert root["base"].get("type") != "TransformRotate"

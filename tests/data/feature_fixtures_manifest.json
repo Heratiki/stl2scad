@@ -1224,6 +1224,37 @@
           }
         }
       ]
+    },
+    {
+      "name": "plate_plain_rotated_x30",
+      "fixture_type": "plate",
+      "description": "Plain plate tilted 30° around the X axis. Guards against false axis-aligned plate detection and validates the rotated-plate detector.",
+      "output_filename": "plate_plain_rotated_x30.scad",
+      "plate_size": [
+        20.0,
+        10.0,
+        2.0
+      ],
+      "transform": {
+        "rotate": [30.0, 0.0, 0.0],
+        "translate": [0.0, 0.0, 0.0]
+      },
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "rotated_plate",
+          "confidence": 0.90,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
     }
   ]
 }

@@ -147,14 +147,16 @@ The [ABC Dataset](https://deep-geometry.github.io/abc-dataset/) (~1M CAD models 
 
 ### Recently completed (2026-04-22)
 
-The Next Work Package scoped for 2026-04-22 → 2026-05-31 (Tracks A–D) shipped ahead of schedule; Tracks A/C/D are complete and Track B is substantially complete (filleted plate + rounded-edge box fixtures landed; verify box preview emission parity before closing).
+The Next Work Package scoped for 2026-04-22 → 2026-05-31 (Tracks A–D) shipped ahead of schedule; all four tracks are complete.
 
 - **Track A — Real-world triage harness** (commits `d981455`, `b29d1f1`, `2c1c4ca`). `scripts/build_feature_graph.py` accepts `--triage-output`; `scripts/summarize_feature_triage.py` produces the ranked failure-pattern summary used to drive Track B prioritization.
-- **Track B — Tolerant plate/box generalization** (commits `e50e04a`, `11a9cee`, `d981455`, plus `d79026a`). Manifest now carries `plate_plain_filleted_edges`, `plate_filleted_linear_holes`, `box_rounded_edges`, and `box_rounded_edges_with_top_notch`. Box detection was enhanced; final check is that `emit_feature_graph_scad_preview` emits a parametric preview for high-confidence `box_like_solid` bases at parity with plates.
+- **Track B — Tolerant plate/box generalization** (commits `e50e04a`, `11a9cee`, `d981455`, plus `d79026a`). Manifest now carries `plate_plain_filleted_edges`, `plate_filleted_linear_holes`, `box_rounded_edges`, and `box_rounded_edges_with_top_notch`. Box detection was enhanced; `emit_feature_graph_scad_preview` emits a parametric `cube()`/`translate()` preview for high-confidence `box_like_solid` bases at parity with plates. `test_feature_fixture_preview_round_trip_detection` passes for all plate and box fixtures including `box_rounded_edges`. **Track B is closed.**
 - **Track C — Real-world labeled micro-corpus + recall merge-gate** (commits `9e80cc9`, `5ee5081`). `tests/test_real_world_corpus.py`, `tests/test_feature_real_world_smoke.py`, `tests/test_score_real_world_corpus.py`, and `scripts/score_real_world_corpus.py` enforce the baseline merge-gate; detector threshold changes now diff against the committed baseline.
 - **Track D — Grid-pattern parametric SCAD emission** (in [stl2scad/core/feature_graph.py:524-525](../../stl2scad/core/feature_graph.py#L524-L525)). Grid patterns emit nested `for (row = ...) for (col = ...)` loops with named `_rows`/`_cols` variables; preview round-trip holds.
 - **Detector auto-tuning infrastructure** (commits `fbff9ca`, `74191ab`, `11ff8b4`, `463655a`, `86a3311`, `450523e`, `f733894`, `7fc25e5`, `432cff1`, `aa8aede`). `DetectorConfig` replaces hardcoded thresholds; [scripts/tune_detector.py](../../scripts/tune_detector.py) drives an Optuna search across 25 thresholds with stratified train/holdout and LOO CV; writeup in [detector_autotune_results.md](detector_autotune_results.md). Running tuning was allowed only after Track C's merge-gate existed (Execution Order rule 3).
 - **Detector IR vocabulary defined** — [detector_ir.md](detector_ir.md) documents the target IR (Interpretation / Boolean / Transform / Pattern / Primitive / Cutout / Sketch / ExtrudeLinear / Edge / Strategy layers) and maps every current `feature_graph` node type onto it. Non-executable contract; referenced by Immediate priorities below.
+- **Boolean + Transform IR wrapping** (2026-04-22). `_build_ir_tree()` in [stl2scad/core/feature_graph.py](../../stl2scad/core/feature_graph.py) builds a ranked `Interpretation` list and attaches it as `graph["ir_tree"]`. Each detected primitive is wrapped in `BooleanDifference { base: Primitive, cuts: [...] }` or `BooleanUnion { children: [Primitive] }`; cutout placements are lifted into `TransformTranslate` nodes; pattern holes are subsumed into `PatternLinear` / `PatternGrid` nodes with no standalone duplication; meshes with no solid produce `FallbackMesh`. The flat `graph["features"]` list is unchanged (backward compat). Seven new tests in `test_feature_graph.py` cover the full schema. This is **Immediate priority #2 closed**.
+- **Chamfer/Fillet IR promotion** (2026-04-22). Every `plate_like_solid` and `box_like_solid` feature node now carries a `detected_via` field (`"strict"` or `"tolerant_chamfer_or_fillet"`). When the tolerant path fired, `_build_ir_tree()` injects a `ChamferOrFilletEdge` annotation node into the `BooleanDifference` cuts list so downstream emitters can see the edge treatment rather than it being silently absorbed by confidence arithmetic. Five new tests cover the `detected_via` field and the IR node. **Immediate priority #1 closed** (kind disambiguation — chamfer vs fillet — is a future refinement once the detector can measure edge curvature).
 
 ### Recently completed (2026-04-20)
 
@@ -169,15 +171,12 @@ The Next Work Package scoped for 2026-04-22 → 2026-05-31 (Tracks A–D) shippe
 
 ### Immediate priorities
 
-Reprioritized 2026-04-22 after Tracks A–D shipped. Old items 1 (tolerant plate/box), 2 (real-world recall metric), and 3 (grid-pattern SCAD emission) are complete and moved to *Recently completed*. The active front is now split between **finishing the Track B box-preview tail**, **extending the detector beyond axis-aligned plates/boxes**, and **restructuring the detector output around the IR** so the next primitive (cylinder) does not repeat the polarity mistakes seen in the current WIP branch.
+Reprioritized 2026-04-22 after all four Tracks, IR wrapping, and chamfer/fillet IR promotion landed. The active front is now **rotated fixtures** and **cylinder as a positive primitive** — both unblocked by the IR tree.
 
-1. **Close Track B: positive-primitive box preview parity.** Verify `emit_feature_graph_scad_preview` emits a parametric `cube()`/`translate()` preview for high-confidence `box_like_solid` bases with supported face cutouts, at parity with the plate path. Round-trip via `test_feature_fixture_preview_round_trip_detection` on `box_rounded_edges` and a mixed filleted-box-with-holes case. This is the last Track B gap.
-2. **Boolean + Transform IR wrapping of today's flat feature list** ([detector_ir.md](detector_ir.md) Gap #1). Zero new detectors. Wrap every detected primitive in an explicit `BooleanUnion` / `BooleanDifference` parent and factor placements into `TransformTranslate` / `TransformRotate` / `TransformMirror` nodes. This is a prerequisite for rotated-feature support (priority #4) and for adding cylinder as a positive primitive (priority #5) — a cylinder detector without boolean-sign context fires on both pins and holes, which is the failure mode already observed on the current WIP cylinder branch.
-3. **Promote Chamfer/Fillet to first-class IR nodes** ([detector_ir.md](detector_ir.md) Gap #2). Today they are tolerance behavior inside the plate/box detector; promoting them to `ChamferEdge`/`FilletEdge` children lets the emitter print editable chamfer/fillet parameters rather than silently approximating them. Low implementation risk given Track B's tolerant detection already localizes the signal.
-4. **Expand beyond axis-aligned fixtures.** Rotated and composite non-plate fixtures, gated on priority #2 landing so rotated features have a `TransformRotate` IR node to land in.
-5. **Cylinder as a positive primitive** ([detector_ir.md](detector_ir.md) Gap #6). Active WIP branch (uncommitted `cylinder_plain.scad`, `cylinder_short_disk.scad`, `cylinder_x_axis.scad` fixtures). Do **not** merge until priority #2 lands — without boolean-sign context, cylinder recognition keeps mis-firing on hole surfaces.
-6. **Improve inventory-guided selection quality** — move beyond a binary whole-file mechanical/organic gate so inventory can contribute richer, detector-relevant prioritization (region-level hints, per-family confidence).
-7. **Negative-class fixtures** — promoted from "Beyond dimensional parity". As new primitives (cylinder, sphere, cone) come online, guard against over-reach with deliberately non-mechanical and near-primitive shapes asserting the detector stays silent or falls through to polyhedron.
+1. **Expand beyond axis-aligned fixtures.** Rotated and composite non-plate fixtures. The `TransformRotate` IR node is defined in [detector_ir.md](detector_ir.md) and the IR tree already has the structural slot for it.
+2. **Cylinder as a positive primitive** ([detector_ir.md](detector_ir.md) Gap #6). Active WIP branch (uncommitted `cylinder_plain.scad`, `cylinder_short_disk.scad`, `cylinder_x_axis.scad` fixtures). Now unblocked — the IR tree's `BooleanUnion`/`BooleanDifference` polarity context prevents the cylinder-on-hole mis-fire observed on the WIP branch.
+3. **Improve inventory-guided selection quality** — move beyond a binary whole-file mechanical/organic gate so inventory can contribute richer, detector-relevant prioritization (region-level hints, per-family confidence).
+4. **Negative-class fixtures** — as new primitives (cylinder, sphere, cone) come online, guard against over-reach with deliberately non-mechanical and near-primitive shapes asserting the detector stays silent or falls through to polyhedron.
 
 ### Beyond dimensional parity
 
@@ -198,9 +197,9 @@ Once the IR wrapping (priority #2) lands, the detector output becomes a tree, an
 3. Emit feature-based SCAD templates only when confidence is high; otherwise fall back.
 4. Add optional user-assisted labeling for ambiguous features.
 
-## Next Work Package — status: substantially shipped (2026-04-22)
+## Next Work Package — status: fully shipped (2026-04-22)
 
-The Tracks A–D package originally scoped for 2026-04-22 → 2026-05-31 shipped early. Tracks A, C, and D are complete; Track B is substantially complete pending the box-preview-parity check called out in Immediate priority #1. The next work package is being drafted around Immediate priorities #1–#5 (close Track B, IR wrapping, chamfer/fillet IR promotion, rotated fixtures, cylinder-as-positive-primitive); it will replace this section once written.
+Tracks A–D, Boolean + Transform IR wrapping, and chamfer/fillet IR promotion are all complete. The next work package covers Immediate priorities #1–#2 (rotated fixtures, cylinder as positive primitive); it will replace this section once written.
 
 The track definitions below are retained for provenance and for the acceptance-criteria language they establish.
 

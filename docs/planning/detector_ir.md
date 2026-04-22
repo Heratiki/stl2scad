@@ -63,8 +63,8 @@ Transforms wrap a single child feature. Patterns below are the structured altern
 | IR Node | SCAD | Detector status |
 | --- | --- | --- |
 | `PrimitiveBox` | `cube([x,y,z])` | Detected as `box_like_solid`; **no preview emission yet** — plates only. |
-| `PrimitivePlate` | `cube()` (thin axis) | Detected as `plate_like_solid`; preview emission works, incl. chamfered edges. Filleted edges pending (Track B). |
-| `PrimitiveCylinder` | `cylinder(h, r)` | Not detected as a positive primitive. Polarity problem: current WIP cylinder detector fires on hole surfaces too. |
+| `PrimitivePlate` | `cube()` (thin axis) | Detected as `plate_like_solid` (axis-aligned and rotated via covariance-based detector). `detected_via` field carries `"strict"`, `"tolerant_chamfer_or_fillet"`, or `"rotated_plate"`. Rotated plates are wrapped in `TransformRotate` in the IR. Preview emission works for axis-aligned plates. |
+| `PrimitiveCylinder` | `cylinder(h, r)` | **Detected** as `cylinder_like_solid` along any axis-aligned axis. Polarity is resolved structurally: solid cylinders are children of `BooleanUnion`; through-holes remain `HoleThrough` under `BooleanDifference`. Fixtures: `cylinder_plain`, `cylinder_short_disk`, `cylinder_x_axis`. |
 | `PrimitiveCone` / `PrimitiveFrustum` | `cylinder(h, r1, r2)` | Not detected. |
 | `PrimitiveSphere` | `sphere(r)` | Not detected. |
 | `PrimitiveEllipsoid` | `scale(sphere())` | Not detected. |
@@ -95,8 +95,8 @@ Recovering extrusion-from-profile is the single largest future wins bucket (most
 
 | IR Node | SCAD | Detector status |
 | --- | --- | --- |
-| `ChamferEdge` | `hull()` or boolean approximation | Detected **implicitly** (tolerant plate-edge logic), **not** as a first-class feature node. |
-| `FilletEdge` / `RoundEdge` | `minkowski()` or custom module | Detection pending (Track B). |
+| `ChamferEdge` | `hull()` or boolean approximation | **Promoted to first-class IR node** (`ChamferOrFilletEdge`) as a cut-list child of `BooleanDifference`. Emitted when `detected_via == "tolerant_chamfer_or_fillet"`. Exact kind (chamfer vs fillet) not yet distinguished. |
+| `FilletEdge` / `RoundEdge` | `minkowski()` or custom module | Shares the `ChamferOrFilletEdge` node until kind disambiguation lands. Detection pending. |
 | `DraftFace` | scaled extrusion | Not detected. |
 
 Today chamfered edges are a *tolerance* in the plate detector, not an IR node. Promoting them to `ChamferEdge`/`FilletEdge` children of a plate or box lets the emitter print editable chamfer/fillet parameters rather than silently approximating them.

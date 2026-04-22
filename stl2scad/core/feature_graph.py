@@ -10,6 +10,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 import json
+import math
 from pathlib import Path
 from typing import Any, Callable, Optional, Union
 
@@ -33,6 +34,218 @@ def _passes_preview_solid_confidence(confidence: Any) -> bool:
     except (TypeError, ValueError):
         return False
     return value + PREVIEW_SOLID_CONFIDENCE_EPSILON >= PREVIEW_SOLID_CONFIDENCE_THRESHOLD
+
+
+# ---------------------------------------------------------------------------
+# Detector Intermediate Representation (IR) tree builder
+# ---------------------------------------------------------------------------
+# Maps flat feature `type` strings to IR node types.
+_SOLID_TO_IR_TYPE: dict[str, str] = {
+    "plate_like_solid": "PrimitivePlate",
+    "box_like_solid": "PrimitiveBox",
+    "cylinder_like_solid": "PrimitiveCylinder",
+}
+_CUTOUT_TO_IR_TYPE: dict[str, str] = {
+    "hole_like_cutout": "HoleThrough",
+    "slot_like_cutout": "Slot",
+    "counterbore_hole": "HoleCounterbore",
+    "rectangular_cutout": "RectangularCutout",
+    "rectangular_pocket": "RectangularPocket",
+}
+_PATTERN_TO_IR_TYPE: dict[str, str] = {
+    "linear_hole_pattern": "PatternLinear",
+    "grid_hole_pattern": "PatternGrid",
+}
+# Internal detector bookkeeping types that don't appear in the IR.
+_INTERNAL_FEATURE_TYPES: frozenset[str] = frozenset({"axis_boundary_plane_pair"})
+
+
+def _ir_cutout_node(cutout: dict[str, Any]) -> dict[str, Any]:
+    """Convert a flat cutout feature dict to an IR cutout node.
+
+    If the cutout has a 'center' field it is lifted into a wrapping
+    TransformTranslate so the child node describes *what* the cutout is and
+    the transform describes *where* it sits.
+    """
+    ir_type = _CUTOUT_TO_IR_TYPE[cutout["type"]]
+    # Fields to strip from the payload (type/bookkeeping already handled).
+    _STRIP = {"type", "confidence", "note", "parent_type", "source_parent_type"}
+
+    if "center" in cutout:
+        center = [float(v) for v in cutout["center"]]
+        child_fields = {k: v for k, v in cutout.items() if k not in _STRIP | {"center"}}
+        return {
+            "type": "TransformTranslate",
+            "offset": center,
+            "child": {"type": ir_type, **child_fields},
+        }
+
+    payload = {k: v for k, v in cutout.items() if k not in _STRIP}
+    return {"type": ir_type, **payload}
+
+
+def _ir_pattern_node(pattern: dict[str, Any]) -> dict[str, Any]:
+    """Convert a flat pattern feature dict to an IR PatternLinear/PatternGrid node."""
+    ir_type = _PATTERN_TO_IR_TYPE[pattern["type"]]
+    hole_child: dict[str, Any] = {
+        "type": "HoleThrough",
+        "axis": pattern.get("axis"),
+        "diameter": float(pattern.get("diameter", 0.0)),
+    }
+    if pattern["type"] == "linear_hole_pattern":
+        return {
+            "type": ir_type,
+            "origin": pattern.get("pattern_origin"),
+            "step": pattern.get("pattern_step"),
+            "count": int(pattern.get("pattern_count", 0)),
+            "spacing": float(pattern.get("pattern_spacing", 0.0)),
+            "diameter": float(pattern.get("diameter", 0.0)),
+            "axis": pattern.get("axis"),
+            "child": hole_child,
+        }
+    # grid_hole_pattern
+    return {
+        "type": ir_type,
+        "origin": pattern.get("grid_origin"),
+        "row_step": pattern.get("grid_row_step"),
+        "col_step": pattern.get("grid_col_step"),
+        "rows": int(pattern.get("grid_rows", 0)),
+        "cols": int(pattern.get("grid_cols", 0)),
+        "diameter": float(pattern.get("diameter", 0.0)),
+        "axis": pattern.get("axis"),
+        "child": hole_child,
+    }
+
+
+def _build_ir_tree(graph: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build a ranked list of IR Interpretation nodes from a flat feature graph.
+
+    Each Interpretation wraps the detected geometry in a boolean tree:
+
+    * A solid with cutouts → ``BooleanDifference { base: Primitive, cuts: [...] }``
+    * A solid with no cutouts → ``BooleanUnion { children: [Primitive] }``
+    * No solid detected → a single ``FallbackMesh`` Interpretation
+
+    Cutouts that belong to a pattern are subsumed into ``PatternLinear`` /
+    ``PatternGrid`` nodes; standalone cutouts are wrapped in
+    ``TransformTranslate`` nodes that carry their placement.
+
+    This is an additive representation — ``graph["features"]`` is unchanged.
+    """
+    features = graph.get("features", [])
+
+    primitives = sorted(
+        [f for f in features if f.get("type") in _SOLID_TO_IR_TYPE],
+        key=lambda f: float(f.get("confidence", 0.0)),
+        reverse=True,
+    )
+
+    if not primitives:
+        return [
+            {
+                "type": "Interpretation",
+                "confidence": 0.0,
+                "rank": 0,
+                "root": {"type": "FallbackMesh"},
+            }
+        ]
+
+    # Collect hole centers that are claimed by any pattern so they are not
+    # also emitted as standalone HoleThrough cuts.
+    pattern_features = [
+        f
+        for f in features
+        if f.get("type") in _PATTERN_TO_IR_TYPE
+        and float(f.get("confidence", 0.0)) >= PREVIEW_SOLID_CONFIDENCE_THRESHOLD
+    ]
+    pattern_center_keys: set[tuple[float, float, float]] = set()
+    for pat in pattern_features:
+        for center in pat.get("centers", []):
+            pattern_center_keys.add(tuple(round(float(v), 4) for v in center))
+
+    interpretations: list[dict[str, Any]] = []
+    for rank, prim in enumerate(primitives):
+        solid_type = prim["type"]
+        ir_prim: dict[str, Any] = {
+            "type": _SOLID_TO_IR_TYPE[solid_type],
+            "confidence": float(prim.get("confidence", 0.0)),
+        }
+        for key in ("origin", "size", "axis", "radius", "height"):
+            if key in prim:
+                ir_prim[key] = prim[key]
+
+        # Wrap rotated primitives in a TransformRotate node so the IR tree
+        # encodes the orientation explicitly rather than burying it in metadata.
+        if prim.get("detected_via") == "rotated_plate":
+            angles = prim.get("rotation_euler_deg", [0.0, 0.0, 0.0])
+            ir_prim = {
+                "type": "TransformRotate",
+                "angles_deg": angles,
+                "child": ir_prim,
+            }
+
+        # Cutouts associated with this solid.
+        solid_cutouts = [
+            f
+            for f in features
+            if f.get("type") in _CUTOUT_TO_IR_TYPE
+            and float(f.get("confidence", 0.0)) >= PREVIEW_SOLID_CONFIDENCE_THRESHOLD
+            and f.get("source_parent_type", solid_type) == solid_type
+        ]
+
+        # Patterns (all, since they derive from holes already linked to this solid).
+        cuts: list[dict[str, Any]] = []
+
+        # Edge treatment: when the solid was detected via the tolerant path (chamfer
+        # or fillet on outer edges), add a ChamferOrFilletEdge annotation node.
+        # This is a non-subtractive sibling of the base — it documents the edge
+        # treatment so the emitter can eventually print editable chamfer/fillet
+        # parameters rather than silently approximating them.
+        if prim.get("detected_via") == "tolerant_chamfer_or_fillet":
+            cuts.append(
+                {
+                    "type": "ChamferOrFilletEdge",
+                    "note": (
+                        "Outer edges were detected as chamfered or filleted. "
+                        "Kind (chamfer vs fillet) is not yet distinguished by the detector."
+                    ),
+                }
+            )
+
+        for pat in pattern_features:
+            cuts.append(_ir_pattern_node(pat))
+
+        for cutout in solid_cutouts:
+            # Skip holes that are subsumed by a pattern.
+            if cutout.get("type") == "hole_like_cutout" and "center" in cutout:
+                key = tuple(round(float(v), 4) for v in cutout["center"])
+                if key in pattern_center_keys:
+                    continue
+            cuts.append(_ir_cutout_node(cutout))
+
+        if cuts:
+            root_node: dict[str, Any] = {
+                "type": "BooleanDifference",
+                "base": ir_prim,
+                "cuts": cuts,
+            }
+        else:
+            root_node = {
+                "type": "BooleanUnion",
+                "children": [ir_prim],
+            }
+
+        interpretations.append(
+            {
+                "type": "Interpretation",
+                "confidence": float(prim.get("confidence", 0.0)),
+                "rank": rank,
+                "root": root_node,
+            }
+        )
+
+    return interpretations
+
 
 def build_feature_graph_for_stl(
     stl_file: Union[Path, str],
@@ -84,7 +297,16 @@ def build_feature_graph_for_stl(
         plane_pairs = [f for f in box_features if f.get("type") == "axis_boundary_plane_pair"]
         features = plane_pairs + cylinder_features
     else:
-        features = box_features
+        # If no axis-aligned solid was found, try the rotated-plate detector.
+        solid_found = any(
+            f.get("type") in ("plate_like_solid", "box_like_solid") for f in box_features
+        )
+        rotated_plate_features = (
+            _extract_rotated_plate_solid(normals, face_areas, bbox, vectors, resolved)
+            if not solid_found
+            else []
+        )
+        features = box_features + rotated_plate_features
     features.extend(
         _extract_axis_aligned_through_holes(
             vectors,
@@ -97,7 +319,7 @@ def build_feature_graph_for_stl(
     )
     features.extend(_extract_repeated_hole_patterns(features, config=resolved))
 
-    return {
+    graph: dict[str, Any] = {
         "schema_version": 1,
         "source_file": _relative_or_absolute(path, root_dir),
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -108,6 +330,8 @@ def build_feature_graph_for_stl(
         },
         "features": features,
     }
+    graph["ir_tree"] = _build_ir_tree(graph)
+    return graph
 
 
 def build_feature_graph_for_folder(
@@ -579,6 +803,162 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
     return "\n".join(lines)
 
 
+def _find_dominant_normal_axis(
+    normals: np.ndarray,
+    face_areas: np.ndarray,
+) -> tuple[np.ndarray, float]:
+    """Return (dominant_axis, eigenvalue_fraction) via area-weighted covariance.
+
+    The dominant axis is the eigenvector of ``C = sum(w_i * n_i ⊗ n_i)``
+    with the largest eigenvalue.  It represents the surface-normal direction
+    that accounts for the greatest share of mesh surface area.
+
+    The returned vector is normalised and oriented toward the positive
+    hemisphere (z-positive preferred, then y, then x) so the caller
+    gets a deterministic sign for cap-area checks.
+    """
+    total_area = float(np.sum(face_areas))
+    if total_area < 1e-9 or len(normals) == 0:
+        return np.array([0.0, 0.0, 1.0]), 0.0
+
+    weights = face_areas / total_area
+    # Area-weighted outer-product covariance: (3, 3) PSD matrix
+    C = np.einsum("i,ij,ik->jk", weights, normals, normals)
+    eigenvalues, eigenvectors = np.linalg.eigh(C)  # eigenvalues in ascending order
+    dominant = eigenvectors[:, -1].copy()           # column for largest eigenvalue
+
+    # Canonical sign: prefer the component that is most positive
+    for dim in (2, 1, 0):
+        if abs(dominant[dim]) > 1e-6:
+            if dominant[dim] < 0.0:
+                dominant = -dominant
+            break
+
+    return dominant, float(eigenvalues[-1])
+
+
+def _dominant_axis_to_euler_rx_ry(axis: np.ndarray) -> list[float]:
+    """Return ``[rx_deg, ry_deg, 0.0]`` such that R_x(rx) @ R_y(ry) @ [0,0,1] ≈ axis.
+
+    Only rx and ry are recovered.  rz (rotation in the plate plane) cannot be
+    inferred from the surface-normal direction alone.
+    """
+    da_x = float(axis[0])
+    da_y = float(axis[1])
+    da_z = float(axis[2])
+    # ry = asin(da_x)   [because sin(ry)*cos(rx) = da_x when rx is small]
+    ry_rad = math.asin(max(-1.0, min(1.0, da_x)))
+    # rx = atan2(-da_y, da_z)  [from R_x(rx) formula]
+    rx_rad = math.atan2(-da_y, da_z)
+    return [math.degrees(rx_rad), math.degrees(ry_rad), 0.0]
+
+
+def _extract_rotated_plate_solid(
+    normals: np.ndarray,
+    face_areas: np.ndarray,
+    bbox: dict[str, float],
+    vertices: np.ndarray,
+    config: DetectorConfig = DetectorConfig(),
+) -> list[dict[str, Any]]:
+    """Detect a plate with arbitrary (non-axis-aligned) orientation.
+
+    Uses the area-weighted covariance of face normals to find the dominant
+    surface-normal direction, then checks whether the mesh is thin along that
+    axis.  Only called when the axis-aligned detector found neither a plate
+    nor a box (so there is no risk of double-counting).
+    """
+    if len(normals) == 0 or len(face_areas) == 0 or vertices is None:
+        return []
+
+    total_area = float(np.sum(face_areas))
+    if total_area < 1e-12:
+        return []
+
+    dominant_axis, _eigenvalue = _find_dominant_normal_axis(normals, face_areas)
+
+    # If the dominant axis aligns with a world axis the existing axis-aligned
+    # detector already handles it — skip to avoid duplicates.
+    world_axes = [
+        np.array([1.0, 0.0, 0.0]),
+        np.array([0.0, 1.0, 0.0]),
+        np.array([0.0, 0.0, 1.0]),
+    ]
+    for world_ax in world_axes:
+        if abs(float(np.dot(dominant_axis, world_ax))) >= config.normal_axis_threshold:
+            return []
+
+    # Cap-area fraction: faces whose normals are close to ±dominant_axis.
+    pos_mask = (normals @ dominant_axis) >= config.normal_axis_threshold
+    neg_mask = (normals @ (-dominant_axis)) >= config.normal_axis_threshold
+    pos_area = float(np.sum(face_areas[pos_mask]))
+    neg_area = float(np.sum(face_areas[neg_mask]))
+    if pos_area <= 0.0 or neg_area <= 0.0:
+        return []
+
+    confidence = (pos_area + neg_area) / total_area
+    if confidence < config.plate_confidence_min:
+        return []
+
+    # Plate thickness: vertex projection range along dominant_axis.
+    all_verts = vertices.reshape(-1, 3)
+    proj_along = all_verts @ dominant_axis
+    thickness = float(np.max(proj_along) - np.min(proj_along))
+
+    # Footprint: bounding box of vertex projections in the perpendicular plane.
+    # Build an orthonormal basis {u, v, dominant_axis}.
+    abs_da = np.abs(dominant_axis)
+    min_comp = int(np.argmin(abs_da))
+    ref = np.zeros(3)
+    ref[min_comp] = 1.0
+    u_axis = ref - float(np.dot(ref, dominant_axis)) * dominant_axis
+    u_axis = u_axis / float(np.linalg.norm(u_axis))
+    v_axis = np.cross(dominant_axis, u_axis)
+
+    proj_u = all_verts @ u_axis
+    proj_v = all_verts @ v_axis
+    span_u = float(np.max(proj_u) - np.min(proj_u))
+    span_v = float(np.max(proj_v) - np.min(proj_v))
+    max_perp_span = max(span_u, span_v, 1e-9)
+
+    thin_ratio = thickness / max_perp_span
+    if thin_ratio > config.plate_thin_ratio_max:
+        return []
+
+    euler_angles = _dominant_axis_to_euler_rx_ry(dominant_axis)
+    origin = [
+        float(bbox["min_x"]),
+        float(bbox["min_y"]),
+        float(bbox["min_z"]),
+    ]
+
+    return [
+        {
+            "type": "plate_like_solid",
+            "confidence": float(confidence),
+            "detected_via": "rotated_plate",
+            "dominant_axis": dominant_axis.tolist(),
+            "rotation_euler_deg": euler_angles,
+            "origin": origin,
+            "thickness": float(thickness),
+            "footprint": [float(span_u), float(span_v)],
+            "thin_ratio": float(thin_ratio),
+            # size uses the local-frame order [span_u, span_v, thickness] so that
+            # _candidate_cutout_axes can find the thin axis (argmin → index 2).
+            "size": [float(span_u), float(span_v), float(thickness)],
+            "parameters": {
+                "thickness": float(thickness),
+                "footprint_u": float(span_u),
+                "footprint_v": float(span_v),
+            },
+            "note": (
+                f"Rotated plate detected via dominant face-normal axis "
+                f"[{dominant_axis[0]:.3f}, {dominant_axis[1]:.3f}, {dominant_axis[2]:.3f}]. "
+                "rz cannot be recovered from surface normals alone."
+            ),
+        }
+    ]
+
+
 def _extract_cylinder_like_solid(
     normals: np.ndarray,
     face_areas: np.ndarray,
@@ -829,10 +1209,17 @@ def _extract_axis_aligned_box_features(
         paired_axes >= config.plate_paired_axes_min and confidence >= config.plate_confidence_min and thin_ratio <= config.plate_thin_ratio_max
     ) or tolerant_plate_confidence >= config.plate_tolerant_confidence_min:
         plate_confidence = max(confidence, tolerant_plate_confidence)
+        strict_plate_passes = (
+            paired_axes >= config.plate_paired_axes_min
+            and confidence >= config.plate_confidence_min
+            and thin_ratio <= config.plate_thin_ratio_max
+        )
+        via_tolerant = not strict_plate_passes
         features.append(
             {
                 "type": "plate_like_solid",
                 "confidence": float(plate_confidence),
+                "detected_via": "tolerant_chamfer_or_fillet" if via_tolerant else "strict",
                 "origin": [
                     float(bbox["min_x"]),
                     float(bbox["min_y"]),
@@ -850,7 +1237,7 @@ def _extract_axis_aligned_box_features(
                 },
                 "note": (
                     "Candidate for an editable plate or slab feature."
-                    if tolerant_plate_confidence < config.plate_tolerant_confidence_min
+                    if not via_tolerant
                     else (
                         "Candidate for an editable plate or slab feature, allowing"
                         " chamfer-broken side planes when the thin-axis footprint"
@@ -861,10 +1248,16 @@ def _extract_axis_aligned_box_features(
         )
     elif (paired_axes == config.box_paired_axes_required and confidence >= config.box_confidence_min) or tolerant_box_confidence >= config.box_tolerant_confidence_min:
         box_confidence = max(confidence, tolerant_box_confidence)
+        strict_box_passes = (
+            paired_axes == config.box_paired_axes_required
+            and confidence >= config.box_confidence_min
+        )
+        via_tolerant_box = not strict_box_passes
         features.append(
             {
                 "type": "box_like_solid",
                 "confidence": float(box_confidence),
+                "detected_via": "tolerant_chamfer_or_fillet" if via_tolerant_box else "strict",
                 "origin": [
                     float(bbox["min_x"]),
                     float(bbox["min_y"]),
@@ -882,7 +1275,7 @@ def _extract_axis_aligned_box_features(
                 },
                 "note": (
                     "Candidate for a cube()/translate() parametric base feature."
-                    if tolerant_box_confidence < config.box_tolerant_confidence_min
+                    if not via_tolerant_box
                     else (
                         "Candidate for a cube()/translate() parametric base feature,"
                         " allowing chamfer- or fillet-broken outer edges when all"

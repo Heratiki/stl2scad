@@ -725,11 +725,20 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
                     "}",
                 ]
             )
+    if plate:
+        if plate.get("detected_via") == "rotated_plate":
+            angles = plate.get("rotation_euler_deg", [0.0, 0.0, 0.0])
+            rotation_expr = f"rotate([{angles[0]:.6f}, {angles[1]:.6f}, {angles[2]:.6f}]) "
+        else:
+            rotation_expr = ""
+    else:
+        rotation_expr = ""
+        
     lines.extend(
         [
             "",
             "difference() {",
-            "  translate(plate_origin) cube(plate_size);",
+            f"  translate(plate_origin) {rotation_expr}cube(plate_size);",
         ]
     )
 
@@ -837,20 +846,76 @@ def _find_dominant_normal_axis(
     return dominant, float(eigenvalues[-1])
 
 
-def _dominant_axis_to_euler_rx_ry(axis: np.ndarray) -> list[float]:
-    """Return ``[rx_deg, ry_deg, 0.0]`` such that R_x(rx) @ R_y(ry) @ [0,0,1] ≈ axis.
+def _matrix_to_euler_xyz(R: np.ndarray) -> list[float]:
+    """Extract Z-Y-X Euler angles (applied in X, then Y, then Z order in SCAD)."""
+    sy = math.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
+    singular = sy < 1e-6
+    if not singular:
+        x = math.atan2(R[2, 1], R[2, 2])
+        y = math.atan2(-R[2, 0], sy)
+        z = math.atan2(R[1, 0], R[0, 0])
+    else:
+        x = math.atan2(-R[1, 2], R[1, 1])
+        y = math.atan2(-R[2, 0], sy)
+        z = 0
+    return [math.degrees(x), math.degrees(y), math.degrees(z)]
 
-    Only rx and ry are recovered.  rz (rotation in the plate plane) cannot be
-    inferred from the surface-normal direction alone.
+def _convex_hull_2d(points: np.ndarray) -> np.ndarray:
+    """Computes the convex hull of a set of 2D points using Monotone Chain."""
+    pts = np.unique(points, axis=0)
+    pts = pts[np.lexsort((pts[:, 1], pts[:, 0]))]
+    if len(pts) <= 2:
+        return pts
+    
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower = []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+
+    upper = []
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+
+    return np.array(lower[:-1] + upper[:-1])
+
+def _min_area_rect_2d(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Find the minimum area bounding rectangle for a set of 2D points.
+    Returns (u_axis, v_axis) that minimize the bounding box area.
     """
-    da_x = float(axis[0])
-    da_y = float(axis[1])
-    da_z = float(axis[2])
-    # ry = asin(da_x)   [because sin(ry)*cos(rx) = da_x when rx is small]
-    ry_rad = math.asin(max(-1.0, min(1.0, da_x)))
-    # rx = atan2(-da_y, da_z)  [from R_x(rx) formula]
-    rx_rad = math.atan2(-da_y, da_z)
-    return [math.degrees(rx_rad), math.degrees(ry_rad), 0.0]
+    hull = _convex_hull_2d(points)
+    if len(hull) < 3:
+        return np.array([1.0, 0.0]), np.array([0.0, 1.0])
+
+    min_area = float('inf')
+    best_u = np.array([1.0, 0.0])
+    
+    for i in range(len(hull)):
+        p1 = hull[i]
+        p2 = hull[(i + 1) % len(hull)]
+        edge = p2 - p1
+        length = np.linalg.norm(edge)
+        if length < 1e-9:
+            continue
+        u = edge / length
+        v = np.array([-u[1], u[0]])
+        
+        proj_u = hull @ u
+        proj_v = hull @ v
+        span_u = np.max(proj_u) - np.min(proj_u)
+        span_v = np.max(proj_v) - np.min(proj_v)
+        area = span_u * span_v
+        if area < min_area:
+            min_area = area
+            best_u = u
+
+    best_v = np.array([-best_u[1], best_u[0]])
+    return best_u, best_v
 
 
 def _extract_rotated_plate_solid(
@@ -876,16 +941,9 @@ def _extract_rotated_plate_solid(
 
     dominant_axis, _eigenvalue = _find_dominant_normal_axis(normals, face_areas)
 
-    # If the dominant axis aligns with a world axis the existing axis-aligned
-    # detector already handles it — skip to avoid duplicates.
-    world_axes = [
-        np.array([1.0, 0.0, 0.0]),
-        np.array([0.0, 1.0, 0.0]),
-        np.array([0.0, 0.0, 1.0]),
-    ]
-    for world_ax in world_axes:
-        if abs(float(np.dot(dominant_axis, world_ax))) >= config.normal_axis_threshold:
-            return []
+    # The caller already ensures this is only run if the axis-aligned detector
+    # failed. We can safely process plates rotated around a world axis (e.g. Z)
+    # because they failed the axis-aligned bounding-box side tests.
 
     # Cap-area fraction: faces whose normals are close to ±dominant_axis.
     pos_mask = (normals @ dominant_axis) >= config.normal_axis_threshold
@@ -916,20 +974,37 @@ def _extract_rotated_plate_solid(
 
     proj_u = all_verts @ u_axis
     proj_v = all_verts @ v_axis
-    span_u = float(np.max(proj_u) - np.min(proj_u))
-    span_v = float(np.max(proj_v) - np.min(proj_v))
+    
+    pts_2d = np.column_stack((proj_u, proj_v))
+    best_u_2d, best_v_2d = _min_area_rect_2d(pts_2d)
+    
+    true_u = best_u_2d[0] * u_axis + best_u_2d[1] * v_axis
+    true_v = best_v_2d[0] * u_axis + best_v_2d[1] * v_axis
+    
+    true_proj_u = all_verts @ true_u
+    true_proj_v = all_verts @ true_v
+    min_u = float(np.min(true_proj_u))
+    min_v = float(np.min(true_proj_v))
+    span_u = float(np.max(true_proj_u) - min_u)
+    span_v = float(np.max(true_proj_v) - min_v)
+    
+    if span_v > span_u:
+        span_u, span_v = span_v, span_u
+        true_u, true_v = true_v, true_u
+        min_u, min_v = min_v, min_u
+        
     max_perp_span = max(span_u, span_v, 1e-9)
 
     thin_ratio = thickness / max_perp_span
     if thin_ratio > config.plate_thin_ratio_max:
         return []
 
-    euler_angles = _dominant_axis_to_euler_rx_ry(dominant_axis)
-    origin = [
-        float(bbox["min_x"]),
-        float(bbox["min_y"]),
-        float(bbox["min_z"]),
-    ]
+    min_z = float(np.min(proj_along))
+    origin_3d = min_u * true_u + min_v * true_v + min_z * dominant_axis
+    origin = origin_3d.tolist()
+    
+    R = np.column_stack((true_u, true_v, dominant_axis))
+    euler_angles = _matrix_to_euler_xyz(R)
 
     return [
         {

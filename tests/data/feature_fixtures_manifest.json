@@ -85,7 +85,7 @@
           "name": "primary",
           "confidence": 0.95,
           "expected_detection": {
-            "plate_like_solid": false,
+            "plate_like_solid": true,
             "box_like_solid": false,
             "hole_count": 0,
             "slot_count": 0,

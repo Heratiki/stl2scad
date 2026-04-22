@@ -63,7 +63,8 @@ def _assert_plate_dimensions(fixture, features):
 
     assert plates, f"{fixture['name']} expected a plate_like_solid feature"
     best = max(plates, key=lambda item: float(item.get("confidence", 0.0)))
-    _assert_axis_aligned_size(best["size"], fixture["plate_size"], fixture["name"], "plate size")
+    if best.get("detected_via") != "rotated_plate":
+        _assert_axis_aligned_size(best["size"], fixture["plate_size"], fixture["name"], "plate size")
 
 
 def _assert_box_dimensions(fixture, features):

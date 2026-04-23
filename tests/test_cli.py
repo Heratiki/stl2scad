@@ -218,6 +218,7 @@ def test_feature_inventory_command_execution(mock_analyze, test_output_dir):
             "error_count": 0,
             "classification_counts": {"mechanical_candidate": 4},
             "candidate_feature_counts": {"mirror_symmetry": 3},
+            "detector_focus_counts": {"axis_aligned_box": 2},
         }
     }
 

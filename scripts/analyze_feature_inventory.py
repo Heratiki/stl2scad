@@ -77,6 +77,8 @@ def main() -> int:
     print(f"Errors: {summary['error_count']}")
     print(f"Classifications: {summary['classification_counts']}")
     print(f"Candidate features: {summary['candidate_feature_counts']}")
+    if summary.get("detector_focus_counts"):
+        print(f"Detector focus: {summary['detector_focus_counts']}")
     return 0
 
 

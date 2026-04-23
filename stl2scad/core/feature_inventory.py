@@ -447,6 +447,7 @@ def analyze_stl_file(
     )
     payload["classification"] = _classify_inventory(payload)
     payload["candidate_features"] = _candidate_features(payload)
+    payload["detector_guidance"] = _detector_guidance(payload)
     return payload
 
 
@@ -760,17 +761,85 @@ def _candidate_features(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return features
 
 
+def _detector_guidance(payload: dict[str, Any]) -> dict[str, Any]:
+    classification = payload.get("classification", {})
+    family_confidences = classification.get("family_confidences", {})
+
+    preferred_families = [
+        {"family": str(family), "confidence": float(confidence)}
+        for family, confidence in sorted(
+            family_confidences.items(),
+            key=lambda item: float(item[1]),
+            reverse=True,
+        )
+    ]
+
+    regular_spacing_axes: list[dict[str, Any]] = []
+    for axis, data in payload.get("coordinate_spacing", {}).items():
+        if not data.get("regular"):
+            continue
+        regular_spacing_axes.append(
+            {
+                "axis": axis,
+                "median_spacing": data.get("median_spacing"),
+                "regularity": float(data.get("regularity", 0.0)),
+                "region_hint": dict(data.get("region_hint", {})),
+            }
+        )
+
+    strong_symmetry_axes = [
+        {"axis": axis, "score": float(score)}
+        for axis, score in payload.get("symmetry", {}).items()
+        if float(score) >= 0.85
+    ]
+    strong_symmetry_axes.sort(key=lambda item: item["score"], reverse=True)
+
+    detector_focus: list[str] = []
+    if any(
+        entry["family"] == "plate" and entry["confidence"] >= 0.45
+        for entry in preferred_families
+    ):
+        detector_focus.append("plate_and_cutout")
+    if any(
+        entry["family"] == "box" and entry["confidence"] >= 0.45
+        for entry in preferred_families
+    ):
+        detector_focus.append("axis_aligned_box")
+    if any(
+        entry["family"] == "cylinder" and entry["confidence"] >= 0.45
+        for entry in preferred_families
+    ):
+        detector_focus.append("cylinder")
+    if regular_spacing_axes:
+        detector_focus.append("pattern_spacing")
+    if strong_symmetry_axes:
+        detector_focus.append("symmetry_modules")
+    if not detector_focus:
+        detector_focus.append("fallback_mesh_only")
+
+    return {
+        "preferred_families": preferred_families,
+        "detector_focus": detector_focus,
+        "regular_spacing_axes": regular_spacing_axes,
+        "symmetry_axes": strong_symmetry_axes,
+    }
+
+
 def _summarize_results(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
     ok = [result for result in results if result.get("status") == "ok"]
     errors = [result for result in results if result.get("status") != "ok"]
     classifications: dict[str, int] = {}
     feature_counts: dict[str, int] = {}
+    detector_focus_counts: dict[str, int] = {}
     for result in ok:
         primary = result.get("classification", {}).get("primary", "unknown")
         classifications[primary] = classifications.get(primary, 0) + 1
         for feature in result.get("candidate_features", []):
             feature_type = str(feature.get("type", "unknown"))
             feature_counts[feature_type] = feature_counts.get(feature_type, 0) + 1
+        for focus in result.get("detector_guidance", {}).get("detector_focus", []):
+            focus_name = str(focus)
+            detector_focus_counts[focus_name] = detector_focus_counts.get(focus_name, 0) + 1
 
     return {
         "file_count": len(results),
@@ -778,6 +847,7 @@ def _summarize_results(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "error_count": len(errors),
         "classification_counts": classifications,
         "candidate_feature_counts": feature_counts,
+        "detector_focus_counts": detector_focus_counts,
     }
 
 

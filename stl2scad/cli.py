@@ -935,6 +935,8 @@ def feature_inventory_command(args: argparse.Namespace) -> int:
         print(f"Errors: {summary['error_count']}")
         print(f"Classifications: {summary['classification_counts']}")
         print(f"Candidate features: {summary['candidate_feature_counts']}")
+        if summary.get("detector_focus_counts"):
+            print(f"Detector focus: {summary['detector_focus_counts']}")
         return 0
     except FileNotFoundError as exc:
         print(f"Error: File not found - {str(exc)}", file=sys.stderr)

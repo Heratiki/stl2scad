@@ -28,6 +28,13 @@ def test_analyze_stl_file_detects_box_feature_signals(test_data_dir):
     assert "family_confidences" in result["classification"]
     assert result["classification"]["family_confidences"]["box"] >= 0.4
     assert result["classification"]["family_confidences"]["cylinder"] == 0.0
+    assert "detector_guidance" in result
+    assert any(
+        entry["family"] == "box" and entry["confidence"] >= 0.4
+        for entry in result["detector_guidance"]["preferred_families"]
+    )
+    assert "axis_aligned_box" in result["detector_guidance"]["detector_focus"]
+    assert "symmetry_modules" in result["detector_guidance"]["detector_focus"]
 
     feature_types = {feature["type"] for feature in result["candidate_features"]}
     assert "dominant_axis_aligned_planes" in feature_types
@@ -50,6 +57,7 @@ def test_analyze_stl_folder_writes_inventory_report(test_data_dir, test_output_d
     assert report["summary"]["file_count"] == 3
     assert report["summary"]["ok_count"] == 3
     assert report["summary"]["candidate_feature_counts"]
+    assert report["summary"]["detector_focus_counts"]
 
 
 def test_build_feature_graphs_from_inventory_filters_mechanical_candidates(

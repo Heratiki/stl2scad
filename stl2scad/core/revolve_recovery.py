@@ -86,3 +86,64 @@ def candidate_revolution_axis(
         axis = -axis
 
     return axis, centroid, axis_quality
+
+
+def extract_radial_slice(
+    vertices: np.ndarray,
+    triangles: np.ndarray,
+    axis: np.ndarray,
+    origin: np.ndarray,
+    angle_rad: float,
+) -> Optional[np.ndarray]:
+    """Slice the mesh with a half-plane containing `axis` rotated by `angle_rad`.
+
+    Returns an (N, 2) array of (r, z) points in the axis-local frame, ordered
+    by z. The half-plane is the set of points p where the vector (p - origin)
+    has zero component along the in-plane binormal and non-negative component
+    along the in-plane radial direction.
+
+    Returns None if the intersection is degenerate (fewer than 3 points).
+    """
+    axis = np.asarray(axis, dtype=np.float64)
+    axis = axis / float(np.linalg.norm(axis))
+
+    ref = np.array([1.0, 0.0, 0.0]) if abs(axis[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    radial0 = ref - float(np.dot(ref, axis)) * axis
+    radial0 /= float(np.linalg.norm(radial0))
+    binormal0 = np.cross(axis, radial0)
+    radial = np.cos(angle_rad) * radial0 + np.sin(angle_rad) * binormal0
+    binormal = np.cos(angle_rad) * binormal0 - np.sin(angle_rad) * radial0
+
+    points_rel = vertices - origin
+    b_coord = points_rel @ binormal
+    r_coord = points_rel @ radial
+    z_coord = points_rel @ axis
+
+    intersections: list[tuple[float, float]] = []
+    for tri in triangles:
+        for e0, e1 in ((tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])):
+            b0, b1 = float(b_coord[e0]), float(b_coord[e1])
+            if b0 == 0.0 and b1 == 0.0:
+                if r_coord[e0] >= 0.0:
+                    intersections.append((float(r_coord[e0]), float(z_coord[e0])))
+                if r_coord[e1] >= 0.0:
+                    intersections.append((float(r_coord[e1]), float(z_coord[e1])))
+                continue
+            if (b0 > 0.0 and b1 > 0.0) or (b0 < 0.0 and b1 < 0.0):
+                continue
+            t = b0 / (b0 - b1)
+            r = float(r_coord[e0] + t * (r_coord[e1] - r_coord[e0]))
+            if r < 0.0:
+                continue
+            z = float(z_coord[e0] + t * (z_coord[e1] - z_coord[e0]))
+            intersections.append((r, z))
+
+    if len(intersections) < 3:
+        return None
+
+    polyline = np.asarray(intersections, dtype=np.float64)
+    rounded = np.round(polyline, decimals=6)
+    _, unique_idx = np.unique(rounded, axis=0, return_index=True)
+    polyline = polyline[np.sort(unique_idx)]
+    order = np.argsort(polyline[:, 1])
+    return polyline[order]

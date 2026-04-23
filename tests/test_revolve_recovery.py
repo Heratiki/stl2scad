@@ -7,6 +7,7 @@ import numpy as np
 
 from stl2scad.tuning.config import DetectorConfig
 from stl2scad.core.revolve_recovery import candidate_revolution_axis
+from stl2scad.core.revolve_recovery import extract_radial_slice
 
 
 def test_detector_config_has_revolve_defaults():
@@ -70,3 +71,34 @@ def test_candidate_axis_rejects_cube():
 
     axis, origin, axis_quality = candidate_revolution_axis(verts, tris)
     assert axis_quality < 0.85
+
+
+def test_extract_radial_slice_cylinder_at_zero_angle():
+    verts, tris = _make_cylinder_mesh(height=10.0, radius=5.0, segments=64)
+    axis = np.array([0.0, 0.0, 1.0])
+    origin = np.array([0.0, 0.0, 0.0])
+    polyline_rz = extract_radial_slice(verts, tris, axis, origin, angle_rad=0.0)
+
+    assert polyline_rz is not None
+    assert polyline_rz.shape[1] == 2
+
+    r = polyline_rz[:, 0]
+    z = polyline_rz[:, 1]
+    assert np.all(r >= -1e-6)
+    assert np.max(r) == pytest.approx(5.0, abs=0.1)
+    assert np.min(z) == pytest.approx(0.0, abs=0.1)
+    assert np.max(z) == pytest.approx(10.0, abs=0.1)
+
+
+def test_extract_radial_slice_matches_across_angles_for_cylinder():
+    verts, tris = _make_cylinder_mesh(height=10.0, radius=5.0, segments=64)
+    axis = np.array([0.0, 0.0, 1.0])
+    origin = np.array([0.0, 0.0, 0.0])
+
+    slice_0 = extract_radial_slice(verts, tris, axis, origin, angle_rad=0.0)
+    slice_90 = extract_radial_slice(verts, tris, axis, origin, angle_rad=np.pi / 2)
+
+    assert slice_0 is not None and slice_90 is not None
+    assert np.max(slice_0[:, 0]) == pytest.approx(np.max(slice_90[:, 0]), abs=0.15)
+    assert np.min(slice_0[:, 1]) == pytest.approx(np.min(slice_90[:, 1]), abs=0.1)
+    assert np.max(slice_0[:, 1]) == pytest.approx(np.max(slice_90[:, 1]), abs=0.1)

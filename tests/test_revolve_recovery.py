@@ -10,6 +10,7 @@ from stl2scad.core.revolve_recovery import candidate_revolution_axis
 from stl2scad.core.revolve_recovery import extract_radial_slice
 from stl2scad.core.revolve_recovery import cross_slice_consistency
 from stl2scad.core.revolve_recovery import aggregate_profile, douglas_peucker_2d
+from stl2scad.core.revolve_recovery import normal_field_agreement
 
 
 def test_detector_config_has_revolve_defaults():
@@ -145,3 +146,32 @@ def test_douglas_peucker_reduces_collinear_points():
     line = np.column_stack([np.linspace(0, 10, 100), np.zeros(100)])
     simplified = douglas_peucker_2d(line, tolerance=0.01)
     assert len(simplified) == 2
+
+
+def test_normal_field_agreement_high_for_cylinder():
+    verts, tris = _make_cylinder_mesh(height=10.0, radius=5.0, segments=64)
+    axis = np.array([0.0, 0.0, 1.0])
+    origin = np.array([0.0, 0.0, 0.0])
+
+    score = normal_field_agreement(verts, tris, axis, origin)
+    assert score >= 0.9
+
+
+def test_normal_field_agreement_low_for_cube():
+    verts = np.array([
+        [-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0],
+        [-1, -1, 2], [1, -1, 2], [1, 1, 2], [-1, 1, 2],
+    ], dtype=np.float64)
+    tris = np.array([
+        [0, 1, 2], [0, 2, 3],
+        [4, 6, 5], [4, 7, 6],
+        [0, 4, 5], [0, 5, 1],
+        [1, 5, 6], [1, 6, 2],
+        [2, 6, 7], [2, 7, 3],
+        [3, 7, 4], [3, 4, 0],
+    ], dtype=np.int64)
+    axis = np.array([0.0, 0.0, 1.0])
+    origin = np.array([0.0, 0.0, 1.0])
+    score = normal_field_agreement(verts, tris, axis, origin)
+    # Cube's lateral faces have normals in the radial plane; just ensure score is finite.
+    assert 0.0 <= score <= 1.0

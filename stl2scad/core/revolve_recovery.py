@@ -256,3 +256,41 @@ def douglas_peucker_2d(points: np.ndarray, tolerance: float) -> np.ndarray:
     keep[-1] = True
     _recurse(0, len(points) - 1, keep)
     return points[np.asarray(keep)]
+
+
+def normal_field_agreement(
+    vertices: np.ndarray,
+    triangles: np.ndarray,
+    axis: np.ndarray,
+    origin: np.ndarray,
+) -> float:
+    """Score how well face normals agree with a revolve's expected normal field.
+
+    For a solid of revolution about `axis`, every surface normal should lie in
+    the plane spanned by `axis` and the local radial direction — it should
+    have no circumferential component. We score this by the area-weighted
+    fraction of the normal that is NOT circumferential.
+    """
+    axis = np.asarray(axis, dtype=np.float64)
+    axis = axis / float(np.linalg.norm(axis))
+
+    tri_verts = vertices[triangles]  # (F, 3, 3)
+    v0, v1, v2 = tri_verts[:, 0], tri_verts[:, 1], tri_verts[:, 2]
+    face_normals = np.cross(v1 - v0, v2 - v0)
+    face_areas = 0.5 * np.linalg.norm(face_normals, axis=1)
+    total_area = float(face_areas.sum())
+    if total_area < 1e-12:
+        return 0.0
+    norms = np.where(face_areas[:, None] > 1e-12, face_normals / (2.0 * face_areas[:, None]), 0.0)
+
+    centroids = tri_verts.mean(axis=1)
+    rel = centroids - origin
+    axial = (rel @ axis)[:, None] * axis
+    radial = rel - axial
+    radial_len = np.linalg.norm(radial, axis=1, keepdims=True)
+    radial_dir = np.where(radial_len > 1e-9, radial / np.maximum(radial_len, 1e-12), 0.0)
+    circumferential_dir = np.cross(np.broadcast_to(axis, radial_dir.shape), radial_dir)
+
+    circ_component = np.abs(np.einsum("fi,fi->f", norms, circumferential_dir))
+    agreement_per_face = 1.0 - circ_component
+    return float(np.clip((agreement_per_face * face_areas).sum() / total_area, 0.0, 1.0))

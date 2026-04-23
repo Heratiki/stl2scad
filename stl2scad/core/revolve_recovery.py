@@ -10,7 +10,7 @@ for the spec driving this module.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Optional
 
 import numpy as np
 

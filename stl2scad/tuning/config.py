@@ -90,3 +90,12 @@ class DetectorConfig:
     pattern_diameter_rounding_mm: float = 0.01
     pattern_regularity_error_max: float = 0.08
     grid_pattern_min_holes: int = 4
+
+    # --- Revolve (rotate_extrude) thresholds (Phase 1) ---
+    revolve_axis_quality_min: float = 0.85
+    revolve_slice_count: int = 12
+    revolve_cross_slice_tolerance_ratio: float = 0.04
+    revolve_normal_field_agreement_min: float = 0.80
+    revolve_profile_max_vertices: int = 64
+    revolve_douglas_peucker_tolerance_ratio: float = 0.005
+    revolve_confidence_min: float = 0.70

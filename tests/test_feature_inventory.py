@@ -102,6 +102,10 @@ def test_build_feature_graphs_from_inventory_filters_mechanical_candidates(
     assert report["summary"]["file_count"] == 1
     assert report["summary"]["error_count"] == 0
     assert report["graphs"][0]["source_file"] == "primitive_box_axis_aligned.stl"
+    assert report["graphs"][0]["inventory_context"]["classification"]["primary"] == (
+        "mechanical_candidate"
+    )
+    assert report["graphs"][0]["detector_plan"]["source"] == "inventory_guidance"
     feature_types = {feature["type"] for feature in report["graphs"][0]["features"]}
     assert "box_like_solid" in feature_types
 
@@ -260,6 +264,7 @@ def test_build_feature_graphs_from_inventory_supports_family_confidence_selectio
     assert report["selection"]["selection_config"]["allowed_families"] == ["box"]
     assert report["summary"]["file_count"] == 1
     assert report["graphs"][0]["source_file"] == "primitive_box_axis_aligned.stl"
+    assert "detector_plan" in report["graphs"][0]
 
 
 def test_feature_graph_from_inventory_command_execution(test_data_dir, test_output_dir):

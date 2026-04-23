@@ -253,6 +253,7 @@ def build_feature_graph_for_stl(
     normal_axis_threshold: Optional[float] = None,
     boundary_tolerance_ratio: Optional[float] = None,
     config: Optional[DetectorConfig] = None,
+    inventory_context: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """
     Build a conservative feature graph for one STL file.
@@ -330,6 +331,22 @@ def build_feature_graph_for_stl(
         },
         "features": features,
     }
+    if inventory_context is not None:
+        graph["inventory_context"] = {
+            key: inventory_context[key]
+            for key in ("classification", "candidate_features", "detector_guidance")
+            if key in inventory_context
+        }
+        detector_guidance = inventory_context.get("detector_guidance", {})
+        graph["detector_plan"] = {
+            "source": "inventory_guidance",
+            "focus": list(detector_guidance.get("detector_focus", [])),
+            "preferred_families": list(detector_guidance.get("preferred_families", [])),
+            "symmetry_axes": list(detector_guidance.get("symmetry_axes", [])),
+            "regular_spacing_axes": list(
+                detector_guidance.get("regular_spacing_axes", [])
+            ),
+        }
     graph["ir_tree"] = _build_ir_tree(graph)
     return graph
 

@@ -140,26 +140,27 @@ def build_feature_graphs_from_inventory(
         inventory_files,
         selection_config=selection_config,
     )
-    resolved_files = [
-        _resolve_inventory_entry_path(entry, input_dir) for entry in selected_entries
+    selected_work = [
+        (entry, _resolve_inventory_entry_path(entry, input_dir))
+        for entry in selected_entries
     ]
     worker_count = max(1, int(workers))
 
-    if worker_count == 1 or len(resolved_files) <= 1:
+    if worker_count == 1 or len(selected_work) <= 1:
         graphs = []
-        for idx, path in enumerate(resolved_files, 1):
-            graph = _build_feature_graph_from_inventory_file(path, input_dir)
+        for idx, (entry, path) in enumerate(selected_work, 1):
+            graph = _build_feature_graph_from_inventory_file(path, input_dir, entry)
             graphs.append(graph)
             if progress_callback is not None:
-                progress_callback(idx, len(resolved_files), str(path))
+                progress_callback(idx, len(selected_work), str(path))
     else:
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
             future_to_path = {
                 executor.submit(
                     _build_feature_graph_from_inventory_worker,
-                    (path, input_dir),
+                    (path, input_dir, entry),
                 ): path
-                for path in resolved_files
+                for entry, path in selected_work
             }
             graph_map: dict[Path, dict[str, Any]] = {}
             done_count = 0
@@ -168,8 +169,8 @@ def build_feature_graphs_from_inventory(
                 graph_map[path] = future.result()
                 done_count += 1
                 if progress_callback is not None:
-                    progress_callback(done_count, len(resolved_files), str(path))
-            graphs = [graph_map[path] for path in resolved_files]
+                    progress_callback(done_count, len(selected_work), str(path))
+            graphs = [graph_map[path] for _entry, path in selected_work]
 
     skipped_error_count = sum(
         1 for result in inventory_files if result.get("status") != "ok"
@@ -372,20 +373,25 @@ def _analyze_stl_file_worker(
 
 
 def _build_feature_graph_from_inventory_worker(
-    args: tuple[Path, Optional[Path]],
+    args: tuple[Path, Optional[Path], dict[str, Any]],
 ) -> dict[str, Any]:
-    path, root_dir = args
-    return _build_feature_graph_from_inventory_file(path, root_dir)
+    path, root_dir, inventory_entry = args
+    return _build_feature_graph_from_inventory_file(path, root_dir, inventory_entry)
 
 
 def _build_feature_graph_from_inventory_file(
     path: Path,
     root_dir: Optional[Path],
+    inventory_entry: dict[str, Any],
 ) -> dict[str, Any]:
     from .feature_graph import build_feature_graph_for_stl
 
     try:
-        return build_feature_graph_for_stl(path, root_dir=root_dir)
+        return build_feature_graph_for_stl(
+            path,
+            root_dir=root_dir,
+            inventory_context=inventory_entry,
+        )
     except Exception as exc:
         return {
             "schema_version": 2,

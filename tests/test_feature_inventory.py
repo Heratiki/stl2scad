@@ -196,6 +196,64 @@ def test_build_feature_graphs_from_inventory_supports_score_based_selection(
     assert report["graphs"][0]["source_file"] == "primitive_box_axis_aligned.stl"
 
 
+def test_build_feature_graphs_from_inventory_supports_family_confidence_selection(
+    test_data_dir, test_output_dir
+):
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+
+    inventory_report = {
+        "input_dir": str(fixtures_dir),
+        "files": [
+            {
+                "file": "primitive_box_axis_aligned.stl",
+                "status": "ok",
+                "classification": {
+                    "primary": "mechanical_candidate",
+                    "family_confidences": {
+                        "plate": 0.35,
+                        "box": 0.91,
+                        "cylinder": 0.05,
+                    },
+                },
+            },
+            {
+                "file": "primitive_sphere.stl",
+                "status": "ok",
+                "classification": {
+                    "primary": "mechanical_candidate",
+                    "family_confidences": {
+                        "plate": 0.08,
+                        "box": 0.12,
+                        "cylinder": 0.10,
+                    },
+                },
+            },
+        ],
+    }
+
+    output_json = test_output_dir / "feature_graph_family_selection.json"
+    report = build_feature_graphs_from_inventory(
+        inventory_report,
+        output_json,
+        workers=1,
+        selection_config=InventorySelectionConfig(
+            min_family_confidence=0.80,
+            allowed_families=("box",),
+        ),
+    )
+
+    assert output_json.exists()
+    assert report["selection"]["filter_mode"] == (
+        "inventory_mechanical_candidates_with_family_confidence"
+    )
+    assert report["selection"]["mechanical_candidate_count"] == 1
+    assert report["selection"]["skipped_below_family_confidence_count"] == 1
+    assert report["selection"]["selection_config"]["allowed_families"] == ["box"]
+    assert report["summary"]["file_count"] == 1
+    assert report["graphs"][0]["source_file"] == "primitive_box_axis_aligned.stl"
+
+
 def test_feature_graph_from_inventory_command_execution(test_data_dir, test_output_dir):
     fixtures_dir = test_data_dir / "benchmark_fixtures"
     ensure_benchmark_fixtures(fixtures_dir)

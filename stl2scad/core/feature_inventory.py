@@ -44,6 +44,8 @@ class InventorySelectionConfig:
     require_primary_mechanical: bool = True
     min_mechanical_score: Optional[float] = None
     max_organic_score: Optional[float] = None
+    min_family_confidence: Optional[float] = None
+    allowed_families: tuple[str, ...] = ()
 
 
 def analyze_stl_folder(
@@ -195,6 +197,9 @@ def build_feature_graphs_from_inventory(
             "skipped_below_score_count": selection_counts[
                 "skipped_below_score_count"
             ],
+            "skipped_below_family_confidence_count": selection_counts[
+                "skipped_below_family_confidence_count"
+            ],
             "skipped_error_count": skipped_error_count,
             "selection_config": {
                 "require_primary_mechanical": bool(
@@ -202,6 +207,8 @@ def build_feature_graphs_from_inventory(
                 ),
                 "min_mechanical_score": selection_config.min_mechanical_score,
                 "max_organic_score": selection_config.max_organic_score,
+                "min_family_confidence": selection_config.min_family_confidence,
+                "allowed_families": list(selection_config.allowed_families),
             },
             "filter_mode": _selection_filter_mode(selection_config),
         },
@@ -260,12 +267,18 @@ def _safe_float(value: Any) -> Optional[float]:
 
 
 def _selection_filter_mode(selection_config: InventorySelectionConfig) -> str:
+    has_family_filter = selection_config.min_family_confidence is not None
     if (
         selection_config.require_primary_mechanical
         and selection_config.min_mechanical_score is None
         and selection_config.max_organic_score is None
+        and not has_family_filter
     ):
         return "inventory_mechanical_candidates"
+    if has_family_filter and selection_config.require_primary_mechanical:
+        return "inventory_mechanical_candidates_with_family_confidence"
+    if has_family_filter:
+        return "inventory_scored_candidates_with_family_confidence"
     if selection_config.require_primary_mechanical:
         return "inventory_mechanical_candidates_with_scores"
     return "inventory_scored_candidates"
@@ -278,6 +291,7 @@ def _select_inventory_entries(
     selected_entries: list[dict[str, Any]] = []
     skipped_non_mechanical_count = 0
     skipped_below_score_count = 0
+    skipped_below_family_confidence_count = 0
     selected_non_mechanical_primary_count = 0
 
     for result in inventory_files:
@@ -317,6 +331,27 @@ def _select_inventory_entries(
             skipped_below_score_count += 1
             continue
 
+        family_confidences = classification.get("family_confidences", {})
+        if selection_config.min_family_confidence is not None:
+            families = (
+                selection_config.allowed_families
+                if selection_config.allowed_families
+                else tuple(str(key) for key in family_confidences.keys())
+            )
+            best_family_confidence: Optional[float] = None
+            for family in families:
+                family_value = _safe_float(family_confidences.get(family))
+                if family_value is None:
+                    continue
+                if best_family_confidence is None or family_value > best_family_confidence:
+                    best_family_confidence = family_value
+            if (
+                best_family_confidence is None
+                or best_family_confidence < selection_config.min_family_confidence
+            ):
+                skipped_below_family_confidence_count += 1
+                continue
+
         if primary != "mechanical_candidate":
             selected_non_mechanical_primary_count += 1
         selected_entries.append(result)
@@ -324,6 +359,7 @@ def _select_inventory_entries(
     return selected_entries, {
         "skipped_non_mechanical_count": skipped_non_mechanical_count,
         "skipped_below_score_count": skipped_below_score_count,
+        "skipped_below_family_confidence_count": skipped_below_family_confidence_count,
         "selected_non_mechanical_primary_count": selected_non_mechanical_primary_count,
     }
 
@@ -617,6 +653,7 @@ def _classify_inventory(payload: dict[str, Any]) -> dict[str, Any]:
     axis_ratio = float(normal_profile["axis_area_ratio"])
     triangle_count = int(payload["triangles"])
     symmetry = payload["symmetry"]
+    symmetry_sum = float(sum(symmetry.values()))
     regular_axes = [
         axis
         for axis, data in payload["coordinate_spacing"].items()

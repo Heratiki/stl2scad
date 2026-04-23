@@ -82,6 +82,24 @@ def _unit_interval_float(value: str) -> float:
     return parsed
 
 
+def _csv_family_list(value: str) -> tuple[str, ...]:
+    """argparse type validator for comma-separated inventory family names."""
+    families = tuple(
+        token.strip().lower() for token in value.split(",") if token.strip()
+    )
+    if not families:
+        raise argparse.ArgumentTypeError("Expected at least one family name")
+    allowed = {"plate", "box", "cylinder"}
+    invalid = [family for family in families if family not in allowed]
+    if invalid:
+        raise argparse.ArgumentTypeError(
+            "Unknown family name(s): "
+            + ", ".join(invalid)
+            + ". Expected any of: box, cylinder, plate"
+        )
+    return families
+
+
 @dataclass(frozen=True)
 class MaintainerStep:
     """A single command in the maintainer pipeline."""
@@ -354,6 +372,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Allow non-degenerate non-mechanical primary classifications if score thresholds pass",
     )
     feature_graph_parser.add_argument(
+        "--inventory-min-family-confidence",
+        type=_unit_interval_float,
+        default=None,
+        help="Optional minimum per-family confidence required for graph selection (0.0-1.0)",
+    )
+    feature_graph_parser.add_argument(
+        "--inventory-families",
+        type=_csv_family_list,
+        default=(),
+        help="Optional comma-separated family subset for inventory family-confidence selection (plate,box,cylinder)",
+    )
+    feature_graph_parser.add_argument(
         "--scad-preview",
         default=None,
         help="Optional SCAD preview output path for a single STL input",
@@ -400,6 +430,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--inventory-allow-non-mechanical-primary",
         action="store_true",
         help="Allow non-degenerate non-mechanical primary classifications if score thresholds pass",
+    )
+    feature_graph_inventory_parser.add_argument(
+        "--inventory-min-family-confidence",
+        type=_unit_interval_float,
+        default=None,
+        help="Optional minimum per-family confidence required for graph selection (0.0-1.0)",
+    )
+    feature_graph_inventory_parser.add_argument(
+        "--inventory-families",
+        type=_csv_family_list,
+        default=(),
+        help="Optional comma-separated family subset for inventory family-confidence selection (plate,box,cylinder)",
     )
     feature_graph_inventory_parser.set_defaults(
         handler=feature_graph_from_inventory_command
@@ -915,6 +957,8 @@ def feature_graph_command(args: argparse.Namespace) -> int:
                 args.inventory_min_mechanical_score is not None,
                 args.inventory_max_organic_score is not None,
                 args.inventory_allow_non_mechanical_primary,
+                args.inventory_min_family_confidence is not None,
+                bool(args.inventory_families),
             )
         )
 
@@ -979,6 +1023,8 @@ def feature_graph_command(args: argparse.Namespace) -> int:
                         ),
                         min_mechanical_score=args.inventory_min_mechanical_score,
                         max_organic_score=args.inventory_max_organic_score,
+                        min_family_confidence=args.inventory_min_family_confidence,
+                        allowed_families=args.inventory_families,
                     ),
                     inventory_output_json=(
                         Path(args.inventory_output)
@@ -1015,6 +1061,11 @@ def feature_graph_command(args: argparse.Namespace) -> int:
                     print(
                         "Skipped below score threshold: "
                         f"{selection['skipped_below_score_count']}"
+                    )
+                if selection.get("skipped_below_family_confidence_count", 0) > 0:
+                    print(
+                        "Skipped below family-confidence threshold: "
+                        f"{selection['skipped_below_family_confidence_count']}"
                     )
                 if selection.get("selected_non_mechanical_primary_count", 0) > 0:
                     print(
@@ -1086,6 +1137,8 @@ def feature_graph_from_inventory_command(args: argparse.Namespace) -> int:
                 ),
                 min_mechanical_score=args.inventory_min_mechanical_score,
                 max_organic_score=args.inventory_max_organic_score,
+                min_family_confidence=args.inventory_min_family_confidence,
+                allowed_families=args.inventory_families,
             ),
             progress_callback=_progress,
         )
@@ -1100,6 +1153,11 @@ def feature_graph_from_inventory_command(args: argparse.Namespace) -> int:
             print(
                 "Skipped below score threshold: "
                 f"{selection['skipped_below_score_count']}"
+            )
+        if selection.get("skipped_below_family_confidence_count", 0) > 0:
+            print(
+                "Skipped below family-confidence threshold: "
+                f"{selection['skipped_below_family_confidence_count']}"
             )
         if selection.get("selected_non_mechanical_primary_count", 0) > 0:
             print(

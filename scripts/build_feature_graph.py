@@ -92,6 +92,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Allow non-degenerate non-mechanical primary classifications if score thresholds pass.",
     )
     parser.add_argument(
+        "--inventory-min-family-confidence",
+        type=_unit_interval_float,
+        default=None,
+        help="Optional minimum per-family confidence required for graph selection (0.0-1.0).",
+    )
+    parser.add_argument(
+        "--inventory-families",
+        default="",
+        help="Optional comma-separated family subset for inventory family-confidence selection (plate,box,cylinder).",
+    )
+    parser.add_argument(
         "--triage-output",
         default=None,
         help="Optional path for per-file triage JSON report when input_path is a directory.",
@@ -124,6 +135,8 @@ def main() -> int:
             args.inventory_min_mechanical_score is not None,
             args.inventory_max_organic_score is not None,
             args.inventory_allow_non_mechanical_primary,
+            args.inventory_min_family_confidence is not None,
+            bool(args.inventory_families.strip()),
         )
     )
     if not input_path.is_dir() and (
@@ -188,6 +201,12 @@ def main() -> int:
                     ),
                     min_mechanical_score=args.inventory_min_mechanical_score,
                     max_organic_score=args.inventory_max_organic_score,
+                    min_family_confidence=args.inventory_min_family_confidence,
+                    allowed_families=tuple(
+                        token.strip().lower()
+                        for token in args.inventory_families.split(",")
+                        if token.strip()
+                    ),
                 ),
                 inventory_output_json=(
                     Path(args.inventory_output)
@@ -222,6 +241,11 @@ def main() -> int:
                 print(
                     "Skipped below score threshold: "
                     f"{selection['skipped_below_score_count']}"
+                )
+            if selection.get("skipped_below_family_confidence_count", 0) > 0:
+                print(
+                    "Skipped below family-confidence threshold: "
+                    f"{selection['skipped_below_family_confidence_count']}"
                 )
             if selection.get("selected_non_mechanical_primary_count", 0) > 0:
                 print(

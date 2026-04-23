@@ -90,6 +90,25 @@ def test_feature_graph_parser_accepts_inventory_prefilter():
     assert args.inventory_output == "inventory.json"
 
 
+def test_feature_graph_parser_accepts_inventory_family_selection():
+    """Feature graph command should accept family-confidence selection options."""
+    parser = cli.build_parser()
+    args = parser.parse_args(
+        [
+            "feature-graph",
+            "input-dir",
+            "--inventory-prefilter",
+            "--inventory-min-family-confidence",
+            "0.8",
+            "--inventory-families",
+            "box,cylinder",
+        ]
+    )
+    assert isinstance(args, argparse.Namespace)
+    assert args.inventory_min_family_confidence == 0.8
+    assert args.inventory_families == ("box", "cylinder")
+
+
 def test_feature_graph_from_inventory_parser_accepts_scad_preview_dir():
     """Feature-graph-from-inventory should accept SCAD preview output dir."""
     parser = cli.build_parser()
@@ -277,6 +296,7 @@ def test_feature_graph_directory_command_inventory_prefilter_execution(
             "inventory_file_count": 4,
             "mechanical_candidate_count": 2,
             "skipped_non_mechanical_count": 2,
+            "skipped_below_family_confidence_count": 0,
             "skipped_error_count": 0,
         },
     }
@@ -306,8 +326,48 @@ def test_feature_graph_directory_command_inventory_prefilter_execution(
     assert kwargs["inventory_config"].workers == 2
     assert kwargs["inventory_config"].recursive is True
     assert kwargs["graph_workers"] == 2
+    assert kwargs["selection_config"].min_family_confidence is None
+    assert kwargs["selection_config"].allowed_families == ()
     assert callable(kwargs["inventory_progress_callback"])
     assert callable(kwargs["graph_progress_callback"])
+
+
+@patch("stl2scad.cli.build_feature_graphs_from_inventory")
+def test_feature_graph_from_inventory_passes_family_selection(
+    mock_build_graphs, test_output_dir
+):
+    """Inventory graph command should forward family-confidence selection options."""
+    mock_build_graphs.return_value = {
+        "summary": {"error_count": 0, "feature_counts": {"box_like_solid": 1}},
+        "selection": {
+            "mechanical_candidate_count": 1,
+            "skipped_below_family_confidence_count": 1,
+            "selected_non_mechanical_primary_count": 0,
+        },
+        "graphs": [],
+    }
+
+    output_file = test_output_dir / "graphs_from_inventory.json"
+    exit_code = cli.main(
+        [
+            "feature-graph-from-inventory",
+            "inventory.json",
+            "--output",
+            str(output_file),
+            "--workers",
+            "2",
+            "--inventory-min-family-confidence",
+            "0.85",
+            "--inventory-families",
+            "box",
+        ]
+    )
+
+    assert exit_code == 0
+    mock_build_graphs.assert_called_once()
+    kwargs = mock_build_graphs.call_args.kwargs
+    assert kwargs["selection_config"].min_family_confidence == 0.85
+    assert kwargs["selection_config"].allowed_families == ("box",)
 
 
 @patch("stl2scad.cli.emit_feature_graph_scad_preview")

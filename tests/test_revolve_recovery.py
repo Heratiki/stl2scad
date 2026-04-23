@@ -11,6 +11,7 @@ from stl2scad.core.revolve_recovery import extract_radial_slice
 from stl2scad.core.revolve_recovery import cross_slice_consistency
 from stl2scad.core.revolve_recovery import aggregate_profile, douglas_peucker_2d
 from stl2scad.core.revolve_recovery import normal_field_agreement
+from stl2scad.core.revolve_recovery import detect_revolve_solid
 
 
 def test_detector_config_has_revolve_defaults():
@@ -175,3 +176,41 @@ def test_normal_field_agreement_low_for_cube():
     score = normal_field_agreement(verts, tris, axis, origin)
     # Cube's lateral faces have normals in the radial plane; just ensure score is finite.
     assert 0.0 <= score <= 1.0
+
+
+def test_detect_revolve_solid_accepts_cylinder():
+    verts, tris = _make_cylinder_mesh(height=10.0, radius=5.0, segments=64)
+    features = detect_revolve_solid(verts, tris, DetectorConfig())
+
+    assert len(features) == 1
+    feat = features[0]
+    assert feat["type"] == "revolve_solid"
+    assert feat["detected_via"] == "axisymmetric_revolve"
+    assert "axis" in feat and "axis_origin" in feat
+    assert "profile" in feat and len(feat["profile"]) >= 2
+    assert "confidence" in feat and feat["confidence"] >= 0.70
+    comps = feat["confidence_components"]
+    for key in ("axis_quality", "cross_slice_consistency",
+                "normal_field_agreement", "profile_validity"):
+        assert key in comps
+        assert 0.0 <= float(comps[key]) <= 1.0
+    rs = [p[0] for p in feat["profile"]]
+    assert min(rs) < 0.5
+
+
+def test_detect_revolve_solid_rejects_cube():
+    verts = np.array([
+        [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+        [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+    ], dtype=np.float64)
+    tris = np.array([
+        [0, 1, 2], [0, 2, 3],
+        [4, 6, 5], [4, 7, 6],
+        [0, 4, 5], [0, 5, 1],
+        [1, 5, 6], [1, 6, 2],
+        [2, 6, 7], [2, 7, 3],
+        [3, 7, 4], [3, 4, 0],
+    ], dtype=np.int64)
+
+    features = detect_revolve_solid(verts, tris, DetectorConfig())
+    assert features == []

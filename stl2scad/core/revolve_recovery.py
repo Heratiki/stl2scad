@@ -10,7 +10,7 @@ for the spec driving this module.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 
@@ -294,3 +294,117 @@ def normal_field_agreement(
     circ_component = np.abs(np.einsum("fi,fi->f", norms, circumferential_dir))
     agreement_per_face = 1.0 - circ_component
     return float(np.clip((agreement_per_face * face_areas).sum() / total_area, 0.0, 1.0))
+
+
+def _max_r_per_z(slice_rz: np.ndarray, tol: float = 1e-6) -> np.ndarray:
+    """Reduce a raw slice to one point per z-level, keeping the maximum r.
+
+    Half-plane slicing produces multiple intersections at the same z when the
+    plane crosses a flat cap: the cap's interior triangle edges contribute
+    low-r points that create spurious cross-slice variance.  Keeping only the
+    outermost (max-r) point per z-level removes that noise.
+    """
+    z = slice_rz[:, 1]
+    r = slice_rz[:, 0]
+    order = np.argsort(z)
+    z_sorted = z[order]
+    r_sorted = r[order]
+
+    result_z: list[float] = []
+    result_r: list[float] = []
+    i = 0
+    n = len(z_sorted)
+    while i < n:
+        j = i + 1
+        while j < n and abs(z_sorted[j] - z_sorted[i]) < tol:
+            j += 1
+        result_z.append(float(z_sorted[i]))
+        result_r.append(float(r_sorted[i:j].max()))
+        i = j
+    return np.column_stack([result_r, result_z])
+
+
+def detect_revolve_solid(
+    vertices: np.ndarray,
+    triangles: np.ndarray,
+    config: "DetectorConfig",
+) -> list[dict[str, Any]]:
+    """Phase 1 revolve detector. Returns [] on any gate failure, else a
+    one-element list containing a `revolve_solid` feature dict.
+    """
+    if vertices is None or triangles is None:
+        return []
+    if len(vertices) < 4 or len(triangles) < 4:
+        return []
+
+    # §1.1 Candidate-axis prefilter
+    axis, origin, axis_quality = candidate_revolution_axis(vertices, triangles)
+    if axis is None or axis_quality < config.revolve_axis_quality_min:
+        return []
+
+    # §1.2 Multi-slice profile recovery
+    K = config.revolve_slice_count
+    slices: list[np.ndarray] = []
+    mesh_scale = float(np.linalg.norm(vertices.max(axis=0) - vertices.min(axis=0)))
+    for k in range(K):
+        angle = np.pi * float(k) / float(K)
+        sl = extract_radial_slice(vertices, triangles, axis, origin, angle)
+        if sl is None or len(sl) < 3:
+            return []
+        # Phase 1 excludes annular: every slice must touch the axis.
+        if float(sl[:, 0].min()) > 1e-3 * mesh_scale:
+            return []
+        slices.append(sl)
+
+    # Pre-process slices for cross-consistency: keep max-r per z-level so that
+    # flat-cap interior crossings (which vary per angle) do not inflate the
+    # variance.  The raw slices are still used for aggregation.
+    slices_outer = [_max_r_per_z(sl) for sl in slices]
+    cross_slice_score = cross_slice_consistency(slices_outer, mesh_scale=mesh_scale)
+    # Accept when score is above the threshold derived from the tolerance ratio.
+    cross_threshold = 1.0 - config.revolve_cross_slice_tolerance_ratio * 10.0
+    if cross_slice_score < cross_threshold:
+        return []
+
+    # §1.2 Aggregate + simplify
+    profile_raw = aggregate_profile(slices)
+    if len(profile_raw) < 2:
+        return []
+    dp_tol = mesh_scale * config.revolve_douglas_peucker_tolerance_ratio
+    profile = douglas_peucker_2d(profile_raw, tolerance=dp_tol)
+
+    # §1.3 Normal-field agreement
+    nf_score = normal_field_agreement(vertices, triangles, axis, origin)
+    if nf_score < config.revolve_normal_field_agreement_min:
+        return []
+
+    # §1.4 Profile validity
+    if len(profile) > config.revolve_profile_max_vertices:
+        return []
+    profile_validity = 1.0 if float(profile[:, 0].min()) < 1e-3 * mesh_scale else 0.0
+    if profile_validity < 1.0:
+        return []
+
+    # §1.5 Acceptance
+    axis_q = float(axis_quality)
+    cs_q = float(cross_slice_score)
+    nf_q = float(nf_score)
+    pv_q = float(profile_validity)
+    confidence = min(axis_q, cs_q, nf_q, pv_q)
+    if confidence < config.revolve_confidence_min:
+        return []
+
+    return [{
+        "type": "revolve_solid",
+        "detected_via": "axisymmetric_revolve",
+        "axis": [float(x) for x in axis],
+        "axis_origin": [float(x) for x in origin],
+        "profile": [(float(r), float(z)) for r, z in profile],
+        "confidence": confidence,
+        "confidence_components": {
+            "axis_quality": axis_q,
+            "cross_slice_consistency": cs_q,
+            "normal_field_agreement": nf_q,
+            "profile_validity": pv_q,
+        },
+    }]

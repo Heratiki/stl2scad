@@ -117,6 +117,38 @@ def _ir_pattern_node(pattern: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _axis_to_world_z_euler_xyz(axis: list[float]) -> list[float]:
+    """Return Euler XYZ angles in degrees that rotate world Z onto `axis`."""
+    a = np.asarray(axis, dtype=np.float64)
+    a = a / float(np.linalg.norm(a))
+    z = np.array([0.0, 0.0, 1.0])
+    if np.allclose(a, z, atol=1e-6):
+        return [0.0, 0.0, 0.0]
+    if np.allclose(a, -z, atol=1e-6):
+        return [180.0, 0.0, 0.0]
+    v = np.cross(z, a)
+    s = float(np.linalg.norm(v))
+    c = float(np.dot(z, a))
+    vx = np.array([
+        [0, -v[2], v[1]],
+        [v[2], 0, -v[0]],
+        [-v[1], v[0], 0],
+    ])
+    R = np.eye(3) + vx + vx @ vx * ((1 - c) / (s * s))
+    rx = float(np.degrees(np.arctan2(R[2, 1], R[2, 2])))
+    ry = float(np.degrees(np.arcsin(-R[2, 0])))
+    rz = float(np.degrees(np.arctan2(R[1, 0], R[0, 0])))
+    return [rx, ry, rz]
+
+
+def _ir_revolve_node(feature: dict[str, Any]) -> dict[str, Any]:
+    points = [[float(r), float(z)] for r, z in feature["profile"]]
+    sketch: dict[str, Any] = {"type": "Sketch2D", "kind": "polygon", "points": points}
+    extrude: dict[str, Any] = {"type": "ExtrudeRevolve", "profile": sketch}
+    angles = _axis_to_world_z_euler_xyz(feature["axis"])
+    return {"type": "TransformRotate", "angles_deg": angles, "child": extrude}
+
+
 def _build_ir_tree(graph: dict[str, Any]) -> list[dict[str, Any]]:
     """Build a ranked list of IR Interpretation nodes from a flat feature graph.
 
@@ -133,6 +165,21 @@ def _build_ir_tree(graph: dict[str, Any]) -> list[dict[str, Any]]:
     This is an additive representation — ``graph["features"]`` is unchanged.
     """
     features = graph.get("features", [])
+
+    # Revolve solids take priority (Rule 1 + Rule 3): return early when present.
+    revolve_feats = [f for f in features if f.get("type") == "revolve_solid"]
+    if revolve_feats:
+        revolve = revolve_feats[0]
+        root = {
+            "type": "BooleanUnion",
+            "children": [_ir_revolve_node(revolve)],
+        }
+        return [{
+            "type": "Interpretation",
+            "rank": 1,
+            "confidence": float(revolve["confidence"]),
+            "root": root,
+        }]
 
     primitives = sorted(
         [f for f in features if f.get("type") in _SOLID_TO_IR_TYPE],

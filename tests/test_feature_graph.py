@@ -1681,3 +1681,35 @@ def test_axis_aligned_plate_has_no_transform_rotate_in_ir(test_output_dir):
             "Axis-aligned plate base must be PrimitivePlate"
         )
         assert root["base"].get("type") != "TransformRotate"
+
+
+def test_ir_tree_wraps_revolve_solid_as_extrude_revolve():
+    from stl2scad.core.feature_graph import _build_ir_tree
+
+    graph = {
+        "schema_version": 1,
+        "features": [{
+            "type": "revolve_solid",
+            "detected_via": "axisymmetric_revolve",
+            "axis": [0.0, 0.0, 1.0],
+            "axis_origin": [0.0, 0.0, 0.0],
+            "profile": [(0.0, 0.0), (5.0, 0.0), (5.0, 10.0), (0.0, 10.0)],
+            "confidence": 0.9,
+            "confidence_components": {
+                "axis_quality": 0.95, "cross_slice_consistency": 0.98,
+                "normal_field_agreement": 0.92, "profile_validity": 1.0,
+            },
+        }],
+    }
+    ir = _build_ir_tree(graph)
+    assert ir is not None
+    assert len(ir) == 1
+    root = ir[0]["root"]
+    assert root["type"] == "BooleanUnion"
+    child = root["children"][0]
+    assert child["type"] == "TransformRotate"
+    assert child["child"]["type"] == "ExtrudeRevolve"
+    sketch = child["child"]["profile"]
+    assert sketch["type"] == "Sketch2D"
+    assert sketch["kind"] == "polygon"
+    assert len(sketch["points"]) == 4

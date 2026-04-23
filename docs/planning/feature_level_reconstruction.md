@@ -158,6 +158,10 @@ The Next Work Package scoped for 2026-04-22 → 2026-05-31 (Tracks A–D) shippe
 - **Boolean + Transform IR wrapping** (2026-04-22). `_build_ir_tree()` in [stl2scad/core/feature_graph.py](../../stl2scad/core/feature_graph.py) builds a ranked `Interpretation` list and attaches it as `graph["ir_tree"]`. Each detected primitive is wrapped in `BooleanDifference { base: Primitive, cuts: [...] }` or `BooleanUnion { children: [Primitive] }`; cutout placements are lifted into `TransformTranslate` nodes; pattern holes are subsumed into `PatternLinear` / `PatternGrid` nodes with no standalone duplication; meshes with no solid produce `FallbackMesh`. The flat `graph["features"]` list is unchanged (backward compat). Seven new tests in `test_feature_graph.py` cover the full schema. This is **Immediate priority #2 closed**.
 - **Chamfer/Fillet IR promotion** (2026-04-22). Every `plate_like_solid` and `box_like_solid` feature node now carries a `detected_via` field (`"strict"` or `"tolerant_chamfer_or_fillet"`). When the tolerant path fired, `_build_ir_tree()` injects a `ChamferOrFilletEdge` annotation node into the `BooleanDifference` cuts list so downstream emitters can see the edge treatment rather than it being silently absorbed by confidence arithmetic. Five new tests cover the `detected_via` field and the IR node. **Immediate priority #1 closed** (kind disambiguation — chamfer vs fillet — is a future refinement once the detector can measure edge curvature).
 - **Inventory-guided family-confidence selection** (2026-04-22). `InventorySelectionConfig` now supports `min_family_confidence` plus an optional `allowed_families` subset (`plate`, `box`, `cylinder`), and both `feature-graph` CLI entry points expose those filters. This moves the inventory-prefilter handoff beyond a binary whole-file mechanical gate and lets real-world triage focus on the detector family being improved. A latent `symmetry_sum` bug in cylinder-family inventory scoring was fixed in the same pass.
+- **Cylinder as a positive primitive** (2026-04-22, commit `7afe08a`). `_extract_cylinder_like_solid` ([stl2scad/core/feature_graph.py:1054](../../stl2scad/core/feature_graph.py#L1054)) detects solid axis-aligned cylinders along X, Y, or Z; `_emit_cylinder_scad_preview` produces parametric `cylinder()` calls with axis-alignment rotation; three fixtures (`cylinder_plain`, `cylinder_short_disk`, `cylinder_x_axis`) with dimensional round-trip assertions. Cylinder detection runs *before* plate/box classification so a disk is correctly classified as a cylinder rather than a thin plate.
+- **Rotated plate detection** (2026-04-22, commit `705efe9`). `_extract_rotated_plate_solid` uses area-weighted normal covariance to find any dominant normal direction and a 2D minimum-area rectangle to recover the in-plane rotation, producing full 3D orientation recovery — not limited to world-axis rotations. IR tree wraps rotated plates in `TransformRotate { BooleanDifference { PrimitivePlate, ... } }`; SCAD emitter produces `rotate([rx,ry,rz]) translate(...) cube(...)`. Fixtures: `plate_plain_rotated_z30`, `plate_plain_rotated_x30`, plus `box_z_through_hole_rotated_z25` as a negative-class guard.
+- **Negative-class fixtures** (2026-04-20, commit `325a894`). `negative_sphere` and `negative_torus` fixtures with explicit `expected_detection` asserting the detector stays silent on non-plate / non-box organic shapes.
+- **Richer inventory-to-detector guidance** (2026-04-22, commits `dea19be`, `6046929`). `_detector_guidance()` in [stl2scad/core/feature_inventory.py:770](../../stl2scad/core/feature_inventory.py#L770) produces per-file detector routing hints (focus, preferred_families, symmetry_axes, regular_spacing_axes); per-axis `region_hint` fields give region-level context. Feature graph consumes these into `inventory_context` at [stl2scad/core/feature_graph.py:340-347](../../stl2scad/core/feature_graph.py#L340-L347). This closes the "region-level hints and family-specific routing metadata instead of only whole-file admission control" gap previously listed under Immediate priority #3.
 
 ### Recently completed (2026-04-20)
 
@@ -172,12 +176,12 @@ The Next Work Package scoped for 2026-04-22 → 2026-05-31 (Tracks A–D) shippe
 
 ### Immediate priorities
 
-Reprioritized 2026-04-22 after all four Tracks, IR wrapping, and chamfer/fillet IR promotion landed. The active front is now **rotated fixtures** and **cylinder as a positive primitive** — both unblocked by the IR tree.
+Reprioritized 2026-04-22 (late) after rotated plates, cylinder-as-positive-primitive, negative-class fixtures, and richer inventory guidance all landed end-of-day. The active front has moved up a tier: **Sketch2D + `rotate_extrude` recovery**, which unifies cone/sphere/ellipsoid detection with solids-of-revolution support and is the roadmap's single largest outstanding win.
 
-1. **Expand beyond axis-aligned fixtures.** Rotated and composite non-plate fixtures. The `TransformRotate` IR node is defined in [detector_ir.md](detector_ir.md) and the IR tree already has the structural slot for it.
-2. **Cylinder as a positive primitive** ([detector_ir.md](detector_ir.md) Gap #6). Active WIP branch (uncommitted `cylinder_plain.scad`, `cylinder_short_disk.scad`, `cylinder_x_axis.scad` fixtures). Now unblocked — the IR tree's `BooleanUnion`/`BooleanDifference` polarity context prevents the cylinder-on-hole mis-fire observed on the WIP branch.
-3. **Improve inventory-guided selection quality** — per-family confidence gating is now wired through selection; the remaining gap is richer detector guidance (region-level hints and family-specific routing metadata instead of only whole-file admission control).
-4. **Negative-class fixtures** — as new primitives (cylinder, sphere, cone) come online, guard against over-reach with deliberately non-mechanical and near-primitive shapes asserting the detector stays silent or falls through to polyhedron.
+1. **Sketch2D + `rotate_extrude` recovery — Phase 1** (see [Current Work Package](#current-work-package-phase-1-axisymmetric-rotate_extrude-recovery) below; full spec in [docs/superpowers/specs/2026-04-22-rotate-extrude-and-sketch2d-recovery-design.md](../superpowers/specs/2026-04-22-rotate-extrude-and-sketch2d-recovery-design.md)). Axisymmetry detection → radial profile extraction → `rotate_extrude() polygon([...])` emission. Subsumes the individual cone/sphere/ellipsoid detectors that were previously scoped separately.
+2. **Rotated cutouts on rotated plates.** The rotated-plate detector ([stl2scad/core/feature_graph.py:938](../../stl2scad/core/feature_graph.py#L938)) handles plate bodies at arbitrary orientation, but `_candidate_cutout_axes` still operates in world coordinates, so a rotated plate with holes/slots/patterns detects only the plate and misses the cutouts. Fix: extend cutout extraction to operate in the plate's local (u, v, thickness) frame when `detected_via == "rotated_plate"`.
+3. **Rotated-box detector (positive path).** `box_z_through_hole_rotated_z25` exists today only as a negative fixture asserting the detector does NOT misfire on rotated cuboids. Mirror the rotated-plate approach (dominant normal-pair detection extended from one axis-pair to three) to produce positive detection. Flip the negative fixture to a positive expectation once the detector lands.
+4. **Sketch2D + `rotate_extrude` recovery — Phase 2** (profile classification → primitive upgrade). Closes [detector_ir.md](detector_ir.md) tier-1 cone / sphere / frustum / ellipsoid rows as a consequence of the axisymmetric pipeline, rather than as standalone detectors.
 
 ### Beyond dimensional parity
 
@@ -185,11 +189,11 @@ Once the IR wrapping (priority #2) lands, the detector output becomes a tree, an
 
 1. **Detector-native interpretation ranking** — schema-v2 fixtures and harness-side candidate ranking are already in place, including a real hollow-box ambiguity fixture. Next step: make the detector emit ranked `Interpretation` candidates directly (per [detector_ir.md](detector_ir.md)) so the fixture harness can compare declared ranking/confidence against detector-produced ranking/confidence, not only against observed feature-count matches.
 2. **Manifest schema as a versioned contract** — `schema_version` is already enforced on load; next is documenting the schema so third-party fixture authors (or future detectors) have a stable target.
-3. **Tier-2 primitive expansion** — cone/frustum, sphere, ellipsoid. Gated on the boolean-wrapping refactor (Immediate #2) for the same polarity reason that gates cylinders.
-4. **Sketch2D + ExtrudeLinear / ExtrudeRevolve recovery from mesh cross-sections** — largest single win available in the roadmap (most mechanical parts are "profile + extrude" in intent) and also the largest scope. Do not start before Tier-2 primitives are stable.
+3. ~~**Tier-2 primitive expansion** — cone/frustum, sphere, ellipsoid.~~ *Reframed 2026-04-22: absorbed into Immediate priority #1 / #4 (Sketch2D + `rotate_extrude` recovery). Each tier-2 primitive is a special case of a solid of revolution — rectangle profile → cylinder, triangle → cone, semicircle → sphere, trapezoid → frustum. Building the axisymmetric pipeline with a profile classifier gets all four primitives as a consequence instead of as four separate detectors.*
+4. ~~**Sketch2D + ExtrudeLinear / ExtrudeRevolve recovery from mesh cross-sections**~~ — *Promoted 2026-04-22 from this "Beyond dimensional parity" list to the active work package. Full spec in [docs/superpowers/specs/2026-04-22-rotate-extrude-and-sketch2d-recovery-design.md](../superpowers/specs/2026-04-22-rotate-extrude-and-sketch2d-recovery-design.md). Phase 1 (axisymmetric `rotate_extrude`) is Immediate priority #1; Phase 3 (linear extrude) stays deferred until Phase 1–2 land.*
 
 (Noise-injection fixtures were promoted out of this section on 2026-04-20 and landed via Track C on 2026-04-22.)
-(Negative-class fixtures were promoted to Immediate priority #7 on 2026-04-22.)
+(Negative-class fixtures landed 2026-04-20 as `negative_sphere` and `negative_torus`; closed as a standing priority. Re-apply the pattern as new primitives come online via the axisymmetric pipeline.)
 
 ### Ongoing
 
@@ -198,9 +202,33 @@ Once the IR wrapping (priority #2) lands, the detector output becomes a tree, an
 3. Emit feature-based SCAD templates only when confidence is high; otherwise fall back.
 4. Add optional user-assisted labeling for ambiguous features.
 
-## Next Work Package — status: fully shipped (2026-04-22)
+## Current Work Package — Phase 1: Axisymmetric `rotate_extrude` recovery
 
-Tracks A–D, Boolean + Transform IR wrapping, and chamfer/fillet IR promotion are all complete. The next work package covers Immediate priorities #1–#2 (rotated fixtures, cylinder as positive primitive); it will replace this section once written.
+**Status:** specification landed 2026-04-22. Implementation plan pending (via superpowers:writing-plans after spec review).
+
+**Full spec:** [docs/superpowers/specs/2026-04-22-rotate-extrude-and-sketch2d-recovery-design.md](../superpowers/specs/2026-04-22-rotate-extrude-and-sketch2d-recovery-design.md).
+
+**One-line summary:** axisymmetric meshes produce `rotate_extrude() polygon([...])` SCAD output. A Christmas-tree ornament becomes one sawtooth profile polygon and one revolve, not N stacked cones.
+
+**Why this is the critical path now:** the previous work package (rotated fixtures, cylinder as positive primitive, inventory guidance, negative-class fixtures) is complete. Building tier-2 primitives (cone/frustum/sphere/ellipsoid) as individual detectors duplicates signal the axisymmetric pipeline already produces — one detector subsumes all four. Sketch2D + `rotate_extrude` was previously listed under "Beyond dimensional parity #4" as the single largest outstanding roadmap win; promoting it ahead of individual tier-2 detectors avoids throwaway work.
+
+**Phase boundaries:**
+- **Phase 1:** axisymmetry test + radial slice + profile polygon + `rotate_extrude()` emission. Every axisymmetric solid emits as a polygon revolve.
+- **Phase 2:** profile classifier upgrades recognizable polygons to `cylinder()` / `cone()` / `sphere()` / frustum.
+- **Phase 3:** linear-extrude detector (same shape, translational symmetry instead of rotational). Deferred.
+- **Phase 4:** composition detector for meshes that are neither single-revolve nor single-extrude but compositions of such. Explicitly speculative until Phases 1-3 are in main.
+
+**Acceptance criteria for Phase 1:**
+1. Every Phase 1 `revolve_*` fixture round-trips with its expected profile within tolerance.
+2. A Christmas-tree-shaped input mesh emits a `rotate_extrude() polygon([...])` preview with fewer than 20 polygon points.
+3. No regressions in existing axis-aligned plate / box / cylinder detection.
+4. The three fixture invariants from [CLAUDE.md](../../CLAUDE.md) remain intact.
+
+---
+
+## Previous Work Package — status: fully shipped (2026-04-22)
+
+Tracks A–D, Boolean + Transform IR wrapping, chamfer/fillet IR promotion, rotated plate detection, cylinder as positive primitive, negative-class fixtures, and richer inventory-to-detector guidance are all complete.
 
 The track definitions below are retained for provenance and for the acceptance-criteria language they establish.
 
@@ -318,17 +346,18 @@ Plans in this doc span four sections (Real-World Feedback Loop, Immediate priori
 2. ~~**Track A (triage) must ship before Track B commits to specific variants.**~~ *Satisfied 2026-04-22. Triage shipped and was used to scope Track B's filleted-edge work.*
 3. ~~**Track C (labeled corpus + recall merge-gate) must exist before `scripts/tune_detector.py` is ever run as an optimization target.**~~ *Satisfied 2026-04-22. Merge-gate shipped in commit `5ee5081`; auto-tuning run followed, with results in [detector_autotune_results.md](detector_autotune_results.md).*
 4. ~~**Track D (grid-pattern SCAD emission) is independent.**~~ *Satisfied 2026-04-22. Grid-loop emission shipped.*
-5. **Boolean + Transform IR wrapping (Immediate #2) must ship before new positive primitives merge.** This is the new structural gate. Cylinder-as-positive-primitive (Immediate #5) and any future Tier-2 primitive (cone/frustum/sphere) depend on it for boolean-sign context; merging a cylinder detector without it reproduces the hole-surface misfire already observed on the current WIP branch.
-6. **Immediate priority #4 (rotated/composite fixtures) comes after Immediate #2 (IR wrapping).** Rotated features need a `TransformRotate` IR node to land in; adding rotated fixtures before the IR refactor produces output that has to be re-keyed later.
+5. ~~**Boolean + Transform IR wrapping must ship before new positive primitives merge.**~~ *Satisfied 2026-04-22. IR wrapping shipped in commit `4447707`; cylinder and rotated-plate detectors shipped after it with correct polarity/transform wrapping. The rule still logically applies to any NEW primitive class — it just has no outstanding blockers today.*
+6. ~~**Rotated/composite fixtures come after IR wrapping.**~~ *Satisfied 2026-04-22. Rotated-plate detection landed with `TransformRotate` wrapping already in place. Remaining rotated work (cutouts on rotated plates, rotated-box detector) is listed as Immediate priorities #2 and #3 and can proceed in any order against the current IR.*
 7. **"Beyond dimensional parity" items come after Immediate priorities are cleared.** They promote schema/ranking infrastructure, which pays off once the baseline detector is hitting more real parts. Running them earlier produces infrastructure for geometry the detector still can't handle.
 8. **Phase 3 (ABC dataset integration) is the last investment.** Start it only after Track C's recall baseline shows real-world pass-rate has measurably lifted. Supervised data cannot productively train a detector that cannot yet represent the features being supervised.
 9. **"Ongoing" items (tighter thresholds, user-assisted labeling, confidence gating) run cross-cutting.** They are not milestone-gated, but they should not overtake a blocked track — finish the blocked track first.
 
 **Cadence rule (regression fence):** after each Track completes, re-run triage (Track A) and re-score recall (Track C) before starting the next Track. A regression in either stops forward motion until the regression is explained or reverted. This prevents one Track's optimization from silently hurting another's target.
 
-**Parallelism summary (updated 2026-04-22):**
+**Parallelism summary (updated 2026-04-22 late):**
 
-- Completed: Tracks A, C, D (full) and B (substantially — box-preview parity is Immediate #1).
-- Critical path: Immediate #1 (close Track B) → Immediate #2 (IR wrapping) → Immediate #3 (Chamfer/Fillet IR) → Immediate #4 (rotated fixtures) → Immediate #5 (cylinder as positive primitive) → Immediate #6 (inventory-guided selection) → Beyond-dimensional-parity → Phase 3 (ABC).
-- Parallel to anything: Immediate #7 (negative-class fixtures) — valuable regression fence for any new primitive; Ongoing items.
+- Completed end-of-day 2026-04-22: Tracks A–D, IR wrapping, chamfer/fillet IR, rotated-plate detection, cylinder as positive primitive, negative-class fixtures, and richer inventory guidance.
+- Critical path: Immediate #1 (Sketch2D + `rotate_extrude` Phase 1) → Immediate #2 (rotated cutouts on rotated plates) → Immediate #3 (rotated-box detector) → Immediate #4 (Sketch2D + `rotate_extrude` Phase 2 / profile classification) → Phase 3 linear extrude → Phase 4 composition detector → ABC dataset (Phase 3 of Real-World Feedback Loop).
+- Parallel to anything: Ongoing items (threshold tightening, user-assisted labeling, confidence gating).
 - Cadence rule still applies: after each Immediate priority closes, re-run triage and re-score recall before starting the next.
+- Rule 5 (Boolean + Transform IR wrapping must precede new positive primitives) remains in force. The axisymmetric revolve detector is a new positive primitive class and inherits the existing `BooleanUnion` wrapping slot — no further IR prerequisite.

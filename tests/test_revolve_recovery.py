@@ -8,6 +8,7 @@ import numpy as np
 from stl2scad.tuning.config import DetectorConfig
 from stl2scad.core.revolve_recovery import candidate_revolution_axis
 from stl2scad.core.revolve_recovery import extract_radial_slice
+from stl2scad.core.revolve_recovery import cross_slice_consistency
 
 
 def test_detector_config_has_revolve_defaults():
@@ -102,3 +103,18 @@ def test_extract_radial_slice_matches_across_angles_for_cylinder():
     assert np.max(slice_0[:, 0]) == pytest.approx(np.max(slice_90[:, 0]), abs=0.15)
     assert np.min(slice_0[:, 1]) == pytest.approx(np.min(slice_90[:, 1]), abs=0.1)
     assert np.max(slice_0[:, 1]) == pytest.approx(np.max(slice_90[:, 1]), abs=0.1)
+
+
+def test_cross_slice_consistency_agrees_for_matching_slices():
+    slice_a = np.array([[0.0, 0.0], [5.0, 0.0], [5.0, 10.0], [0.0, 10.0]])
+    slice_b = slice_a.copy()
+    slice_c = slice_a.copy()
+    score = cross_slice_consistency([slice_a, slice_b, slice_c], mesh_scale=10.0)
+    assert score >= 0.99
+
+
+def test_cross_slice_consistency_rejects_keyway():
+    smooth = np.array([[0.0, 0.0], [5.0, 0.0], [5.0, 10.0], [0.0, 10.0]])
+    keyway = np.array([[0.0, 0.0], [5.0, 0.0], [5.0, 4.0], [3.0, 5.0], [5.0, 6.0], [5.0, 10.0], [0.0, 10.0]])
+    score = cross_slice_consistency([smooth, smooth, keyway], mesh_scale=10.0)
+    assert score < 0.7

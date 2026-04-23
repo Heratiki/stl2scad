@@ -147,3 +147,50 @@ def extract_radial_slice(
     polyline = polyline[np.sort(unique_idx)]
     order = np.argsort(polyline[:, 1])
     return polyline[order]
+
+
+def cross_slice_consistency(
+    slices_rz: list[np.ndarray],
+    mesh_scale: float,
+    num_samples: int = 64,
+) -> float:
+    """Return a consistency score in [0, 1] across multiple (r, z) slices.
+
+    Each slice is an (N, 2) array of (r, z) points ordered by z. We
+    resample every slice to a common set of `num_samples` z-positions,
+    interpolate r at each sample, and compute the mean relative disagreement.
+
+    A score of 1.0 means all slices agree within the mesh tolerance; 0.0
+    means total disagreement.
+    """
+    if len(slices_rz) < 2:
+        return 0.0
+    if mesh_scale <= 0.0:
+        return 0.0
+
+    z_mins = [float(s[:, 1].min()) for s in slices_rz]
+    z_maxs = [float(s[:, 1].max()) for s in slices_rz]
+    z_lo = max(z_mins)
+    z_hi = min(z_maxs)
+    if z_hi <= z_lo:
+        return 0.0
+
+    z_samples = np.linspace(z_lo, z_hi, num_samples)
+
+    def _interp_r(sl: np.ndarray, zs: np.ndarray) -> np.ndarray:
+        z = sl[:, 1]
+        r = sl[:, 0]
+        order = np.argsort(z)
+        return np.interp(zs, z[order], r[order])
+
+    r_profiles = np.vstack([_interp_r(s, z_samples) for s in slices_rz])
+
+    per_sample_spread = r_profiles.max(axis=0) - r_profiles.min(axis=0)
+    mean_spread = float(per_sample_spread.mean())
+    max_spread = float(per_sample_spread.max())
+
+    # Use a blend of mean and max to catch both global drift and localised
+    # features (e.g. keyways) that raise max but not mean.
+    blended = 0.5 * mean_spread + 0.5 * max_spread
+    relative = blended / float(mesh_scale)
+    return float(max(0.0, 1.0 - relative * 10.0))

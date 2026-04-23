@@ -194,3 +194,65 @@ def cross_slice_consistency(
     blended = 0.5 * mean_spread + 0.5 * max_spread
     relative = blended / float(mesh_scale)
     return float(max(0.0, 1.0 - relative * 10.0))
+
+
+def aggregate_profile(
+    slices_rz: list[np.ndarray],
+    num_samples: int = 128,
+) -> np.ndarray:
+    """Aggregate K (r, z) slices into one representative profile via per-z median r."""
+    if not slices_rz:
+        return np.empty((0, 2), dtype=np.float64)
+
+    z_mins = [float(s[:, 1].min()) for s in slices_rz]
+    z_maxs = [float(s[:, 1].max()) for s in slices_rz]
+    z_lo = max(z_mins)
+    z_hi = min(z_maxs)
+    if z_hi <= z_lo:
+        return np.empty((0, 2), dtype=np.float64)
+
+    z_samples = np.linspace(z_lo, z_hi, num_samples)
+
+    r_profiles = []
+    for s in slices_rz:
+        order = np.argsort(s[:, 1])
+        r_profiles.append(np.interp(z_samples, s[order, 1], s[order, 0]))
+    r_median = np.median(np.vstack(r_profiles), axis=0)
+
+    return np.column_stack([r_median, z_samples])
+
+
+def douglas_peucker_2d(points: np.ndarray, tolerance: float) -> np.ndarray:
+    """Simplify a 2D polyline by Douglas-Peucker."""
+    if len(points) <= 2:
+        return points.copy()
+
+    def _perp_distance(pt: np.ndarray, start: np.ndarray, end: np.ndarray) -> float:
+        seg = end - start
+        seg_len = float(np.linalg.norm(seg))
+        if seg_len < 1e-12:
+            return float(np.linalg.norm(pt - start))
+        return float(abs(np.cross(seg, pt - start)) / seg_len)
+
+    def _recurse(idx_lo: int, idx_hi: int, keep: list[bool]) -> None:
+        if idx_hi <= idx_lo + 1:
+            return
+        start = points[idx_lo]
+        end = points[idx_hi]
+        max_dist = 0.0
+        max_idx = idx_lo
+        for i in range(idx_lo + 1, idx_hi):
+            d = _perp_distance(points[i], start, end)
+            if d > max_dist:
+                max_dist = d
+                max_idx = i
+        if max_dist > tolerance:
+            keep[max_idx] = True
+            _recurse(idx_lo, max_idx, keep)
+            _recurse(max_idx, idx_hi, keep)
+
+    keep = [False] * len(points)
+    keep[0] = True
+    keep[-1] = True
+    _recurse(0, len(points) - 1, keep)
+    return points[np.asarray(keep)]

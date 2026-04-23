@@ -9,6 +9,7 @@ from stl2scad.tuning.config import DetectorConfig
 from stl2scad.core.revolve_recovery import candidate_revolution_axis
 from stl2scad.core.revolve_recovery import extract_radial_slice
 from stl2scad.core.revolve_recovery import cross_slice_consistency
+from stl2scad.core.revolve_recovery import aggregate_profile, douglas_peucker_2d
 
 
 def test_detector_config_has_revolve_defaults():
@@ -118,3 +119,29 @@ def test_cross_slice_consistency_rejects_keyway():
     keyway = np.array([[0.0, 0.0], [5.0, 0.0], [5.0, 4.0], [3.0, 5.0], [5.0, 6.0], [5.0, 10.0], [0.0, 10.0]])
     score = cross_slice_consistency([smooth, smooth, keyway], mesh_scale=10.0)
     assert score < 0.7
+
+
+def test_aggregate_profile_returns_median_r():
+    a = np.array([[4.8, 0.0], [4.8, 10.0]])
+    b = np.array([[5.0, 0.0], [5.0, 10.0]])
+    c = np.array([[5.2, 0.0], [5.2, 10.0]])
+    profile = aggregate_profile([a, b, c], num_samples=2)
+    assert profile.shape == (2, 2)
+    assert profile[0, 0] == pytest.approx(5.0, abs=1e-6)
+    assert profile[1, 0] == pytest.approx(5.0, abs=1e-6)
+
+
+def test_douglas_peucker_preserves_corners():
+    dense_side = np.linspace(0, 10, 20)
+    pts = np.vstack([
+        np.column_stack([np.zeros_like(dense_side), dense_side]),
+        np.column_stack([np.full_like(dense_side, 5.0), dense_side[::-1]]),
+    ])
+    simplified = douglas_peucker_2d(pts, tolerance=0.01)
+    assert 2 <= len(simplified) <= 6
+
+
+def test_douglas_peucker_reduces_collinear_points():
+    line = np.column_stack([np.linspace(0, 10, 100), np.zeros(100)])
+    simplified = douglas_peucker_2d(line, tolerance=0.01)
+    assert len(simplified) == 2

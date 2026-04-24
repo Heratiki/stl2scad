@@ -331,41 +331,58 @@ def build_feature_graph_for_stl(
         bbox,
         config=resolved,
     )
-    # Try cylinder detection.  If a cylinder is found with sufficient confidence
-    # it takes priority over plate/box classification — a disk is a cylinder,
-    # not a plate.  Axis-boundary-plane-pair entries are kept for triage metadata.
-    cylinder_features = _extract_cylinder_like_solid(
-        normals,
-        face_areas,
-        bbox,
-        vertices=vectors,
-        config=resolved,
+    # --- Rule 1: revolve recovery runs first (Rule 3: one-owner). ---
+    from stl2scad.core.revolve_recovery import detect_revolve_solid
+    # Deduplicate the per-triangle vertex soup into a clean vertex + index table
+    # so that revolve_recovery's covariance and profile computations are not
+    # skewed by the repeated vertices present in the raw STL format.
+    _rounded = np.round(points, decimals=6)
+    _, _inv, _counts = np.unique(
+        _rounded, axis=0, return_inverse=True, return_counts=True
     )
-    if cylinder_features:
+    unique_verts, _inv_idx = np.unique(_rounded, axis=0, return_inverse=True)
+    triangles_indices = _inv_idx.reshape(-1, 3).astype(np.int64)
+    revolve_features = detect_revolve_solid(unique_verts, triangles_indices, config=resolved)
+    if revolve_features:
         plane_pairs = [f for f in box_features if f.get("type") == "axis_boundary_plane_pair"]
-        features = plane_pairs + cylinder_features
+        features = plane_pairs + revolve_features
     else:
-        # If no axis-aligned solid was found, try the rotated-plate detector.
-        solid_found = any(
-            f.get("type") in ("plate_like_solid", "box_like_solid") for f in box_features
-        )
-        rotated_plate_features = (
-            _extract_rotated_plate_solid(normals, face_areas, bbox, vectors, resolved)
-            if not solid_found
-            else []
-        )
-        features = box_features + rotated_plate_features
-    features.extend(
-        _extract_axis_aligned_through_holes(
-            vectors,
+        # Try cylinder detection.  If a cylinder is found with sufficient confidence
+        # it takes priority over plate/box classification — a disk is a cylinder,
+        # not a plate.  Axis-boundary-plane-pair entries are kept for triage metadata.
+        cylinder_features = _extract_cylinder_like_solid(
             normals,
             face_areas,
             bbox,
-            features,
+            vertices=vectors,
             config=resolved,
         )
-    )
-    features.extend(_extract_repeated_hole_patterns(features, config=resolved))
+        if cylinder_features:
+            plane_pairs = [f for f in box_features if f.get("type") == "axis_boundary_plane_pair"]
+            features = plane_pairs + cylinder_features
+        else:
+            # If no axis-aligned solid was found, try the rotated-plate detector.
+            solid_found = any(
+                f.get("type") in ("plate_like_solid", "box_like_solid") for f in box_features
+            )
+            rotated_plate_features = (
+                _extract_rotated_plate_solid(normals, face_areas, bbox, vectors, resolved)
+                if not solid_found
+                else []
+            )
+            features = box_features + rotated_plate_features
+    if not revolve_features:
+        features.extend(
+            _extract_axis_aligned_through_holes(
+                vectors,
+                normals,
+                face_areas,
+                bbox,
+                features,
+                config=resolved,
+            )
+        )
+        features.extend(_extract_repeated_hole_patterns(features, config=resolved))
 
     graph: dict[str, Any] = {
         "schema_version": 1,

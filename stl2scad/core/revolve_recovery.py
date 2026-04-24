@@ -381,7 +381,13 @@ def detect_revolve_solid(
     # §1.4 Profile validity
     if len(profile) > config.revolve_profile_max_vertices:
         return []
-    profile_validity = 1.0 if float(profile[:, 0].min()) < 1e-3 * mesh_scale else 0.0
+    # Use the raw slices (already verified to touch the axis in §1.2) rather
+    # than the aggregated simplified profile to determine profile_validity.
+    # The median aggregation in aggregate_profile can lose the r=0 cap points
+    # for solids with flat end-caps (e.g. cylinders), so checking the profile
+    # min-r would falsely reject valid revolve candidates.
+    slices_min_r = min(float(sl[:, 0].min()) for sl in slices)
+    profile_validity = 1.0 if slices_min_r < 1e-3 * mesh_scale else 0.0
     if profile_validity < 1.0:
         return []
 

@@ -503,10 +503,14 @@ def test_feature_graph_extracts_slot_with_light_mesh_noise(test_output_dir):
 
 
 def test_feature_graph_scad_preview_declines_without_plate(test_data_dir):
+    # primitive_sphere.stl is now detected as revolve_solid (axisymmetric recovery
+    # correctly identifies it as a solid of revolution), so it produces a preview.
+    # Use composite_cylinder_beside_box.stl — a composite that passes no single-solid
+    # detector — as the canonical "no preview" fixture.
     fixtures_dir = test_data_dir / "benchmark_fixtures"
     ensure_benchmark_fixtures(fixtures_dir)
 
-    graph = build_feature_graph_for_stl(fixtures_dir / "primitive_sphere.stl")
+    graph = build_feature_graph_for_stl(fixtures_dir / "composite_cylinder_beside_box.stl")
 
     assert emit_feature_graph_scad_preview(graph) is None
 
@@ -1739,3 +1743,40 @@ def test_emit_revolve_scad_preview_generates_rotate_extrude():
     assert "rotate_extrude" in scad
     assert "polygon" in scad
     assert "5" in scad and "10" in scad
+
+
+def test_build_feature_graph_detects_revolve_before_cylinder(tmp_path):
+    """Rule 1: revolve recovery runs before cylinder detection."""
+    import numpy as np
+    from stl.mesh import Mesh as StlMesh
+    from stl2scad.core.feature_graph import build_feature_graph_for_stl
+
+    def _cyl(h, r, seg):
+        theta = np.linspace(0, 2*np.pi, seg, endpoint=False)
+        br = np.column_stack([r*np.cos(theta), r*np.sin(theta), np.zeros_like(theta)])
+        tr = np.column_stack([r*np.cos(theta), r*np.sin(theta), np.full_like(theta, h)])
+        cb = np.array([0.0, 0.0, 0.0])
+        ct = np.array([0.0, 0.0, h])
+        verts = np.vstack([br, tr, cb, ct])
+        icb = 2*seg
+        ict = 2*seg+1
+        tris = []
+        for i in range(seg):
+            j = (i+1) % seg
+            tris.append([icb, j, i])
+            tris.append([ict, seg+i, seg+j])
+            tris.append([i, j, seg+j])
+            tris.append([i, seg+j, seg+i])
+        return verts, np.asarray(tris, dtype=np.int64)
+
+    verts, tris = _cyl(10.0, 5.0, 64)
+    mesh = StlMesh(np.zeros(len(tris), dtype=StlMesh.dtype))
+    for fi, tri in enumerate(tris):
+        mesh.vectors[fi] = verts[tri]
+    stl_path = tmp_path / "cyl.stl"
+    mesh.save(str(stl_path))
+
+    graph = build_feature_graph_for_stl(stl_path)
+    types = [f["type"] for f in graph["features"]]
+    assert types.count("revolve_solid") == 1
+    assert types.count("cylinder_like_solid") == 0

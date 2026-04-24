@@ -166,6 +166,10 @@ def generate_feature_fixture_scad(fixture: dict[str, Any]) -> str:
         return _generate_cone_fixture_scad(normalized)
     if fixture_type == "prism":
         return _generate_prism_fixture_scad(normalized)
+    if fixture_type == "revolve":
+        return _generate_revolve_fixture_scad(normalized)
+    if fixture_type == "non_revolve":
+        return _generate_non_revolve_fixture_scad(normalized)
     raise ValueError(f"Unsupported feature fixture type '{fixture_type}'")
 
 
@@ -1735,4 +1739,74 @@ def _generate_prism_fixture_scad(fixture: dict[str, Any]) -> str:
             ""
         ]
     )
+    return "\n".join(lines)
+
+
+def _generate_revolve_fixture_scad(fixture: dict[str, Any]) -> str:
+    profile = fixture["profile"]
+    axis = str(fixture.get("axis", "z"))
+    lines = _fixture_header_lines(fixture)
+    pts = ",\n    ".join(f"[{float(r):.6f}, {float(z):.6f}]" for r, z in profile)
+    lines.extend([
+        "profile = [",
+        f"    {pts}",
+        "];",
+        "",
+    ])
+    rotate_prefix = {"z": "", "x": "rotate([0, 90, 0]) ", "y": "rotate([-90, 0, 0]) "}.get(axis, "")
+    lines.extend([
+        f"{rotate_prefix}rotate_extrude($fn=128) polygon(points=profile);",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def _generate_non_revolve_fixture_scad(fixture: dict[str, Any]) -> str:
+    shape = str(fixture.get("shape", "")).lower()
+    size = [float(v) for v in fixture.get("size", [1.0, 1.0, 1.0])]
+    lines = _fixture_header_lines(fixture)
+    if shape == "cube":
+        lines.extend([
+            f"size = [{size[0]:.6f}, {size[1]:.6f}, {size[2]:.6f}];",
+            "",
+            f"translate([-{size[0]/2:.6f}, -{size[1]/2:.6f}, 0]) cube(size);",
+            "",
+        ])
+    elif shape == "square_prism":
+        lines.extend([
+            f"side = {size[0]:.6f};",
+            f"height = {size[2]:.6f};",
+            "",
+            "translate([-side/2, -side/2, 0]) linear_extrude(height) square(side);",
+            "",
+        ])
+    elif shape == "symmetric_composite":
+        lines.extend([
+            f"plate = [{size[0]:.6f}, {size[1]:.6f}, {size[2]:.6f}];",
+            "",
+            "translate([-plate[0]/2, -plate[1]/2, 0]) cube(plate);",
+            f"translate([{size[0]*0.3:.6f}, 0, {size[2]:.6f}]) cylinder(h={size[2]/2:.6f}, d={size[0]*0.2:.6f});",
+            f"translate([-{size[0]*0.3:.6f}, 0, {size[2]:.6f}]) cylinder(h={size[2]/2:.6f}, d={size[0]*0.2:.6f});",
+            "",
+        ])
+    elif shape == "shaft_with_keyway":
+        diameter = float(size[0])
+        height = float(size[2])
+        keyway_width = diameter * 0.25
+        keyway_depth = diameter * 0.15
+        lines.extend([
+            f"diameter = {diameter:.6f};",
+            f"height = {height:.6f};",
+            f"keyway_width = {keyway_width:.6f};",
+            f"keyway_depth = {keyway_depth:.6f};",
+            "",
+            "difference() {",
+            "    cylinder(h=height, d=diameter, center=false);",
+            "    translate([diameter/2 - keyway_depth, -keyway_width/2, height*0.2])",
+            "        cube([keyway_depth + 0.1, keyway_width, height*0.6]);",
+            "}",
+            "",
+        ])
+    else:
+        raise ValueError(f"Unknown non_revolve shape '{shape}'")
     return "\n".join(lines)

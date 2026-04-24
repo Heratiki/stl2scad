@@ -1440,3 +1440,43 @@ def test_fixture_type_non_revolve_accepts_rejection_gate():
     result = validate_feature_fixture_spec(spec, schema_version=1)
     assert result["fixture_type"] == "non_revolve"
     assert result["expected_rejection_gate"] == "cross_slice_consistency"
+
+
+def test_generate_revolve_fixture_scad_contains_rotate_extrude():
+    from stl2scad.core.feature_fixtures import generate_feature_fixture_scad
+
+    fixture = {
+        "name": "revolve_test",
+        "fixture_type": "revolve",
+        "output_filename": "revolve_test.scad",
+        "profile": [[0.0, 0.0], [5.0, 0.0], [5.0, 10.0], [0.0, 10.0]],
+        "axis": "z",
+        "expected_detection": {
+            "revolve_solid": True, "plate_like_solid": False, "box_like_solid": False,
+            "hole_count": 0, "slot_count": 0,
+            "linear_pattern_count": 0, "grid_pattern_count": 0, "counterbore_count": 0
+        },
+    }
+    scad = generate_feature_fixture_scad(fixture)
+    assert "rotate_extrude" in scad
+    assert "polygon" in scad
+    assert "5" in scad and "10" in scad
+
+
+def test_generate_non_revolve_cube_scad_contains_cube():
+    from stl2scad.core.feature_fixtures import generate_feature_fixture_scad
+
+    fixture = {
+        "name": "non_revolve_cube",
+        "fixture_type": "non_revolve",
+        "output_filename": "non_revolve_cube.scad",
+        "shape": "cube",
+        "size": [10.0, 10.0, 10.0],
+        "expected_detection": {
+            "revolve_solid": False, "box_like_solid": True, "plate_like_solid": False,
+            "hole_count": 0, "slot_count": 0,
+            "linear_pattern_count": 0, "grid_pattern_count": 0, "counterbore_count": 0
+        },
+    }
+    scad = generate_feature_fixture_scad(fixture)
+    assert "cube" in scad

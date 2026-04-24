@@ -24,11 +24,10 @@ def candidate_revolution_axis(
     """Return (axis, axis_origin, axis_quality) via inertia-tensor prefilter.
 
     A solid of revolution has two equal principal moments and one distinct
-    moment.  `axis_quality` is 1 minus the relative spread of the two
-    smallest eigenvalues — closer to 1.0 means two of the covariance
-    moments are perfectly paired (good revolution candidate); closer to 0.0
-    means all three are equally spread (cube-like) or the pairing breaks
-    down.
+    moment.  `axis_quality` is 1 minus the relative spread of the closest
+    eigenvalue pair — closer to 1.0 means two covariance moments are
+    perfectly paired (good revolution candidate); closer to 0.0 means the
+    pairing breaks down.
 
     Returns (None, None, 0.0) for degenerate meshes. The caller applies the
     `revolve_axis_quality_min` threshold from DetectorConfig.
@@ -64,20 +63,20 @@ def candidate_revolution_axis(
     lo, mid, hi = eigenvalues[order]
 
     # For a surface of revolution the covariance has two equal eigenvalues
-    # (the two axes perpendicular to the revolution axis) and one distinct
-    # eigenvalue (the revolution axis itself).  In a covariance matrix the
-    # spread *along* the revolution axis dominates, so the revolution axis
-    # is the eigenvector for the *largest* (hi) eigenvalue.
-    #
-    # axis_quality: 1.0 means lo==mid perfectly (pure solid of revolution);
-    # 0.0 means all eigenvalues are equal (sphere or cube).
+    # and one distinct eigenvalue.  The distinct value can be the largest
+    # (tall cylinder) or the smallest (short disk), so choose the eigenvector
+    # outside the closest eigenvalue pair.
     span = hi - lo
     if span < 1e-12:
         return None, None, 0.0
 
-    axis_quality = 1.0 - float((mid - lo) / span)
-
-    axis = eigenvectors[:, order[2]].copy()
+    if abs(mid - lo) <= abs(hi - mid):
+        close_spread = mid - lo
+        axis = eigenvectors[:, order[2]].copy()
+    else:
+        close_spread = hi - mid
+        axis = eigenvectors[:, order[0]].copy()
+    axis_quality = 1.0 - float(close_spread / span)
     axis = axis / float(np.linalg.norm(axis))
 
     # Canonical sign: positive along the dominant component.
@@ -102,7 +101,7 @@ def extract_radial_slice(
     has zero component along the in-plane binormal and non-negative component
     along the in-plane radial direction.
 
-    Returns None if the intersection is degenerate (fewer than 3 points).
+    Returns None if the intersection is degenerate (fewer than 2 points).
     """
     axis = np.asarray(axis, dtype=np.float64)
     axis = axis / float(np.linalg.norm(axis))
@@ -139,7 +138,7 @@ def extract_radial_slice(
             z = float(z_coord[e0] + t * (z_coord[e1] - z_coord[e0]))
             intersections.append((r, z))
 
-    if len(intersections) < 3:
+    if len(intersections) < 2:
         return None
 
     polyline = np.asarray(intersections, dtype=np.float64)
@@ -260,6 +259,39 @@ def douglas_peucker_2d(points: np.ndarray, tolerance: float) -> np.ndarray:
     return points[np.asarray(keep)]
 
 
+def _close_axis_touching_profile(
+    profile: np.ndarray,
+    slices_rz: list[np.ndarray],
+    mesh_scale: float,
+) -> np.ndarray:
+    """Add axis endpoints to profiles whose raw slices touch the revolution axis.
+
+    OpenSCAD cap triangulation does not guarantee every sampled half-plane has
+    an edge crossing the exact axis.  The raw slice set can still prove the
+    profile is non-annular when at least one cap slice touches r=0; in that
+    case, close the polygon on the axis so the emitted rotate_extrude is solid
+    instead of tube-like.
+    """
+    if len(profile) == 0 or not slices_rz:
+        return profile
+
+    axis_tol = 1e-3 * mesh_scale
+    if min(float(sl[:, 0].min()) for sl in slices_rz) > axis_tol:
+        return profile
+
+    all_points = np.vstack(slices_rz)
+    z_lo = float(all_points[:, 1].min())
+    z_hi = float(all_points[:, 1].max())
+    z_tol = max(mesh_scale * 1e-6, 1e-6)
+
+    closed = profile.copy()
+    if abs(float(closed[0, 1]) - z_lo) <= z_tol and float(closed[0, 0]) > axis_tol:
+        closed = np.vstack([[0.0, z_lo], closed])
+    if abs(float(closed[-1, 1]) - z_hi) <= z_tol and float(closed[-1, 0]) > axis_tol:
+        closed = np.vstack([closed, [0.0, z_hi]])
+    return closed
+
+
 def normal_field_agreement(
     vertices: np.ndarray,
     triangles: np.ndarray,
@@ -351,12 +383,16 @@ def detect_revolve_solid(
     for k in range(K):
         angle = np.pi * float(k) / float(K)
         sl = extract_radial_slice(vertices, triangles, axis, origin, angle)
-        if sl is None or len(sl) < 3:
-            return []
-        # Phase 1 excludes annular: every slice must touch the axis.
-        if float(sl[:, 0].min()) > 1e-3 * mesh_scale:
+        if sl is None or len(sl) < 2:
             return []
         slices.append(sl)
+
+    # Phase 1 excludes annular revolves.  Use the whole slice set rather than
+    # requiring every sampled half-plane to hit r=0; rendered cap triangulation
+    # can miss the exact axis for some angles even on solid cylinders.
+    slices_min_r = min(float(sl[:, 0].min()) for sl in slices)
+    if slices_min_r > 1e-3 * mesh_scale:
+        return []
 
     # Pre-process slices for cross-consistency: keep max-r per z-level so that
     # flat-cap interior crossings (which vary per angle) do not inflate the
@@ -374,6 +410,7 @@ def detect_revolve_solid(
         return []
     dp_tol = mesh_scale * config.revolve_douglas_peucker_tolerance_ratio
     profile = douglas_peucker_2d(profile_raw, tolerance=dp_tol)
+    profile = _close_axis_touching_profile(profile, slices, mesh_scale)
 
     # §1.3 Normal-field agreement
     nf_score = normal_field_agreement(vertices, triangles, axis, origin)
@@ -388,7 +425,6 @@ def detect_revolve_solid(
     # The median aggregation in aggregate_profile can lose the r=0 cap points
     # for solids with flat end-caps (e.g. cylinders), so checking the profile
     # min-r would falsely reject valid revolve candidates.
-    slices_min_r = min(float(sl[:, 0].min()) for sl in slices)
     profile_validity = 1.0 if slices_min_r < 1e-3 * mesh_scale else 0.0
     if profile_validity < 1.0:
         return []

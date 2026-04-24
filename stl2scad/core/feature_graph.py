@@ -347,24 +347,26 @@ def build_feature_graph_for_stl(
         plane_pairs = [f for f in box_features if f.get("type") == "axis_boundary_plane_pair"]
         features = plane_pairs + revolve_features
     else:
-        # Try cylinder detection.  If a cylinder is found with sufficient confidence
-        # it takes priority over plate/box classification — a disk is a cylinder,
-        # not a plate.  Axis-boundary-plane-pair entries are kept for triage metadata.
-        cylinder_features = _extract_cylinder_like_solid(
-            normals,
-            face_areas,
-            bbox,
-            vertices=vectors,
-            config=resolved,
+        solid_found = any(
+            f.get("type") in ("plate_like_solid", "box_like_solid") for f in box_features
+        )
+        box_found = any(f.get("type") == "box_like_solid" for f in box_features)
+        cylinder_features = (
+            []
+            if box_found
+            else _extract_cylinder_like_solid(
+                normals,
+                face_areas,
+                bbox,
+                vertices=vectors,
+                config=resolved,
+            )
         )
         if cylinder_features:
             plane_pairs = [f for f in box_features if f.get("type") == "axis_boundary_plane_pair"]
             features = plane_pairs + cylinder_features
         else:
             # If no axis-aligned solid was found, try the rotated-plate detector.
-            solid_found = any(
-                f.get("type") in ("plate_like_solid", "box_like_solid") for f in box_features
-            )
             rotated_plate_features = (
                 _extract_rotated_plate_solid(normals, face_areas, bbox, vectors, resolved)
                 if not solid_found

@@ -254,6 +254,9 @@ def test_feature_graph_extracts_box_through_hole(test_output_dir, axis):
     ]
 
     assert len(box_features) == 1
+    assert not any(
+        feature["type"] == "cylinder_like_solid" for feature in graph["features"]
+    )
     assert len(holes) == 1
     assert holes[0]["axis"] == axis
     assert holes[0]["source_parent_type"] == "box_like_solid"

@@ -1163,7 +1163,8 @@
           "name": "cylinder_along_z",
           "confidence": 0.95,
           "expected_detection": {
-            "cylinder_like_solid": true,
+            "revolve_solid": true,
+            "cylinder_like_solid": false,
             "plate_like_solid": false,
             "box_like_solid": false,
             "hole_count": 0,
@@ -1189,7 +1190,8 @@
           "name": "disk_cylinder",
           "confidence": 0.90,
           "expected_detection": {
-            "cylinder_like_solid": true,
+            "revolve_solid": true,
+            "cylinder_like_solid": false,
             "plate_like_solid": false,
             "box_like_solid": false,
             "hole_count": 0,
@@ -1215,7 +1217,8 @@
           "name": "cylinder_along_x",
           "confidence": 0.90,
           "expected_detection": {
-            "cylinder_like_solid": true,
+            "revolve_solid": true,
+            "cylinder_like_solid": false,
             "plate_like_solid": false,
             "box_like_solid": false,
             "hole_count": 0,
@@ -1249,6 +1252,262 @@
           "expected_detection": {
             "plate_like_solid": true,
             "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "revolve_rectangle_profile",
+      "fixture_type": "revolve",
+      "description": "Rectangle profile revolved around Z; generic Phase 1 cylinder-like revolve.",
+      "output_filename": "revolve_rectangle_profile.scad",
+      "profile": [[0.0, 0.0], [5.0, 0.0], [5.0, 10.0], [0.0, 10.0]],
+      "axis": "z",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "revolve_solid": true,
+            "cylinder_like_solid": false,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "revolve_triangle_profile",
+      "fixture_type": "revolve",
+      "description": "Triangle profile revolved around Z; generic Phase 1 cone-like revolve.",
+      "output_filename": "revolve_triangle_profile.scad",
+      "profile": [[0.0, 0.0], [6.0, 0.0], [0.0, 12.0]],
+      "axis": "z",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "revolve_solid": true,
+            "cylinder_like_solid": false,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "revolve_semicircle_profile",
+      "fixture_type": "revolve",
+      "description": "Semicircle-like profile revolved around Z; generic Phase 1 sphere-like revolve.",
+      "output_filename": "revolve_semicircle_profile.scad",
+      "profile": [[0.0, -5.0], [2.5, -4.330127], [4.330127, -2.5], [5.0, 0.0], [4.330127, 2.5], [2.5, 4.330127], [0.0, 5.0]],
+      "axis": "z",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "revolve_solid": true,
+            "cylinder_like_solid": false,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "revolve_christmas_tree",
+      "fixture_type": "revolve",
+      "description": "Sawtooth tree profile that should emit one compact rotate_extrude polygon.",
+      "output_filename": "revolve_christmas_tree.scad",
+      "profile": [[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [4.0, 2.0], [3.0, 4.0], [5.0, 4.0], [3.0, 6.0], [6.0, 6.0], [0.0, 9.0]],
+      "axis": "z",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.90,
+          "expected_detection": {
+            "revolve_solid": true,
+            "cylinder_like_solid": false,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "revolve_vase",
+      "fixture_type": "revolve",
+      "description": "Vase-like radius profile for generic polygon revolve recovery.",
+      "output_filename": "revolve_vase.scad",
+      "profile": [[0.0, 0.0], [3.0, 0.0], [4.0, 2.0], [2.5, 4.0], [5.0, 7.0], [4.0, 10.0], [0.0, 10.0]],
+      "axis": "z",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.90,
+          "expected_detection": {
+            "revolve_solid": true,
+            "cylinder_like_solid": false,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "revolve_stepped_shaft",
+      "fixture_type": "revolve",
+      "description": "Stepped shaft profile for generic polygon revolve recovery.",
+      "output_filename": "revolve_stepped_shaft.scad",
+      "profile": [[0.0, 0.0], [4.0, 0.0], [4.0, 3.0], [6.0, 3.0], [6.0, 7.0], [3.0, 7.0], [3.0, 10.0], [0.0, 10.0]],
+      "axis": "z",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.90,
+          "expected_detection": {
+            "revolve_solid": true,
+            "cylinder_like_solid": false,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "non_revolve_cube",
+      "fixture_type": "non_revolve",
+      "description": "Unit cube. Balanced inertia tensor edge-case; must be rejected.",
+      "output_filename": "non_revolve_cube.scad",
+      "shape": "cube",
+      "size": [10.0, 10.0, 10.0],
+      "expected_rejection_gate": "axis_quality",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "revolve_solid": false,
+            "box_like_solid": true,
+            "plate_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "non_revolve_square_prism",
+      "fixture_type": "non_revolve",
+      "description": "Square cross-section extruded along Z; cross-slice radial profiles differ by angle.",
+      "output_filename": "non_revolve_square_prism.scad",
+      "shape": "square_prism",
+      "size": [10.0, 10.0, 20.0],
+      "expected_rejection_gate": "cross_slice_consistency",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.90,
+          "expected_detection": {
+            "revolve_solid": false,
+            "box_like_solid": true,
+            "plate_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "non_revolve_symmetric_composite",
+      "fixture_type": "non_revolve",
+      "description": "Plate with mirrored bosses; symmetric but not a revolve.",
+      "output_filename": "non_revolve_symmetric_composite.scad",
+      "shape": "symmetric_composite",
+      "size": [30.0, 10.0, 4.0],
+      "expected_rejection_gate": "cross_slice_consistency",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.85,
+          "expected_detection": {
+            "revolve_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "non_revolve_shaft_with_keyway",
+      "fixture_type": "non_revolve",
+      "description": "Near-axisymmetric shaft with one axial keyway slot.",
+      "output_filename": "non_revolve_shaft_with_keyway.scad",
+      "shape": "shaft_with_keyway",
+      "size": [10.0, 10.0, 20.0],
+      "expected_rejection_gate": "cross_slice_consistency",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.88,
+          "expected_detection": {
+            "revolve_solid": false,
             "hole_count": 0,
             "slot_count": 0,
             "linear_pattern_count": 0,

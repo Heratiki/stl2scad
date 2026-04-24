@@ -46,6 +46,27 @@ def _make_cylinder_mesh(height: float = 10.0, radius: float = 5.0, segments: int
     return vertices, np.asarray(tris, dtype=np.int64)
 
 
+def _make_cylinder_mesh_without_cap_centers(
+    height: float = 10.0,
+    radius: float = 5.0,
+    segments: int = 32,
+):
+    """Return a cylinder whose caps are triangulated from ring vertices only."""
+    theta = np.linspace(0.0, 2 * np.pi, segments, endpoint=False)
+    bottom_ring = np.column_stack([radius * np.cos(theta), radius * np.sin(theta), np.zeros_like(theta)])
+    top_ring = np.column_stack([radius * np.cos(theta), radius * np.sin(theta), np.full_like(theta, height)])
+    vertices = np.vstack([bottom_ring, top_ring])
+    tris = []
+    for i in range(1, segments - 1):
+        tris.append([0, i + 1, i])
+        tris.append([segments, segments + i, segments + i + 1])
+    for i in range(segments):
+        j = (i + 1) % segments
+        tris.append([i, j, segments + j])
+        tris.append([i, segments + j, segments + i])
+    return vertices, np.asarray(tris, dtype=np.int64)
+
+
 def test_candidate_axis_detects_z_for_cylinder():
     verts, tris = _make_cylinder_mesh(height=10.0, radius=5.0, segments=32)
     axis, origin, axis_quality = candidate_revolution_axis(verts, tris)
@@ -196,6 +217,25 @@ def test_detect_revolve_solid_accepts_cylinder():
         assert 0.0 <= float(comps[key]) <= 1.0
     rs = [p[0] for p in feat["profile"]]
     assert min(rs) < 0.5
+
+
+def test_detect_revolve_solid_accepts_cylinder_without_cap_center_vertices():
+    verts, tris = _make_cylinder_mesh_without_cap_centers(height=10.0, radius=5.0, segments=64)
+    features = detect_revolve_solid(verts, tris, DetectorConfig())
+
+    assert len(features) == 1
+    rs = [p[0] for p in features[0]["profile"]]
+    assert min(rs) < 0.5
+    assert max(rs) == pytest.approx(5.0, abs=0.25)
+
+
+def test_detect_revolve_solid_accepts_short_disk():
+    verts, tris = _make_cylinder_mesh_without_cap_centers(height=2.0, radius=8.0, segments=64)
+    features = detect_revolve_solid(verts, tris, DetectorConfig())
+
+    assert len(features) == 1
+    axis = np.asarray(features[0]["axis"])
+    assert abs(abs(float(axis[2])) - 1.0) < 1e-3
 
 
 def test_detect_revolve_solid_rejects_cube():

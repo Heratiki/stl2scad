@@ -487,6 +487,40 @@ def _build_feature_graph_for_folder_file(
         }
 
 
+def _emit_revolve_scad_preview(graph: dict[str, Any], revolve: dict[str, Any]) -> str:
+    """Emit parametric SCAD for a revolve_solid feature."""
+    axis = [float(v) for v in revolve["axis"]]
+    origin = [float(v) for v in revolve["axis_origin"]]
+    profile = [(float(r), float(z)) for r, z in revolve["profile"]]
+
+    points_scad = ",\n    ".join(f"[{r:.6f}, {z:.6f}]" for r, z in profile)
+
+    lines: list[str] = [
+        "// generated from axisymmetric revolve feature",
+        f"// axis = [{axis[0]:.6f}, {axis[1]:.6f}, {axis[2]:.6f}]",
+        "revolve_profile = [",
+        f"    {points_scad}",
+        "];",
+        "",
+    ]
+
+    angles = _axis_to_world_z_euler_xyz(axis)
+    rotation_expr = ""
+    if any(abs(a) > 1e-6 for a in angles):
+        rotation_expr = f"rotate([{angles[0]:.6f}, {angles[1]:.6f}, {angles[2]:.6f}]) "
+
+    translate_expr = ""
+    if any(abs(c) > 1e-6 for c in origin):
+        translate_expr = f"translate([{origin[0]:.6f}, {origin[1]:.6f}, {origin[2]:.6f}]) "
+
+    lines.extend([
+        f"{translate_expr}{rotation_expr}rotate_extrude($fn=128)",
+        "    polygon(points=revolve_profile);",
+        "",
+    ])
+    return "\n".join(lines)
+
+
 def _emit_cylinder_scad_preview(graph: dict[str, Any], cylinder: dict[str, Any]) -> str:
     """Emit parametric SCAD for a cylinder_like_solid."""
     origin = [float(v) for v in cylinder["origin"]]
@@ -593,7 +627,12 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
           thickness axis
         - one box_like_solid with optional through-holes along any axis
         - one cylinder_like_solid
+        - one revolve_solid
     """
+    revolve = _best_feature(graph, "revolve_solid")
+    if revolve is not None and _passes_preview_solid_confidence(revolve.get("confidence")):
+        return _emit_revolve_scad_preview(graph, revolve)
+
     plate = _best_feature(graph, "plate_like_solid")
     if plate is None or not _passes_preview_solid_confidence(plate.get("confidence")):
         box = _best_feature(graph, "box_like_solid")

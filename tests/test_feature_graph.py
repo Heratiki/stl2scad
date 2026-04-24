@@ -1713,3 +1713,29 @@ def test_ir_tree_wraps_revolve_solid_as_extrude_revolve():
     assert sketch["type"] == "Sketch2D"
     assert sketch["kind"] == "polygon"
     assert len(sketch["points"]) == 4
+
+
+def test_emit_revolve_scad_preview_generates_rotate_extrude():
+    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+
+    graph = {
+        "schema_version": 1,
+        "source_file": "synthetic.stl",
+        "features": [{
+            "type": "revolve_solid",
+            "detected_via": "axisymmetric_revolve",
+            "axis": [0.0, 0.0, 1.0],
+            "axis_origin": [0.0, 0.0, 0.0],
+            "profile": [(0.0, 0.0), (5.0, 0.0), (5.0, 10.0), (0.0, 10.0)],
+            "confidence": 0.9,
+            "confidence_components": {
+                "axis_quality": 0.95, "cross_slice_consistency": 0.98,
+                "normal_field_agreement": 0.92, "profile_validity": 1.0,
+            },
+        }],
+    }
+    scad = emit_feature_graph_scad_preview(graph)
+    assert scad is not None
+    assert "rotate_extrude" in scad
+    assert "polygon" in scad
+    assert "5" in scad and "10" in scad

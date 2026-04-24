@@ -14,11 +14,7 @@
 
 ## Implementation Status (as of 2026-04-23)
 
-**Tasks 1–11: COMPLETE.** All 65 tests pass (`test_revolve_recovery.py` + `test_feature_graph.py` + `test_feature_fixtures.py`).
-
-**Task 12: BLOCKED — cylinder manifest flip pending.** The fixture SCAD generators and `revolve`/`non_revolve` type dispatch are wired. The manifest flip (`cylinder_like_solid → false`, `revolve_solid → true` for the three cylinder fixtures) requires that OpenSCAD-rendered cylinder STLs reliably pass `detect_revolve_solid`. A floating-point bug in `extract_radial_slice` was found and fixed (see below), but rendered STLs still fail detection — the gate-failure point is unknown and is the current blocking investigation.
-
-**Tasks 13–19: NOT STARTED.**
+**Tasks 1–19: COMPLETE.** The cylinder manifest flip is landed, positive `revolve_*` and negative `non_revolve_*` fixtures are in the manifest/checked-in SCAD library, round-trip dimensional checks cover revolve profiles, confidence components are asserted, preview round-trip covers revolve fixtures, stress-case coverage includes `revolve`/`non_revolve`, and `detector_ir.md` marks `ExtrudeRevolve` + `Sketch2D(polygon)` as detected. Full-suite verification passed locally: `226 passed, 8 warnings`.
 
 ### Bugs found and fixed during implementation
 
@@ -40,7 +36,7 @@
 
 ### Known remaining issue
 
-`detect_revolve_solid` returns `[]` for cylinders rendered by OpenSCAD (`$fn=96`). The axis_quality gate passes. The gate that fails (axis_quality, cross_slice, normal_field, profile_validity) has not been confirmed for the rendered mesh — investigation was paused to update these docs.
+Resolved. OpenSCAD-rendered cylinders now pass `detect_revolve_solid`; the root cause was cap triangulation that did not guarantee every sampled radial slice hit the exact axis, plus short disks needing the odd covariance eigenvalue to be selected whether it is the smallest or largest eigenvalue.
 
 ---
 

@@ -80,7 +80,9 @@ def _assert_box_dimensions(fixture, features):
 
     assert boxes, f"{fixture['name']} expected a box_like_solid feature"
     best = max(boxes, key=lambda item: float(item.get("confidence", 0.0)))
-    _assert_axis_aligned_size(best["size"], fixture["box_size"], fixture["name"], "box size")
+    expected_size = fixture.get("box_size", fixture.get("size"))
+    assert expected_size is not None, f"{fixture['name']} expected box dimensions in fixture"
+    _assert_axis_aligned_size(best["size"], expected_size, fixture["name"], "box size")
 
 
 def _assert_plate_hole_dimensions(fixture, features):
@@ -467,6 +469,27 @@ def _assert_grid_pattern_dimensions(fixture, features):
 
 
 def _assert_fixture_dimensions(fixture, features):
+    if fixture["fixture_type"] == "non_revolve":
+        return
+    if fixture["fixture_type"] == "revolve":
+        revolves = [
+            feature
+            for feature in features
+            if feature.get("type") == "revolve_solid"
+            and float(feature.get("confidence", 0.0)) >= 0.70
+        ]
+        assert len(revolves) == 1
+        detected = revolves[0]
+        expected_profile = fixture["profile"]
+        assert abs(len(detected["profile"]) - len(expected_profile)) <= max(
+            2,
+            len(expected_profile) // 4,
+        )
+        expected_max_r = max(float(point[0]) for point in expected_profile)
+        detected_max_r = max(float(point[0]) for point in detected["profile"])
+        assert abs(detected_max_r - expected_max_r) / expected_max_r < 0.05
+        return
+
     _assert_plate_dimensions(fixture, features)
     _assert_box_dimensions(fixture, features)
     _assert_rectangular_cutout_dimensions(fixture, features)
@@ -945,8 +968,8 @@ def test_feature_fixture_manifest_covers_roadmap_stress_cases(test_data_dir):
     negative_fixtures = [fixture for fixture in fixtures if fixture["fixture_type"] in {"sphere", "torus"}]
     fixture_types = {fixture["fixture_type"] for fixture in fixtures}
 
-    assert {"box", "l_bracket", "sphere", "torus"}.issubset(fixture_types), \
-        f"Manifest must include box, l_bracket, sphere, and torus fixtures. Found: {fixture_types}"
+    assert {"box", "l_bracket", "sphere", "torus", "revolve", "non_revolve"}.issubset(fixture_types), \
+        f"Manifest must include box, l_bracket, sphere, torus, revolve, and non_revolve fixtures. Found: {fixture_types}"
     assert len(negative_fixtures) >= 2, \
         f"Manifest must include at least 2 negative-class fixtures (sphere, torus). Found {len(negative_fixtures)}"
     assert any(
@@ -1307,6 +1330,92 @@ def test_feature_fixture_preview_round_trip_detection(test_data_dir, test_output
             assert feature_counts.get("box_like_solid", 0) == 1, (
                 f"{fixture['name']} box preview expected 1 box_like_solid, got {feature_counts.get('box_like_solid', 0)}"
             )
+
+
+def test_revolve_fixture_exposes_confidence_components(test_data_dir, test_output_dir):
+    manifest_path = test_data_dir / "feature_fixtures_manifest.json"
+    fixtures = load_feature_fixture_manifest(manifest_path)
+    write_feature_fixture_library(manifest_path, test_output_dir)
+
+    try:
+        openscad_path = get_openscad_path()
+    except FileNotFoundError as exc:
+        if os.getenv("CI", "").lower() == "true":
+            pytest.fail(f"OpenSCAD is required in CI for revolve fixture checks: {exc}")
+        pytest.skip(f"OpenSCAD not available: {exc}")
+
+    revolve_fixtures = [fixture for fixture in fixtures if fixture["fixture_type"] == "revolve"]
+    assert revolve_fixtures
+    for fixture in revolve_fixtures:
+        scad_path = test_output_dir / fixture["output_filename"]
+        stl_path = test_output_dir / f"{Path(fixture['output_filename']).stem}.stl"
+        log_path = test_output_dir / f"{fixture['name']}.revolve.log"
+        assert run_openscad(
+            fixture["name"],
+            ["--render", "-o", str(stl_path), str(scad_path)],
+            str(log_path),
+            openscad_path,
+        )
+        graph = build_feature_graph_for_stl(stl_path)
+        revolve = next(
+            (feature for feature in graph["features"] if feature["type"] == "revolve_solid"),
+            None,
+        )
+        assert revolve is not None, f"{fixture['name']} expected revolve_solid"
+        components = revolve["confidence_components"]
+        for key in (
+            "axis_quality",
+            "cross_slice_consistency",
+            "normal_field_agreement",
+            "profile_validity",
+        ):
+            assert key in components
+            assert 0.0 <= float(components[key]) <= 1.0
+
+
+def test_revolve_fixture_preview_round_trip(test_data_dir, test_output_dir):
+    manifest_path = test_data_dir / "feature_fixtures_manifest.json"
+    fixtures = load_feature_fixture_manifest(manifest_path)
+    write_feature_fixture_library(manifest_path, test_output_dir)
+
+    try:
+        openscad_path = get_openscad_path()
+    except FileNotFoundError as exc:
+        if os.getenv("CI", "").lower() == "true":
+            pytest.fail(f"OpenSCAD is required in CI for revolve preview checks: {exc}")
+        pytest.skip(f"OpenSCAD not available: {exc}")
+
+    for fixture in fixtures:
+        if fixture["fixture_type"] != "revolve":
+            continue
+        scad_path = test_output_dir / fixture["output_filename"]
+        stl_path = test_output_dir / f"{Path(fixture['output_filename']).stem}.stl"
+        log_path = test_output_dir / f"{fixture['name']}.log"
+        assert run_openscad(
+            fixture["name"],
+            ["--render", "-o", str(stl_path), str(scad_path)],
+            str(log_path),
+            openscad_path,
+        )
+
+        graph = build_feature_graph_for_stl(stl_path)
+        preview = emit_feature_graph_scad_preview(graph)
+        assert preview is not None, f"{fixture['name']} expected a preview"
+        assert "rotate_extrude" in preview
+        assert "polygon" in preview
+
+        preview_scad = test_output_dir / f"{fixture['name']}.preview.scad"
+        preview_stl = test_output_dir / f"{fixture['name']}.preview.stl"
+        preview_log = test_output_dir / f"{fixture['name']}.preview.log"
+        preview_scad.write_text(preview, encoding="utf-8")
+        assert run_openscad(
+            f"{fixture['name']}_preview",
+            ["--render", "-o", str(preview_stl), str(preview_scad)],
+            str(preview_log),
+            openscad_path,
+        )
+        preview_graph = build_feature_graph_for_stl(preview_stl)
+        assert any(feature["type"] == "revolve_solid" for feature in preview_graph["features"])
 
 
 def test_feature_fixture_ambiguous_candidate_round_trip_ranking(

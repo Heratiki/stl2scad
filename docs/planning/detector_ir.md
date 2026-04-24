@@ -85,9 +85,9 @@ Transforms wrap a single child feature. Patterns below are the structured altern
 
 | IR Node | SCAD | Detector status |
 | --- | --- | --- |
-| `Sketch2D` (`square`, `circle`, `polygon`, `slot2d`) | native 2D ops | Not recovered from mesh. |
+| `Sketch2D` (`square`, `circle`, `polygon`, `slot2d`) | native 2D ops | `polygon` variant recovered from revolve profile (Phase 1 of rotate_extrude spec). Other variants pending. |
 | `ExtrudeLinear` | `linear_extrude(h, scale?, twist?)` | Not recovered. |
-| `ExtrudeRevolve` | `rotate_extrude()` | Not recovered. |
+| `ExtrudeRevolve` | `rotate_extrude()` | **Detected** via axisymmetric-revolve pipeline (Phase 1). Profile emits as `polygon`; profile classification to native primitives is Phase 2. |
 
 Recovering extrusion-from-profile is the single largest future wins bucket (most mechanical parts are "profile + extrude" in intent). Blocked on 2D sketch extraction from mesh cross-sections.
 
@@ -163,7 +163,7 @@ Flat node types in [feature_graph.py](../../stl2scad/core/feature_graph.py) toda
 7. **`HoleCounterbore` / `HoleCountersink` detection from mesh.** Fixture-generator side exists; detector side doesn't.
 8. **`PatternMirror` and `PatternRadial`.** Next-highest-value pattern families.
 9. **Shell / `Boss` / `Rib` / `Tab`.** Structural features.
-10. **Sketch2D recovery and `ExtrudeLinear` / `ExtrudeRevolve` from cross-sections.** Largest Tier-2 payoff, also largest implementation scope.
+10. **Sketch2D recovery and `ExtrudeLinear` from cross-sections.** `ExtrudeRevolve` plus `Sketch2D(polygon)` are now in main via the axisymmetric-revolve pipeline; native profile classification and linear extrude recovery remain.
 
 Items below this line are deferred until the Real-World Feedback Loop (Phases 1–3 of [feature_level_reconstruction.md](feature_level_reconstruction.md)) raises real-world pass-rate meaningfully:
 

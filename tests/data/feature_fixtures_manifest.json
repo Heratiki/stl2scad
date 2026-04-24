@@ -1262,6 +1262,76 @@
       ]
     },
     {
+      "name": "plate_rotated_z30_with_hole",
+      "fixture_type": "plate",
+      "description": "Plate rotated 30° around Z with a single through-hole. Validates rotated-plate local-frame cutout detection for Z-axis rotation.",
+      "output_filename": "plate_rotated_z30_with_hole.scad",
+      "plate_size": [20.0, 10.0, 2.0],
+      "holes": [
+        {
+          "center": [0.0, 0.0],
+          "diameter": 4.0
+        }
+      ],
+      "transform": {
+        "rotate": [0.0, 0.0, 30.0],
+        "translate": [0.0, 0.0, 0.0]
+      },
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "rotated_plate_with_hole",
+          "confidence": 0.90,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 1,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_rotated_x30_with_two_holes",
+      "fixture_type": "plate",
+      "description": "Plate rotated 30° around X with two through-holes in a linear pattern. Validates rotated-plate local-frame cutout detection for non-Z-axis rotation.",
+      "output_filename": "plate_rotated_x30_with_two_holes.scad",
+      "plate_size": [20.0, 10.0, 2.0],
+      "holes": [
+        {
+          "center": [-4.0, 0.0],
+          "diameter": 3.0
+        },
+        {
+          "center": [4.0, 0.0],
+          "diameter": 3.0
+        }
+      ],
+      "transform": {
+        "rotate": [30.0, 0.0, 0.0],
+        "translate": [0.0, 0.0, 0.0]
+      },
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "rotated_plate_with_holes",
+          "confidence": 0.90,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 2,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
       "name": "revolve_rectangle_profile",
       "fixture_type": "revolve",
       "description": "Rectangle profile revolved around Z; generic Phase 1 cylinder-like revolve.",

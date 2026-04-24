@@ -384,6 +384,15 @@ def build_feature_graph_for_stl(
                 config=resolved,
             )
         )
+        features.extend(
+            _extract_rotated_plate_through_holes(
+                vectors,
+                normals,
+                face_areas,
+                features,
+                config=resolved,
+            )
+        )
         features.extend(_extract_repeated_hole_patterns(features, config=resolved))
 
     graph: dict[str, Any] = {
@@ -668,6 +677,10 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         if feature.get("type") == "hole_like_cutout"
         and float(feature.get("confidence", 0.0)) >= 0.70
     ]
+    # Local-frame holes detected on rotated plates (detected_via == "rotated_plate_local_frame").
+    local_holes = [
+        h for h in holes if h.get("detected_via") == "rotated_plate_local_frame" and "local_center" in h
+    ]
     slots = [
         feature
         for feature in graph.get("features", [])
@@ -710,7 +723,7 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         f"plate_origin = {_scad_vector(origin)};",
         f"plate_size = {_scad_vector(size)};",
     ]
-    if holes or slots or counterbores or rectangular_cutouts or rectangular_pockets:
+    if holes or slots or counterbores or rectangular_cutouts or rectangular_pockets or local_holes:
         for pattern_index, pattern in enumerate(supported_patterns):
             if pattern.get(
                 "type"
@@ -750,6 +763,9 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
                 for center in pattern.get("centers", [])
             )
         for hole in holes:
+            # Local-frame holes on rotated plates are handled separately.
+            if hole.get("detected_via") == "rotated_plate_local_frame":
+                continue
             if hole.get("axis") != thickness_axis:
                 continue
             center = [float(value) for value in hole["center"]]
@@ -847,6 +863,46 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
                     "}",
                 ]
             )
+    # For a rotated plate with detected local-frame holes, emit a rotation-wrapped
+    # difference block so the holes are bored along the plate normal, not world Z.
+    is_rotated_with_local_holes = (
+        plate is not None
+        and plate.get("detected_via") == "rotated_plate"
+        and bool(local_holes)
+    )
+
+    if is_rotated_with_local_holes:
+        angles = plate.get("rotation_euler_deg", [0.0, 0.0, 0.0])
+        depth = float(size[thickness_axis_index])
+        # Declare local-frame hole variables.
+        for hole_local_index, hole in enumerate(local_holes):
+            lc = [float(v) for v in hole["local_center"]]
+            lines.extend(
+                [
+                    f"hole_local_{hole_local_index}_center = {_scad_vector(lc)};",
+                    f"hole_local_{hole_local_index}_diameter = {float(hole['diameter']):.6f};",
+                ]
+            )
+        lines.extend(
+            [
+                "",
+                f"translate(plate_origin) rotate([{angles[0]:.6f}, {angles[1]:.6f}, {angles[2]:.6f}]) {{",
+                "  difference() {",
+                "    cube(plate_size);",
+            ]
+        )
+        for hole_local_index in range(len(local_holes)):
+            lines.extend(
+                [
+                    f"    translate([hole_local_{hole_local_index}_center[0],"
+                    f" hole_local_{hole_local_index}_center[1], -0.100000])",
+                    f"      cylinder(h={depth + 0.200000:.6f},"
+                    f" d=hole_local_{hole_local_index}_diameter, $fn=64);",
+                ]
+            )
+        lines.extend(["  }", "}", ""])
+        return "\n".join(lines)
+
     if plate:
         if plate.get("detected_via") == "rotated_plate":
             angles = plate.get("rotation_euler_deg", [0.0, 0.0, 0.0])
@@ -855,7 +911,7 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
             rotation_expr = ""
     else:
         rotation_expr = ""
-        
+
     lines.extend(
         [
             "",
@@ -1142,6 +1198,8 @@ def _extract_rotated_plate_solid(
             # size uses the local-frame order [span_u, span_v, thickness] so that
             # _candidate_cutout_axes can find the thin axis (argmin → index 2).
             "size": [float(span_u), float(span_v), float(thickness)],
+            "local_u_axis": true_u.tolist(),
+            "local_v_axis": true_v.tolist(),
             "parameters": {
                 "thickness": float(thickness),
                 "footprint_u": float(span_u),
@@ -1191,12 +1249,6 @@ def _extract_cylinder_like_solid(
     ]
 
     # Mesh centroid (used to determine inward vs outward lateral normals)
-    mesh_center = np.array([
-        (float(bbox["min_x"]) + float(bbox["min_x"]) + float(bbox["width"])) / 2.0,
-        (float(bbox["min_y"]) + float(bbox["min_y"]) + float(bbox["height"])) / 2.0,
-        (float(bbox["min_z"]) + float(bbox["min_z"]) + float(bbox["depth"])) / 2.0,
-    ])
-    # Simpler: centre from bbox directly
     mesh_center = np.array([
         float(bbox["min_x"]) + float(bbox["width"]) / 2.0,
         float(bbox["min_y"]) + float(bbox["height"]) / 2.0,
@@ -2092,6 +2144,136 @@ def _extract_axis_aligned_through_holes(
     return features
 
 
+
+def _extract_rotated_plate_through_holes(
+    vectors: np.ndarray,
+    normals: np.ndarray,
+    face_areas: np.ndarray,
+    existing_features: list[dict[str, Any]],
+    config: DetectorConfig = DetectorConfig(),
+) -> list[dict[str, Any]]:
+    """Detect hole/slot/rect cutouts on plates found by the rotated-plate detector.
+
+    Projects all mesh geometry into each rotated plate's local (u, v, n) frame,
+    runs the standard axis-aligned cutout extractor in that frame, then converts
+    detected centers back to world space.
+
+    The returned features carry both a world-space ``center`` and a
+    ``local_center`` (local-frame coordinates) so the SCAD emitter can embed
+    holes inside the plate's rotation block without needing to invert the
+    rotation matrix at emit time.  The ``axis`` field is set to ``"local_n"``
+    to distinguish these from world-aligned cutouts in downstream code.
+    """
+    rotated_plates = [
+        f
+        for f in existing_features
+        if f.get("type") == "plate_like_solid"
+        and f.get("detected_via") == "rotated_plate"
+        and "local_u_axis" in f
+        and "local_v_axis" in f
+    ]
+    if not rotated_plates:
+        return []
+
+    all_verts = vectors.reshape(-1, 3)
+    face_centers = np.mean(vectors, axis=1)
+    features: list[dict[str, Any]] = []
+
+    for plate in rotated_plates:
+        u_axis = np.array(plate["local_u_axis"], dtype=np.float64)
+        v_axis = np.array(plate["local_v_axis"], dtype=np.float64)
+        n_axis = np.array(plate["dominant_axis"], dtype=np.float64)
+        origin = np.array(plate["origin"], dtype=np.float64)
+        span_u, span_v, thickness = (
+            float(plate["size"][0]),
+            float(plate["size"][1]),
+            float(plate["size"][2]),
+        )
+
+        # Offsets so that origin maps to local (0, 0, 0).
+        origin_u = float(origin @ u_axis)
+        origin_v = float(origin @ v_axis)
+        origin_n = float(origin @ n_axis)
+
+        # Project all vertices into the local (u, v, n) frame.
+        local_all_verts = np.column_stack(
+            [
+                all_verts @ u_axis - origin_u,
+                all_verts @ v_axis - origin_v,
+                all_verts @ n_axis - origin_n,
+            ]
+        )
+        local_vectors = local_all_verts.reshape(vectors.shape)
+
+        # Project normals (rotation only – no translation needed for unit normals).
+        local_normals = np.column_stack(
+            [normals @ u_axis, normals @ v_axis, normals @ n_axis]
+        )
+
+        # Build a local bbox identical in structure to the world-space bbox used
+        # by the axis-aligned extractor.  The plate spans [0, span_u] × [0, span_v]
+        # × [0, thickness] in this frame.
+        local_bbox: dict[str, float] = {
+            "min_x": 0.0,
+            "max_x": float(span_u),
+            "width": float(span_u),
+            "min_y": 0.0,
+            "max_y": float(span_v),
+            "height": float(span_v),
+            "min_z": 0.0,
+            "max_z": float(thickness),
+            "depth": float(thickness),
+        }
+        # Minimal fake plate feature that satisfies _candidate_cutout_axes.
+        local_plate: dict[str, Any] = {
+            "type": "plate_like_solid",
+            "size": [float(span_u), float(span_v), float(thickness)],
+        }
+
+        local_features = _extract_axis_aligned_through_holes(
+            local_vectors,
+            local_normals,
+            face_areas,
+            local_bbox,
+            [local_plate],
+            config=config,
+        )
+
+        for feat in local_features:
+            # Convert local-frame centers to world space and attach both.
+            if "center" in feat:
+                lu, lv, ln = (
+                    float(feat["center"][0]),
+                    float(feat["center"][1]),
+                    float(feat["center"][2]),
+                )
+                world_center = (
+                    origin + lu * u_axis + lv * v_axis + ln * n_axis
+                )
+                feat["local_center"] = [lu, lv, ln]
+                feat["center"] = world_center.tolist()
+            if "start" in feat and "end" in feat:
+                ls = [float(v) for v in feat["start"]]
+                le = [float(v) for v in feat["end"]]
+                world_start = origin + ls[0] * u_axis + ls[1] * v_axis + ls[2] * n_axis
+                world_end = origin + le[0] * u_axis + le[1] * v_axis + le[2] * n_axis
+                feat["local_start"] = ls
+                feat["local_end"] = le
+                feat["start"] = world_start.tolist()
+                feat["end"] = world_end.tolist()
+            # Tag axis as local-n so the emitter knows to bore along plate normal.
+            feat["axis"] = "local_n"
+            feat["detected_via"] = "rotated_plate_local_frame"
+            feat["local_u_axis"] = u_axis.tolist()
+            feat["local_v_axis"] = v_axis.tolist()
+            feat["local_n_axis"] = n_axis.tolist()
+            feat["local_origin"] = origin.tolist()
+
+        features.extend(local_features)
+
+    return features
+
+
 def _candidate_cutout_axes(
     existing_features: list[dict[str, Any]],
     config: DetectorConfig,
@@ -2101,6 +2283,9 @@ def _candidate_cutout_axes(
     for feature in existing_features:
         feature_type = feature.get("type")
         if feature_type == "plate_like_solid":
+            # Rotated plates need local-frame cutout extraction; skip here.
+            if feature.get("detected_via") == "rotated_plate":
+                continue
             size = [float(value) for value in feature["size"]]
             axis_index = int(np.argmin(size))
             candidates.append(
@@ -2139,9 +2324,14 @@ def _extract_repeated_hole_patterns(
 
     groups: dict[tuple[str, int], list[dict[str, Any]]] = {}
     for hole in holes:
+        axis = str(hole.get("axis", ""))
+        # Pattern metadata is currently defined for world-aligned axes only.
+        # Local-frame rotated-plate holes (axis="local_n") are excluded.
+        if axis not in {"x", "y", "z"}:
+            continue
         diameter = float(hole["diameter"])
         # Group diameters with a modest tolerance to absorb mesh noise.
-        key = (str(hole["axis"]), int(round(diameter / config.pattern_diameter_rounding_mm)))
+        key = (axis, int(round(diameter / config.pattern_diameter_rounding_mm)))
         groups.setdefault(key, []).append(hole)
 
     for (axis, diameter_key), group in groups.items():

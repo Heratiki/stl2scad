@@ -87,6 +87,47 @@ def _assert_box_dimensions(fixture, features):
 
 def _assert_plate_hole_dimensions(fixture, features):
     expected_holes = list(_iter_plate_fixture_holes(fixture))
+    # For rotated plates, holes are tagged axis="local_n" in the local plate-normal frame.
+    # Compare local_center[:2] (u, v) against fixture-specified centers.
+    is_rotated = any(
+        f.get("type") == "plate_like_solid" and f.get("detected_via") == "rotated_plate"
+        for f in features
+        if float(f.get("confidence", 0.0)) >= 0.70
+    )
+    if is_rotated:
+        holes = [
+            feature
+            for feature in features
+            if feature.get("type") == "hole_like_cutout"
+            and feature.get("detected_via") == "rotated_plate_local_frame"
+        ]
+        assert len(holes) == len(expected_holes)
+        unmatched = list(holes)
+        half_u = float(fixture["plate_size"][0]) * 0.5
+        half_v = float(fixture["plate_size"][1]) * 0.5
+        for expected_center, expected_diameter in expected_holes:
+            expected_local_center = [
+                float(expected_center[0]) + half_u,
+                float(expected_center[1]) + half_v,
+            ]
+            match = _pop_best_match(
+                unmatched,
+                lambda candidate: dist(candidate["local_center"][:2], expected_local_center),
+            )
+            assert match is not None, f"{fixture['name']} missing expected rotated-plate hole"
+            center_error = dist(match["local_center"][:2], expected_local_center)
+            assert center_error <= _CENTER_TOL, (
+                f"{fixture['name']} rotated hole local-center mismatch: "
+                f"expected {expected_local_center}, got {match['local_center'][:2]}"
+            )
+            _assert_close(
+                match["diameter"],
+                expected_diameter,
+                _DIAMETER_TOL,
+                f"{fixture['name']} hole diameter",
+            )
+        return
+
     holes = [
         feature
         for feature in features
@@ -615,8 +656,12 @@ def _assert_preview_named_variables(fixture, preview_scad):
     )
     expected_standalone_holes = max(0, len(expected_plate_holes) - expected_pattern_holes)
     if expected_standalone_holes:
-        assert "hole_0_center = [" in preview_scad
-        assert "hole_0_diameter = " in preview_scad
+        # Rotated-plate local-frame previews use hole_local_* variable names.
+        if "hole_local_0_center = [" in preview_scad:
+            assert "hole_local_0_diameter = " in preview_scad
+        else:
+            assert "hole_0_center = [" in preview_scad
+            assert "hole_0_diameter = " in preview_scad
 
 
 def test_feature_fixture_manifest_matches_checked_in_scad(test_data_dir, test_output_dir):

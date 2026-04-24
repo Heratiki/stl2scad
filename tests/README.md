@@ -6,7 +6,7 @@ This directory contains the test suite for STL2SCAD. The tests are organized int
 
 - `conftest.py`: Test configuration and fixtures
 - `utils.py`: Common test utilities
-- `pytest.ini`: Pytest configuration
+- `../pytest.ini`: Pytest configuration
 - `data/`: Test data files (STL samples)
 - Test modules:
   - `test_cli.py`: CLI parser and command dispatch tests

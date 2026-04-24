@@ -1394,3 +1394,49 @@ def test_feature_fixture_negative_class_detection(test_data_dir, test_output_dir
         assert (
             not high_confidence_features
         ), f"{fixture['name']} should not produce high-confidence plate/box features, but got {[f['type'] for f in high_confidence_features]}"
+
+
+def test_fixture_type_revolve_accepts_profile_spec():
+    from stl2scad.core.feature_fixtures import validate_feature_fixture_spec
+
+    spec = {
+        "name": "revolve_test",
+        "fixture_type": "revolve",
+        "output_filename": "revolve_test.scad",
+        "profile": [[0.0, 0.0], [5.0, 0.0], [5.0, 10.0], [0.0, 10.0]],
+        "axis": "z",
+        "expected_detection": {
+            "revolve_solid": True,
+            "plate_like_solid": False,
+            "box_like_solid": False,
+            "cylinder_like_solid": False,
+            "hole_count": 0, "slot_count": 0,
+            "linear_pattern_count": 0, "grid_pattern_count": 0, "counterbore_count": 0
+        },
+    }
+    result = validate_feature_fixture_spec(spec, schema_version=1)
+    assert result["fixture_type"] == "revolve"
+    assert len(result["profile"]) == 4
+
+
+def test_fixture_type_non_revolve_accepts_rejection_gate():
+    from stl2scad.core.feature_fixtures import validate_feature_fixture_spec
+
+    spec = {
+        "name": "non_revolve_test",
+        "fixture_type": "non_revolve",
+        "output_filename": "non_revolve_test.scad",
+        "shape": "cube",
+        "size": [10.0, 10.0, 10.0],
+        "expected_rejection_gate": "cross_slice_consistency",
+        "expected_detection": {
+            "revolve_solid": False,
+            "plate_like_solid": False,
+            "box_like_solid": True,
+            "hole_count": 0, "slot_count": 0,
+            "linear_pattern_count": 0, "grid_pattern_count": 0, "counterbore_count": 0
+        },
+    }
+    result = validate_feature_fixture_spec(spec, schema_version=1)
+    assert result["fixture_type"] == "non_revolve"
+    assert result["expected_rejection_gate"] == "cross_slice_consistency"

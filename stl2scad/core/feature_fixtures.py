@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterable, Optional, Union
 
-_SUPPORTED_FIXTURE_TYPES = {"plate", "box", "l_bracket", "sphere", "torus", "cylinder", "cone", "prism"}
+_SUPPORTED_FIXTURE_TYPES = {"plate", "box", "l_bracket", "sphere", "torus", "cylinder", "cone", "prism", "revolve", "non_revolve"}
 _AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
 _COUNT_EXPECTATION_TO_FEATURE = {
     "hole_count": "hole_like_cutout",
@@ -23,6 +23,7 @@ _BOOLEAN_EXPECTATION_TO_FEATURE = {
     "plate_like_solid": "plate_like_solid",
     "box_like_solid": "box_like_solid",
     "cylinder_like_solid": "cylinder_like_solid",
+    "revolve_solid": "revolve_solid",
 }
 
 
@@ -332,6 +333,10 @@ def _validate_geometry_by_fixture_type(
         return _validate_cone_fixture_geometry(raw_fixture, fixture_name)
     if fixture_type == "prism":
         return _validate_prism_fixture_geometry(raw_fixture, fixture_name)
+    if fixture_type == "revolve":
+        return _validate_revolve_fixture_geometry(raw_fixture, fixture_name)
+    if fixture_type == "non_revolve":
+        return _validate_non_revolve_fixture_geometry(raw_fixture, fixture_name)
     raise ValueError(f"Unsupported feature fixture type '{fixture_type}'")
 
 
@@ -623,6 +628,65 @@ def _validate_prism_fixture_geometry(
         "explicit_rectangular_cutout_count": 0,
         "explicit_rectangular_pocket_count": 0,
     }
+
+
+_NON_REVOLVE_SHAPES = {"cube", "square_prism", "symmetric_composite", "shaft_with_keyway"}
+_VALID_REJECTION_GATES = {"axis_quality", "cross_slice_consistency", "normal_field_agreement", "profile_validity"}
+
+
+def _validate_revolve_fixture_geometry(spec: dict[str, Any], name: str) -> dict[str, Any]:
+    profile = spec.get("profile")
+    if not isinstance(profile, list) or len(profile) < 3:
+        raise ValueError(f"Revolve fixture '{name}' must define a profile of at least 3 (r, z) points")
+    pts: list[list[float]] = []
+    for pt in profile:
+        if not (isinstance(pt, list) and len(pt) == 2):
+            raise ValueError(f"Revolve fixture '{name}' profile points must be [r, z] pairs")
+        r, z = float(pt[0]), float(pt[1])
+        if r < 0.0:
+            raise ValueError(f"Revolve fixture '{name}' profile has negative r (r={r})")
+        pts.append([r, z])
+    if min(p[0] for p in pts) > 1e-6:
+        raise ValueError(
+            f"Revolve fixture '{name}' profile must touch the axis (min r ≈ 0); "
+            "annular profiles are Phase-1-excluded."
+        )
+    axis = str(spec.get("axis", "z")).lower()
+    if axis not in ("x", "y", "z"):
+        raise ValueError(f"Revolve fixture '{name}' axis must be x/y/z")
+    return {
+        "profile": pts,
+        "axis": axis,
+        "explicit_hole_count": 0,
+        "explicit_slot_count": 0,
+        "explicit_counterbore_count": 0,
+        "explicit_rectangular_cutout_count": 0,
+        "explicit_rectangular_pocket_count": 0,
+    }
+
+
+def _validate_non_revolve_fixture_geometry(spec: dict[str, Any], name: str) -> dict[str, Any]:
+    shape = str(spec.get("shape", "")).lower()
+    if shape not in _NON_REVOLVE_SHAPES:
+        supported = ", ".join(sorted(_NON_REVOLVE_SHAPES))
+        raise ValueError(f"Non-revolve fixture '{name}' shape must be one of: {supported}")
+    size_raw = spec.get("size", [1.0, 1.0, 1.0])
+    size = [float(v) for v in size_raw]
+    gate = spec.get("expected_rejection_gate")
+    if gate is not None and gate not in _VALID_REJECTION_GATES:
+        raise ValueError(f"Non-revolve fixture '{name}' has unknown expected_rejection_gate '{gate}'")
+    result: dict[str, Any] = {
+        "shape": shape,
+        "size": size,
+        "explicit_hole_count": 0,
+        "explicit_slot_count": 0,
+        "explicit_counterbore_count": 0,
+        "explicit_rectangular_cutout_count": 0,
+        "explicit_rectangular_pocket_count": 0,
+    }
+    if gate is not None:
+        result["expected_rejection_gate"] = str(gate)
+    return result
 
 
 def _generate_cylinder_fixture_scad(fixture: dict[str, Any]) -> str:
@@ -1087,7 +1151,7 @@ def _validate_expected_detection(
     for key, value in raw_expected.items():
         if key in expected:
             continue
-        if key.endswith("_like_solid"):
+        if key.endswith("_like_solid") or key.endswith("_solid"):
             expected[key] = bool(value)
             continue
         if key.endswith("_count"):

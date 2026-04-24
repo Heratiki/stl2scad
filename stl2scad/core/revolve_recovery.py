@@ -133,8 +133,9 @@ def extract_radial_slice(
                 continue
             t = b0 / (b0 - b1)
             r = float(r_coord[e0] + t * (r_coord[e1] - r_coord[e0]))
-            if r < 0.0:
+            if r < -1e-9:
                 continue
+            r = max(r, 0.0)  # clamp floating-point rounding near the axis
             z = float(z_coord[e0] + t * (z_coord[e1] - z_coord[e0]))
             intersections.append((r, z))
 
@@ -232,7 +233,8 @@ def douglas_peucker_2d(points: np.ndarray, tolerance: float) -> np.ndarray:
         seg_len = float(np.linalg.norm(seg))
         if seg_len < 1e-12:
             return float(np.linalg.norm(pt - start))
-        return float(abs(np.cross(seg, pt - start)) / seg_len)
+        d = pt - start
+        return float(abs(seg[0] * d[1] - seg[1] * d[0]) / seg_len)
 
     def _recurse(idx_lo: int, idx_hi: int, keep: list[bool]) -> None:
         if idx_hi <= idx_lo + 1:

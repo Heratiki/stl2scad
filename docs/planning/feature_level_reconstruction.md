@@ -204,7 +204,13 @@ Once the IR wrapping (priority #2) lands, the detector output becomes a tree, an
 
 ## Current Work Package — Phase 1: Axisymmetric `rotate_extrude` recovery
 
-**Status:** specification landed 2026-04-22. Implementation plan pending (via superpowers:writing-plans after spec review).
+**Status:** Implementation in progress (2026-04-23). Tasks 1–11 of 19 are complete; 65/65 unit + integration tests pass. Task 12 (cylinder manifest flip) is blocked pending investigation of why OpenSCAD-rendered cylinder STLs fail `detect_revolve_solid`. See [implementation plan](../superpowers/plans/2026-04-22-rotate-extrude-phase-1.md) for detailed status and bug history.
+
+**What's landed:** `stl2scad/core/revolve_recovery.py` (full gate pipeline), `detect_revolve_solid` wired into `_build_feature_graph` with one-owner dispatch, IR wrapping (`BooleanUnion → TransformRotate → ExtrudeRevolve → Sketch2D(polygon)`), SCAD preview emitter, fixture schema extended for `revolve`/`non_revolve` types.
+
+**What remains:** cylinder fixture manifest flip (Task 12), six positive revolve fixtures (Task 13), four negative non-revolve fixtures (Task 14), round-trip dimensional assertions (Task 15), preview round-trip (Task 16), stress-case coverage (Task 17), `detector_ir.md` status update (Task 18), final suite verification (Task 19).
+
+**Blocking issue:** `detect_revolve_solid` returns `[]` for OpenSCAD-rendered cylinder STLs despite the programmatic mesh test passing. Root cause: one or more gates fail on the float32 vertex precision OpenSCAD produces — the specific gate has not been confirmed.
 
 **Full spec:** [docs/superpowers/specs/2026-04-22-rotate-extrude-and-sketch2d-recovery-design.md](../superpowers/specs/2026-04-22-rotate-extrude-and-sketch2d-recovery-design.md).
 

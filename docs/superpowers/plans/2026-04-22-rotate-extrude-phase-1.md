@@ -12,6 +12,38 @@
 
 ---
 
+## Implementation Status (as of 2026-04-23)
+
+**Tasks 1–11: COMPLETE.** All 65 tests pass (`test_revolve_recovery.py` + `test_feature_graph.py` + `test_feature_fixtures.py`).
+
+**Task 12: BLOCKED — cylinder manifest flip pending.** The fixture SCAD generators and `revolve`/`non_revolve` type dispatch are wired. The manifest flip (`cylinder_like_solid → false`, `revolve_solid → true` for the three cylinder fixtures) requires that OpenSCAD-rendered cylinder STLs reliably pass `detect_revolve_solid`. A floating-point bug in `extract_radial_slice` was found and fixed (see below), but rendered STLs still fail detection — the gate-failure point is unknown and is the current blocking investigation.
+
+**Tasks 13–19: NOT STARTED.**
+
+### Bugs found and fixed during implementation
+
+1. **`candidate_revolution_axis` formula was wrong** (plan's `mid/hi` ratio gave cylinder score ≈ 0.5, cube score ≈ 1.0). Fix: face-area-weighted covariance + `axis_quality = 1.0 - (mid-lo)/span`.
+
+2. **`cross_slice_consistency` keyway rejection was insufficient** (pure mean-spread gave keyway 0.80, needed < 0.70). Fix: blend 50/50 mean-spread + max-spread.
+
+3. **Flat-cap interior crossings inflated cross-slice variance** (cylinder cap triangles scattered r from 0→radius at the same z-level, crashing cross_slice_score to 0). Fix: `_max_r_per_z` helper collapses same-z points to max-r before cross-slice scoring; raw slices still used for profile aggregation and axis-touch check.
+
+4. **`aggregate_profile` median loses r=0 cap points** (profile_validity gate checked simplified profile min-r; median-aggregate drops the r=0 endpoints). Fix: use `slices_min_r = min(sl[:,0].min() for sl in slices)` from raw slices instead.
+
+5. **STL vertex soup biased covariance** (STL format stores F×3 raw vertices with no sharing; raw vertex table overweights high-face-count regions). Fix: deduplicate with `np.unique(rounded_verts, axis=0)` and remap triangle indices in `_build_feature_graph`.
+
+6. **`_validate_expected_detection` rejected `revolve_solid` key** (only matched `*_like_solid` suffix, not `*_solid`). Fix: extend check to `key.endswith("_solid")`.
+
+7. **`extract_radial_slice` rejects axis-center vertex due to floating-point** (center vertex at r=0 computes `r_coord ≈ -1e-15` due to dot-product rounding; `r < 0.0` check silently drops it; all slices miss r=0; axis-touch gate fails). Fix: change rejection threshold to `r < -1e-9` and clamp to `max(r, 0.0)`. This fix makes programmatic cylinder meshes pass all gates. **OpenSCAD-rendered cylinder STLs still fail — under investigation.**
+
+8. **NumPy 2.0 deprecation in `douglas_peucker_2d`** (`np.cross` on 2D vectors deprecated). Fix: inline 2D cross product as `seg[0]*d[1] - seg[1]*d[0]`.
+
+### Known remaining issue
+
+`detect_revolve_solid` returns `[]` for cylinders rendered by OpenSCAD (`$fn=96`). The axis_quality gate passes. The gate that fails (axis_quality, cross_slice, normal_field, profile_validity) has not been confirmed for the rendered mesh — investigation was paused to update these docs.
+
+---
+
 ## File Structure
 
 **New files:**

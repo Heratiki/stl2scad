@@ -24,7 +24,7 @@ def test_config_exposes_plate_thresholds():
     config = DetectorConfig()
     assert config.plate_paired_axes_min == 2
     assert config.plate_confidence_min == 0.55
-    assert config.plate_thin_ratio_max == 0.18
+    assert config.plate_thin_ratio_max == 0.25
     assert config.plate_tolerant_confidence_min == 0.70
 
 

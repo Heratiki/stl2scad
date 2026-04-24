@@ -1,10 +1,30 @@
 """Test configuration and fixtures for STL2SCAD tests."""
 
 import shutil
+import os
+import tempfile
 import uuid
 from pathlib import Path
 
 import pytest
+
+
+_REPO_LOCAL_TEMP = Path(__file__).parent / ".tmp_output"
+_REPO_LOCAL_TEMP.mkdir(exist_ok=True)
+os.environ.setdefault("TMPDIR", str(_REPO_LOCAL_TEMP))
+os.environ.setdefault("TEMP", str(_REPO_LOCAL_TEMP))
+os.environ.setdefault("TMP", str(_REPO_LOCAL_TEMP))
+os.environ.setdefault("PYTEST_DEBUG_TEMPROOT", str(_REPO_LOCAL_TEMP))
+os.environ.setdefault("STL2SCAD_TEMP_DIR", str(_REPO_LOCAL_TEMP))
+tempfile.tempdir = str(_REPO_LOCAL_TEMP)
+
+
+class _LocalTmpPathFactory:
+    def mktemp(self, basename: str, numbered: bool = True) -> Path:
+        suffix = f"-{uuid.uuid4().hex[:8]}" if numbered else ""
+        temp_dir = _REPO_LOCAL_TEMP / f"{basename}{suffix}"
+        temp_dir.mkdir()
+        return temp_dir
 
 
 @pytest.fixture
@@ -16,9 +36,7 @@ def test_data_dir():
 @pytest.fixture
 def test_output_dir():
     """Return an isolated temporary output directory for each test."""
-    base_tmp = Path(__file__).parent / ".tmp_output"
-    base_tmp.mkdir(exist_ok=True)
-    temp_dir = base_tmp / f"test-{uuid.uuid4().hex[:8]}"
+    temp_dir = _REPO_LOCAL_TEMP / f"test-{uuid.uuid4().hex[:8]}"
     temp_dir.mkdir()
     yield temp_dir
     shutil.rmtree(temp_dir, ignore_errors=True)
@@ -27,12 +45,16 @@ def test_output_dir():
 @pytest.fixture
 def tmp_path():
     """Provide a repo-local tmp_path to avoid restricted system temp dirs."""
-    base_tmp = Path(__file__).parent / ".tmp_output"
-    base_tmp.mkdir(exist_ok=True)
-    temp_dir = base_tmp / f"pytest-{uuid.uuid4().hex[:8]}"
+    temp_dir = _REPO_LOCAL_TEMP / f"pytest-{uuid.uuid4().hex[:8]}"
     temp_dir.mkdir()
     yield temp_dir
     shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+@pytest.fixture(scope="session")
+def tmp_path_factory():
+    """Provide a repo-local tmp_path_factory to avoid restricted temp dirs."""
+    return _LocalTmpPathFactory()
 
 
 @pytest.fixture

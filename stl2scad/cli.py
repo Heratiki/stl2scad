@@ -12,7 +12,6 @@ import os
 import shlex
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -31,6 +30,7 @@ from stl2scad.core.feature_inventory import (
     build_feature_graphs_from_inventory,
 )
 from stl2scad.core.recognition import SUPPORTED_RECOGNITION_BACKENDS
+from stl2scad.core.temp_paths import temporary_directory
 from stl2scad.core.verification import (
     generate_comparison_visualization,
     generate_verification_report_html,
@@ -1266,7 +1266,7 @@ def verify_command(args: argparse.Namespace) -> int:
     Returns:
         int: Exit code (0 for success, 1 for error, 2 for verification failure)
     """
-    temp_dir_obj: Optional[tempfile.TemporaryDirectory[str]] = None
+    temp_dir_context = None
     try:
         tolerance = _tolerance_from_args(args)
         visualize = bool(args.visualize or args.html_report)
@@ -1277,9 +1277,10 @@ def verify_command(args: argparse.Namespace) -> int:
             scad_file_to_use = args.output_file
         else:
             print("Will generate temporary SCAD file")
-            temp_dir_obj = tempfile.TemporaryDirectory()
+            temp_dir_context = temporary_directory(prefix="verify")
+            temp_dir = temp_dir_context.__enter__()
             scad_file_to_use = str(
-                Path(temp_dir_obj.name) / f"{Path(args.input_file).stem}.scad"
+                temp_dir / f"{Path(args.input_file).stem}.scad"
             )
             stl2scad(
                 args.input_file,
@@ -1351,8 +1352,8 @@ def verify_command(args: argparse.Namespace) -> int:
         traceback.print_exc()
         return 1
     finally:
-        if temp_dir_obj is not None:
-            temp_dir_obj.cleanup()
+        if temp_dir_context is not None:
+            temp_dir_context.__exit__(None, None, None)
 
 
 def batch_command(args: argparse.Namespace) -> int:

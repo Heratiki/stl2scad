@@ -9,13 +9,13 @@ import numpy as np
 import subprocess
 import re
 import os
-import tempfile
 from pathlib import Path
 from typing import Dict, Optional, Tuple, Any, Union, List
 import stl
 from stl.mesh import Mesh
 
 from ..converter import run_openscad, get_openscad_path
+from ..temp_paths import temporary_directory
 
 
 def calculate_stl_volume(mesh: Mesh) -> float:
@@ -229,9 +229,9 @@ def calculate_scad_metrics(
     # Get OpenSCAD path
     openscad_path = get_openscad_path()
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_stl = Path(temp_dir) / "rendered.stl"
-        log_file = Path(temp_dir) / "render.log"
+    with temporary_directory(prefix="scad-metrics") as temp_dir:
+        temp_stl = temp_dir / "rendered.stl"
+        log_file = temp_dir / "render.log"
 
         args = ["-o", str(temp_stl), str(scad_path)]
 

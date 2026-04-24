@@ -10,7 +10,6 @@ import os
 from pathlib import Path
 import platform
 import statistics
-import tempfile
 import time
 from typing import Any, Dict, List, Sequence, Union
 
@@ -19,6 +18,7 @@ from stl.mesh import Mesh
 
 from .benchmark_fixtures import ensure_benchmark_fixtures
 from .converter import stl2scad
+from .temp_paths import temporary_directory
 
 
 def run_conversion_perf_baseline(
@@ -119,8 +119,8 @@ def _benchmark_one(
     rss_max = rss_before
 
     for run_idx in range(repeat):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            output_path = Path(tmp_dir) / f"{fixture_path.stem}_{run_idx}.scad"
+        with temporary_directory(prefix="perf") as tmp_dir:
+            output_path = tmp_dir / f"{fixture_path.stem}_{run_idx}.scad"
             started = time.perf_counter()
             stl2scad(
                 str(fixture_path),

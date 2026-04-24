@@ -8,7 +8,6 @@ verification reports.
 
 import os
 import json
-import tempfile
 from pathlib import Path
 from typing import Dict, Any, Optional, Union, List, Tuple
 from dataclasses import dataclass, field
@@ -16,6 +15,7 @@ import stl
 import numpy as np
 
 from ..converter import stl2scad
+from ..temp_paths import temporary_directory
 from .metrics import get_stl_metrics, calculate_scad_metrics, compare_metrics
 
 
@@ -224,8 +224,8 @@ def verify_conversion(
     # Convert STL to SCAD if no SCAD file provided
     if scad_file is None:
         # Create temporary directory for output
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_scad = Path(temp_dir) / f"{stl_path.stem}.scad"
+        with temporary_directory(prefix="verification") as temp_dir:
+            temp_scad = temp_dir / f"{stl_path.stem}.scad"
             stl2scad(str(stl_path), str(temp_scad), debug=debug)
             return verify_existing_conversion(
                 stl_path, temp_scad, tolerance, debug, sample_seed=sample_seed

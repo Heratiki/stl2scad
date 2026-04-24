@@ -64,16 +64,12 @@ def test_resolve_real_world_corpus_root_uses_manifest_relative_path(test_data_di
     assert resolved == (test_data_dir / "real_world_stls").resolve()
 
 
-def test_list_missing_real_world_corpus_files_reports_absent_cases(test_data_dir):
+def test_list_missing_real_world_corpus_files_reports_absent_cases(test_data_dir, tmp_path):
     manifest = load_real_world_corpus_manifest(
         test_data_dir / "real_world_corpus_manifest.json"
     )
-    root = resolve_real_world_corpus_root(
-        test_data_dir / "real_world_corpus_manifest.json",
-        manifest,
-    )
 
-    missing = list_missing_real_world_corpus_files(manifest["cases"], root)
+    missing = list_missing_real_world_corpus_files(manifest["cases"], tmp_path)
 
     assert missing == ["drill_guide_plate.stl", "x_carriage_spacer_block.stl"]
 

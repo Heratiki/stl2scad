@@ -928,6 +928,45 @@
       ]
     },
     {
+      "name": "box_plain_rotated_z25",
+      "fixture_type": "box",
+      "description": "Plain rotated box (no holes) to verify rotated-box detection — the simplest positive rotated-box case.",
+      "output_filename": "box_plain_rotated_z25.scad",
+      "box_size": [
+        18.0,
+        12.0,
+        10.0
+      ],
+      "transform": {
+        "rotate": [
+          0.0,
+          0.0,
+          25.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": true,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
       "name": "box_z_through_hole_rotated_z25",
       "fixture_type": "box",
       "description": "Non-axis-aligned rotated box to baseline that rotated non-plate geometry is not mistakenly detected as box_like_solid.",

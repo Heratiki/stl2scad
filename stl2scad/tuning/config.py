@@ -107,3 +107,9 @@ class DetectorConfig:
     revolve_phase2_min_confidence: float = 0.85
     revolve_phase2_rect_tolerance_ratio: float = 0.08
     revolve_phase2_circle_fit_tolerance_ratio: float = 0.08
+
+    # --- Linear extrude (Rule 2) thresholds ---
+    linear_extrude_axis_quality_min: float = 0.25
+    linear_extrude_cross_section_consistency_min: float = 0.60
+    linear_extrude_max_profile_vertices: int = 64
+    linear_extrude_confidence_min: float = 0.55

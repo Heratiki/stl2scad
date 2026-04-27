@@ -407,6 +407,11 @@ def build_feature_graph_for_stl(
                 config=resolved,
             )
         )
+        rotated_box_holes = _extract_rotated_box_through_holes(
+            vectors, normals, face_areas, features, config=resolved
+        )
+        if rotated_box_holes:
+            features = features + rotated_box_holes
         features.extend(_extract_repeated_hole_patterns(features, config=resolved))
 
     graph: dict[str, Any] = {
@@ -978,15 +983,23 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
                     "}",
                 ]
             )
-    # For a rotated plate with detected local-frame holes, emit a rotation-wrapped
-    # difference block so the holes are bored along the plate normal, not world Z.
-    is_rotated_with_local_holes = (
+    # For a rotated plate with detected local-frame holes or slots, emit a
+    # rotation-wrapped difference block so cutouts are bored along the plate
+    # normal, not world Z.
+    local_slots = [
+        s
+        for s in slots
+        if s.get("detected_via") == "rotated_plate_local_frame"
+        and "local_start" in s
+        and "local_end" in s
+    ]
+    is_rotated_with_local_cutouts = (
         plate is not None
         and plate.get("detected_via") == "rotated_plate"
-        and bool(local_holes)
+        and (bool(local_holes) or bool(local_slots))
     )
 
-    if is_rotated_with_local_holes:
+    if is_rotated_with_local_cutouts:
         depth = float(size[thickness_axis_index])
         # Declare local-frame hole variables.
         for hole_local_index, hole in enumerate(local_holes):
@@ -995,6 +1008,17 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
                 [
                     f"hole_local_{hole_local_index}_center = {_scad_vector(lc)};",
                     f"hole_local_{hole_local_index}_diameter = {float(hole['diameter']):.6f};",
+                ]
+            )
+        # Declare local-frame slot variables.
+        for slot_local_index, slot in enumerate(local_slots):
+            ls = [float(v) for v in slot["local_start"]]
+            le = [float(v) for v in slot["local_end"]]
+            lines.extend(
+                [
+                    f"slot_local_{slot_local_index}_start = {_scad_vector(ls)};",
+                    f"slot_local_{slot_local_index}_end = {_scad_vector(le)};",
+                    f"slot_local_{slot_local_index}_width = {float(slot['width']):.6f};",
                 ]
             )
         lines.extend(
@@ -1012,6 +1036,25 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
                     f" hole_local_{hole_local_index}_center[1], -0.100000])",
                     f"      cylinder(h={depth + 0.200000:.6f},"
                     f" d=hole_local_{hole_local_index}_diameter, $fn=64);",
+                ]
+            )
+        for slot_local_index in range(len(local_slots)):
+            # Emit the slot hull directly so the cylinder starts at z=-0.1 and
+            # extends through the full plate thickness (same as the hole emission
+            # above).  The generic slot_cutout module centers the cylinder on
+            # center[2] which would only cut halfway through.
+            lines.extend(
+                [
+                    f"    hull() {{",
+                    f"      translate([slot_local_{slot_local_index}_start[0],"
+                    f" slot_local_{slot_local_index}_start[1], -0.100000])",
+                    f"        cylinder(h={depth + 0.200000:.6f},"
+                    f" d=slot_local_{slot_local_index}_width, $fn=64);",
+                    f"      translate([slot_local_{slot_local_index}_end[0],"
+                    f" slot_local_{slot_local_index}_end[1], -0.100000])",
+                    f"        cylinder(h={depth + 0.200000:.6f},"
+                    f" d=slot_local_{slot_local_index}_width, $fn=64);",
+                    f"    }}",
                 ]
             )
         lines.extend(["  }", "}", ""])
@@ -2524,6 +2567,12 @@ def _extract_rotated_plate_through_holes(
             config=config,
         )
 
+        # Detect hole patterns in the local frame BEFORE tagging features with
+        # "local_n" (the pattern grouper only accepts world-axis labels).
+        local_pattern_features = _extract_repeated_hole_patterns(
+            local_features, config=config
+        )
+
         for feat in local_features:
             # Convert local-frame centers to world space and attach both.
             if "center" in feat:
@@ -2555,6 +2604,180 @@ def _extract_rotated_plate_through_holes(
             feat["local_origin"] = origin.tolist()
 
         features.extend(local_features)
+
+        # Convert pattern features to world space and tag them.
+        for pfeat in local_pattern_features:
+            if "centers" in pfeat:
+                world_centers = []
+                for lc in pfeat["centers"]:
+                    lu, lv, ln = float(lc[0]), float(lc[1]), float(lc[2])
+                    wc = origin + lu * u_axis + lv * v_axis + ln * n_axis
+                    world_centers.append(wc.tolist())
+                pfeat["centers"] = world_centers
+            if "pattern_origin" in pfeat:
+                lo = pfeat["pattern_origin"]
+                lu, lv, ln = float(lo[0]), float(lo[1]), float(lo[2])
+                pfeat["pattern_origin"] = (
+                    origin + lu * u_axis + lv * v_axis + ln * n_axis
+                ).tolist()
+            if "pattern_step" in pfeat:
+                step = pfeat["pattern_step"]
+                su, sv, sn = float(step[0]), float(step[1]), float(step[2])
+                pfeat["pattern_step"] = (
+                    su * u_axis + sv * v_axis + sn * n_axis
+                ).tolist()
+            pfeat["axis"] = "local_n"
+            pfeat["detected_via"] = "rotated_plate_local_frame"
+            pfeat["local_u_axis"] = u_axis.tolist()
+            pfeat["local_v_axis"] = v_axis.tolist()
+            pfeat["local_n_axis"] = n_axis.tolist()
+            pfeat["local_origin"] = origin.tolist()
+        features.extend(local_pattern_features)
+
+    return features
+
+
+def _extract_rotated_box_through_holes(
+    vectors: np.ndarray,
+    normals: np.ndarray,
+    face_areas: np.ndarray,
+    existing_features: list[dict[str, Any]],
+    config: DetectorConfig = DetectorConfig(),
+) -> list[dict[str, Any]]:
+    """Detect hole cutouts on boxes found by the rotated-box detector.
+
+    Projects all mesh geometry into each rotated box's local frame, runs
+    the standard axis-aligned hole extractor in that frame, then converts
+    detected centers back to world space.
+
+    Features carry both a world-space ``center`` and a ``local_center``.
+    The ``detected_via`` field is set to ``"rotated_box_local_frame"``.
+    """
+    rotated_boxes = [
+        f
+        for f in existing_features
+        if f.get("type") == "box_like_solid"
+        and f.get("detected_via") == "rotated_box"
+        and "local_u_axis" in f
+        and "local_v_axis" in f
+        and "local_n_axis" in f
+    ]
+    if not rotated_boxes:
+        return []
+
+    all_verts = vectors.reshape(-1, 3)
+    features: list[dict[str, Any]] = []
+
+    for box in rotated_boxes:
+        u_axis = np.array(box["local_u_axis"], dtype=np.float64)
+        v_axis = np.array(box["local_v_axis"], dtype=np.float64)
+        n_axis = np.array(box["local_n_axis"], dtype=np.float64)
+        origin = np.array(box["origin"], dtype=np.float64)
+        span_u, span_v, span_n = (
+            float(box["size"][0]),
+            float(box["size"][1]),
+            float(box["size"][2]),
+        )
+
+        origin_u = float(origin @ u_axis)
+        origin_v = float(origin @ v_axis)
+        origin_n = float(origin @ n_axis)
+
+        local_all_verts = np.column_stack(
+            [
+                all_verts @ u_axis - origin_u,
+                all_verts @ v_axis - origin_v,
+                all_verts @ n_axis - origin_n,
+            ]
+        )
+        local_vectors = local_all_verts.reshape(vectors.shape)
+
+        local_normals = np.column_stack(
+            [normals @ u_axis, normals @ v_axis, normals @ n_axis]
+        )
+
+        local_bbox: dict[str, float] = {
+            "min_x": 0.0,
+            "max_x": float(span_u),
+            "width": float(span_u),
+            "min_y": 0.0,
+            "max_y": float(span_v),
+            "height": float(span_v),
+            "min_z": 0.0,
+            "max_z": float(span_n),
+            "depth": float(span_n),
+        }
+        local_box_feat: dict[str, Any] = {
+            "type": "plate_like_solid",
+            "size": [float(span_u), float(span_v), float(span_n)],
+        }
+
+        local_features = _extract_axis_aligned_through_holes(
+            local_vectors,
+            local_normals,
+            face_areas,
+            local_bbox,
+            [local_box_feat],
+            config=config,
+        )
+
+        local_pattern_features = _extract_repeated_hole_patterns(
+            local_features, config=config
+        )
+
+        for feat in local_features:
+            if "center" in feat:
+                lu, lv, ln = (
+                    float(feat["center"][0]),
+                    float(feat["center"][1]),
+                    float(feat["center"][2]),
+                )
+                world_center = origin + lu * u_axis + lv * v_axis + ln * n_axis
+                feat["local_center"] = [lu, lv, ln]
+                feat["center"] = world_center.tolist()
+            if "start" in feat and "end" in feat:
+                ls = [float(v) for v in feat["start"]]
+                le = [float(v) for v in feat["end"]]
+                world_start = origin + ls[0] * u_axis + ls[1] * v_axis + ls[2] * n_axis
+                world_end = origin + le[0] * u_axis + le[1] * v_axis + le[2] * n_axis
+                feat["local_start"] = ls
+                feat["local_end"] = le
+                feat["start"] = world_start.tolist()
+                feat["end"] = world_end.tolist()
+            feat["axis"] = "local_n"
+            feat["detected_via"] = "rotated_box_local_frame"
+            feat["local_u_axis"] = u_axis.tolist()
+            feat["local_v_axis"] = v_axis.tolist()
+            feat["local_n_axis"] = n_axis.tolist()
+            feat["local_origin"] = origin.tolist()
+
+        features.extend(local_features)
+
+        for pfeat in local_pattern_features:
+            if "centers" in pfeat:
+                world_centers = []
+                for lc in pfeat["centers"]:
+                    lu, lv, ln = float(lc[0]), float(lc[1]), float(lc[2])
+                    wc = origin + lu * u_axis + lv * v_axis + ln * n_axis
+                    world_centers.append(wc.tolist())
+                pfeat["centers"] = world_centers
+            if "pattern_origin" in pfeat:
+                lo = pfeat["pattern_origin"]
+                lu, lv, ln = float(lo[0]), float(lo[1]), float(lo[2])
+                pfeat["pattern_origin"] = (
+                    origin + lu * u_axis + lv * v_axis + ln * n_axis
+                ).tolist()
+            if "pattern_step" in pfeat:
+                step = pfeat["pattern_step"]
+                su, sv, sn = float(step[0]), float(step[1]), float(step[2])
+                pfeat["pattern_step"] = (su * u_axis + sv * v_axis + sn * n_axis).tolist()
+            pfeat["axis"] = "local_n"
+            pfeat["detected_via"] = "rotated_box_local_frame"
+            pfeat["local_u_axis"] = u_axis.tolist()
+            pfeat["local_v_axis"] = v_axis.tolist()
+            pfeat["local_n_axis"] = n_axis.tolist()
+            pfeat["local_origin"] = origin.tolist()
+        features.extend(local_pattern_features)
 
     return features
 

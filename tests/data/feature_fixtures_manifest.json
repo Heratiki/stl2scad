@@ -1006,6 +1006,56 @@
       ]
     },
     {
+      "name": "box_rotated_z25_with_hole",
+      "fixture_type": "box",
+      "description": "Rotated box (Z25 deg) with a single through-hole on the smallest face. Validates rotated-box local-frame hole detection.",
+      "output_filename": "box_rotated_z25_with_hole.scad",
+      "box_size": [
+        18.0,
+        12.0,
+        6.0
+      ],
+      "holes": [
+        {
+          "axis": "z",
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "diameter": 4.0
+        }
+      ],
+      "transform": {
+        "rotate": [
+          0.0,
+          0.0,
+          25.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": true,
+            "hole_count": 1,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
       "name": "l_bracket_plain",
       "fixture_type": "l_bracket",
       "description": "Plain L-bracket baseline for non-plate, non-box geometry.",
@@ -1363,7 +1413,73 @@
             "box_like_solid": false,
             "hole_count": 2,
             "slot_count": 0,
+            "linear_pattern_count": 1,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_rotated_z30_with_slot",
+      "fixture_type": "plate",
+      "description": "Plate rotated 30\u00b0 around Z with a single slot. Validates rotated-plate local-frame slot detection.",
+      "output_filename": "plate_rotated_z30_with_slot.scad",
+      "plate_size": [24.0, 12.0, 2.0],
+      "slots": [
+        {
+          "start": [-3.5, 0.0],
+          "end": [3.5, 0.0],
+          "width": 3.0
+        }
+      ],
+      "transform": {
+        "rotate": [0.0, 0.0, 30.0],
+        "translate": [0.0, 0.0, 0.0]
+      },
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "rotated_plate_with_slot",
+          "confidence": 0.90,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 1,
             "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_rotated_z30_with_linear_pattern",
+      "fixture_type": "plate",
+      "description": "Plate rotated 30\u00b0 around Z with three equally-spaced holes forming a linear pattern. Validates rotated-plate local-frame pattern detection.",
+      "output_filename": "plate_rotated_z30_with_linear_pattern.scad",
+      "plate_size": [30.0, 12.0, 2.0],
+      "holes": [
+        {"center": [-8.0, 0.0], "diameter": 3.0},
+        {"center": [0.0, 0.0], "diameter": 3.0},
+        {"center": [8.0, 0.0], "diameter": 3.0}
+      ],
+      "transform": {
+        "rotate": [0.0, 0.0, 30.0],
+        "translate": [0.0, 0.0, 0.0]
+      },
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "rotated_plate_with_linear_pattern",
+          "confidence": 0.90,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 3,
+            "slot_count": 0,
+            "linear_pattern_count": 1,
             "grid_pattern_count": 0,
             "counterbore_count": 0
           }

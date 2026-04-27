@@ -2005,3 +2005,218 @@ def test_emit_revolve_scad_preview_fallback_without_upgrade():
     assert scad is not None
     assert "rotate_extrude" in scad
     assert "polygon" in scad
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 revolve profile classifier direct unit tests
+# ---------------------------------------------------------------------------
+
+def test_classify_revolve_profile_rectangle_returns_cylinder():
+    """A rectangle profile in (r, z) must classify as cylinder."""
+    from stl2scad.core.revolve_recovery import classify_revolve_profile
+    from stl2scad.tuning.config import DetectorConfig
+
+    config = DetectorConfig()
+    profile = [(0.0, 0.0), (5.0, 0.0), (5.0, 10.0), (0.0, 10.0)]
+    mesh_scale = 15.0
+
+    result = classify_revolve_profile(profile, mesh_scale, config)
+
+    assert result is not None, "Rectangle profile must produce a cylinder upgrade"
+    assert result["type"] == "cylinder"
+    assert abs(result["params"]["r"] - 5.0) < 0.1
+    assert abs(result["params"]["h"] - 10.0) < 0.1
+    assert result["confidence"] >= config.revolve_phase2_min_confidence
+
+
+def test_classify_revolve_profile_triangle_returns_cone():
+    """A right-triangle profile must classify as cone (r2=0)."""
+    from stl2scad.core.revolve_recovery import classify_revolve_profile
+    from stl2scad.tuning.config import DetectorConfig
+
+    config = DetectorConfig()
+    profile = [(0.0, 0.0), (6.0, 0.0), (0.0, 12.0)]
+    mesh_scale = 15.0
+
+    result = classify_revolve_profile(profile, mesh_scale, config)
+
+    assert result is not None, "Triangle profile must produce a cone upgrade"
+    assert result["type"] == "cone"
+    assert result["params"]["is_cone"] is True
+    assert result["confidence"] >= config.revolve_phase2_min_confidence
+
+
+def test_classify_revolve_profile_semicircle_returns_sphere():
+    """A semicircular arc profile must classify as sphere."""
+    import math
+    from stl2scad.core.revolve_recovery import classify_revolve_profile
+    from stl2scad.tuning.config import DetectorConfig
+
+    config = DetectorConfig()
+    r_expected = 8.0
+    # Sample a half-circle: r^2 + (z - R)^2 = R^2, z from 0 to 2R
+    # r = sqrt(R^2 - (z - R)^2)
+    n_samples = 12
+    profile = []
+    for i in range(n_samples + 1):
+        z = 2.0 * r_expected * i / n_samples
+        r = math.sqrt(max(0.0, r_expected**2 - (z - r_expected)**2))
+        profile.append((r, z))
+    mesh_scale = 20.0
+
+    result = classify_revolve_profile(profile, mesh_scale, config)
+
+    assert result is not None, "Semicircle profile must produce a sphere upgrade"
+    assert result["type"] == "sphere"
+    assert abs(result["params"]["r"] - r_expected) < 0.5
+    assert result["confidence"] >= config.revolve_phase2_min_confidence
+
+
+def test_classify_revolve_profile_complex_returns_none():
+    """A complex sawtooth profile must NOT classify as any primitive."""
+    from stl2scad.core.revolve_recovery import classify_revolve_profile
+    from stl2scad.tuning.config import DetectorConfig
+
+    config = DetectorConfig()
+    # Sawtooth: alternating high/low r values at multiple z levels
+    profile = [
+        (0.0, 0.0), (5.0, 0.0), (1.0, 2.0), (5.0, 4.0),
+        (1.0, 6.0), (5.0, 8.0), (0.0, 10.0),
+    ]
+    mesh_scale = 15.0
+
+    result = classify_revolve_profile(profile, mesh_scale, config)
+
+    # A sawtooth profile is not a cylinder, cone, or sphere.
+    assert result is None, f"Complex sawtooth profile must not upgrade, got: {result}"
+
+
+def test_classify_revolve_profile_disabled_by_config():
+    """When revolve_phase2_min_confidence=1.1, no profile should pass."""
+    import dataclasses
+    from stl2scad.core.revolve_recovery import classify_revolve_profile
+    from stl2scad.tuning.config import DetectorConfig
+
+    config = dataclasses.replace(DetectorConfig(), revolve_phase2_min_confidence=1.1)
+    profile = [(0.0, 0.0), (5.0, 0.0), (5.0, 10.0), (0.0, 10.0)]
+    mesh_scale = 15.0
+
+    result = classify_revolve_profile(profile, mesh_scale, config)
+    assert result is None, "No profile should pass with min_confidence > 1.0"
+
+
+def test_revolve_rectangle_profile_emits_cylinder_preview():
+    """The rect-profile revolve fixture's SCAD preview should emit cylinder() (Phase 2 upgrade)."""
+    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+
+    # Build a synthetic revolve_solid feature with primitive_upgrade=cylinder
+    graph = {
+        "features": [
+            {
+                "type": "revolve_solid",
+                "detected_via": "axisymmetric_revolve",
+                "axis": [0.0, 0.0, 1.0],
+                "axis_origin": [0.0, 0.0, 0.0],
+                "profile": [(0.0, 0.0), (5.0, 0.0), (5.0, 10.0), (0.0, 10.0)],
+                "confidence": 0.95,
+                "confidence_components": {
+                    "axis_quality": 0.95, "cross_slice_consistency": 0.95,
+                    "normal_field_agreement": 0.95, "profile_validity": 1.0,
+                },
+                "primitive_upgrade": {
+                    "type": "cylinder",
+                    "params": {"r": 5.0, "h": 10.0, "z_lo": 0.0},
+                    "confidence": 0.99,
+                },
+            }
+        ]
+    }
+    preview = emit_feature_graph_scad_preview(graph)
+    assert "cylinder(" in preview, f"Expected cylinder() in preview, got:\n{preview}"
+    assert "rotate_extrude" not in preview, "Phase 2 cylinder should NOT use rotate_extrude"
+
+
+def test_revolve_triangle_profile_emits_cone_preview():
+    """Triangle-profile revolve should emit cylinder(r1=..., r2=...) via Phase 2."""
+    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+
+    graph = {
+        "features": [
+            {
+                "type": "revolve_solid",
+                "detected_via": "axisymmetric_revolve",
+                "axis": [0.0, 0.0, 1.0],
+                "axis_origin": [0.0, 0.0, 0.0],
+                "profile": [(0.0, 0.0), (6.0, 0.0), (0.0, 12.0)],
+                "confidence": 0.92,
+                "confidence_components": {
+                    "axis_quality": 0.92, "cross_slice_consistency": 0.92,
+                    "normal_field_agreement": 0.92, "profile_validity": 1.0,
+                },
+                "primitive_upgrade": {
+                    "type": "cone",
+                    "params": {"r1": 6.0, "r2": 0.0, "h": 12.0, "z_lo": 0.0, "is_cone": True},
+                    "confidence": 0.97,
+                },
+            }
+        ]
+    }
+    preview = emit_feature_graph_scad_preview(graph)
+    assert "cylinder(" in preview, f"Expected cylinder() for cone in preview, got:\n{preview}"
+    assert "r1=" in preview or "revolve_r1" in preview, f"Expected r1 parameter, got:\n{preview}"
+    assert "rotate_extrude" not in preview
+
+
+def test_revolve_sphere_profile_emits_sphere_preview():
+    """Sphere-profile revolve should emit sphere() via Phase 2."""
+    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+
+    graph = {
+        "features": [
+            {
+                "type": "revolve_solid",
+                "detected_via": "axisymmetric_revolve",
+                "axis": [0.0, 0.0, 1.0],
+                "axis_origin": [0.0, 0.0, 0.0],
+                "profile": [(0.0, 0.0), (8.0, 8.0), (0.0, 16.0)],
+                "confidence": 0.90,
+                "confidence_components": {
+                    "axis_quality": 0.90, "cross_slice_consistency": 0.90,
+                    "normal_field_agreement": 0.90, "profile_validity": 1.0,
+                },
+                "primitive_upgrade": {
+                    "type": "sphere",
+                    "params": {"r": 8.0, "z_center": 8.0},
+                    "confidence": 0.95,
+                },
+            }
+        ]
+    }
+    preview = emit_feature_graph_scad_preview(graph)
+    assert "sphere(" in preview, f"Expected sphere() in preview, got:\n{preview}"
+    assert "rotate_extrude" not in preview
+
+
+def test_revolve_no_upgrade_uses_rotate_extrude():
+    """A revolve feature WITHOUT primitive_upgrade must still emit rotate_extrude."""
+    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+
+    graph = {
+        "features": [
+            {
+                "type": "revolve_solid",
+                "detected_via": "axisymmetric_revolve",
+                "axis": [0.0, 0.0, 1.0],
+                "axis_origin": [0.0, 0.0, 0.0],
+                "profile": [(0.0, 0.0), (5.0, 2.0), (4.0, 5.0), (3.0, 8.0), (0.0, 10.0)],
+                "confidence": 0.90,
+                "confidence_components": {
+                    "axis_quality": 0.90, "cross_slice_consistency": 0.90,
+                    "normal_field_agreement": 0.90, "profile_validity": 1.0,
+                },
+                # No primitive_upgrade key
+            }
+        ]
+    }
+    preview = emit_feature_graph_scad_preview(graph)
+    assert "rotate_extrude" in preview, f"Expected rotate_extrude in fallback, got:\n{preview}"

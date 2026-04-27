@@ -367,3 +367,149 @@ Plans in this doc span four sections (Real-World Feedback Loop, Immediate priori
 - Parallel to anything: Ongoing items (threshold tightening, user-assisted labeling, confidence gating).
 - Cadence rule still applies: after each Immediate priority closes, re-run triage and re-score recall before starting the next.
 - Rule 5 (Boolean + Transform IR wrapping must precede new positive primitives) remains in force. The axisymmetric revolve detector is a new positive primitive class and inherits the existing `BooleanUnion` wrapping slot — no further IR prerequisite.
+
+## Parallel Coding Agent Plan (2026-04-27)
+
+This section updates the execution model from sequential tracks to a bounded parallel plan. It is intentionally scoped so multiple coding agents can work concurrently with low merge conflict risk while preserving the fixture and recall gates.
+
+### Objectives for this cycle
+
+1. Close Immediate priority #2 (rotated cutouts on rotated plates).
+2. Close Immediate priority #3 (rotated-box positive detector).
+3. Start Immediate priority #4 (Phase 2 profile classification for revolve outputs) without blocking #2/#3.
+4. Keep triage and real-world recall merge-gate green at every integration point.
+
+### Agent workstream split
+
+#### Agent A — Rotated Cutout Local-Frame Extraction (Immediate #2)
+
+**Primary files:**
+- `stl2scad/core/feature_graph.py`
+- `tests/test_feature_graph.py`
+- `tests/test_feature_fixtures.py`
+- `tests/data/feature_fixtures_manifest.json`
+
+**Scope:**
+1. Extend cutout candidate extraction to run in plate-local `(u, v, t)` coordinates when `detected_via == "rotated_plate"`.
+2. Detect rotated holes, slots, and linear/grid patterns using local-frame geometry, then map metadata back to world coordinates for IR and preview.
+3. Preserve existing axis-aligned path behavior bit-for-bit for non-rotated plates.
+
+**Deliverables:**
+1. Local-frame extraction helper(s) with deterministic axis/sign conventions.
+2. New rotated-fixture manifest entries for hole, slot, and at least one pattern case on rotated plates.
+3. Passing fixture round-trip (counts + dimensions) and preview round-trip for the new rotated cases.
+
+**Out of scope:**
+- Rotated-box positive detection logic.
+- Revolve profile classification.
+
+#### Agent B — Rotated Box Positive Detection + Preview (Immediate #3)
+
+**Primary files:**
+- `stl2scad/core/feature_graph.py`
+- `tests/test_feature_graph.py`
+- `tests/test_feature_fixtures.py`
+- `tests/data/feature_fixtures_manifest.json`
+
+**Scope:**
+1. Add positive rotated-box detection using dominant orthogonal normal-pair recovery and oriented extents.
+2. Emit IR nodes with transform wrapping compatible with existing `Boolean*` + `TransformRotate` conventions.
+3. Enable parametric preview emission for high-confidence rotated boxes (base solid first; cutouts may remain conservative if confidence is low).
+
+**Deliverables:**
+1. Positive `box_like_solid` rotated detection path with confidence gating.
+2. Promotion of `box_z_through_hole_rotated_z25` from negative to positive expectation (or replacement with equivalent positive fixture if geometry requires).
+3. Stable preview output for rotated boxes and passing round-trip assertions where confidence criteria are met.
+
+**Out of scope:**
+- Rotated plate local-frame cutout extraction internals.
+- Revolve Phase 2 classifier decisions.
+
+#### Agent C — Revolve Phase 2 Profile Classifier (Immediate #4, partial)
+
+**Primary files:**
+- `stl2scad/core/revolve_recovery.py`
+- `stl2scad/core/feature_graph.py`
+- `tests/test_feature_graph.py`
+- `tests/test_feature_fixtures.py`
+
+**Scope:**
+1. Add profile-shape classification over recovered revolve polygon profiles.
+2. Promote high-confidence profile classes to primitive-specific preview emission (`cylinder()`, cone/frustum form, `sphere()`), while preserving `rotate_extrude()` fallback.
+3. Keep all annular and non-simple profiles on conservative `rotate_extrude()` output unless strict classifier confidence is met.
+
+**Deliverables:**
+1. Classifier module/functions with explicit thresholds and rationale comments.
+2. Tests covering true-positive class upgrades and guardrails against vase-like false upgrades.
+3. No regression in existing revolve fixtures and preview round-trip checks.
+
+**Out of scope:**
+- New fixture families unrelated to revolve classification.
+- Inventory/triage schema changes.
+
+#### Agent D — Regression Fence and Scoring Steward (cross-cutting)
+
+**Primary files/scripts:**
+- `scripts/build_feature_graph.py`
+- `scripts/summarize_feature_triage.py`
+- `scripts/score_real_world_corpus.py`
+- `tests/test_score_real_world_corpus.py`
+- `artifacts/real_world_recall_baseline.json` (update only if explicitly approved)
+
+**Scope:**
+1. Keep triage and recall tooling stable while Agents A/B/C land.
+2. Run cadence checks after each integration branch merge and summarize deltas.
+3. Flag regressions with culprit commit ranges and bucket-level impact.
+
+**Deliverables:**
+1. Per-merge triage delta note (`parametric_preview`, `feature_graph_no_preview`, `axis_pairs_only`, `polyhedron_fallback`).
+2. Per-merge recall merge-gate result and feature-family deltas.
+3. Optional tooling hardening only when needed to prevent flaky gate behavior.
+
+**Out of scope:**
+- Detector feature changes unless required to repair gate correctness.
+
+### Conflict-avoidance contract
+
+1. One-owner rule for core functions per branch:
+   - Agent A owns rotated plate cutout path and related helpers.
+   - Agent B owns rotated box detector entry points and rotated-box preview branch.
+   - Agent C owns revolve classifier entry points and promotion logic.
+2. Shared-file etiquette for `feature_graph.py`:
+   - each agent edits only their designated section boundaries;
+   - helper signatures added by one agent must be consumed, not rewritten, by others.
+3. Fixture manifest etiquette:
+   - only one agent regenerates and commits `.scad` fixture outputs for a given merge slice to preserve byte-exact diffs.
+
+### Branch and merge topology
+
+1. `agent/a-rotated-cutouts`
+2. `agent/b-rotated-box`
+3. `agent/c-revolve-phase2`
+4. `agent/d-regression-fence`
+5. Integration branch: `integration/parallel-2026-04-27`
+
+Merge sequence into integration branch:
+1. Agent A and Agent B in parallel (no dependency).
+2. Agent C rebased onto integration after A/B land (to absorb shared `feature_graph.py` shape changes).
+3. Agent D runs gates and publishes deltas after each merge.
+4. Final squash or linear merge to `main` only after all required gates pass.
+
+### Required gate runbook (after each merge)
+
+1. `python -m pytest tests/test_feature_graph.py -q`
+2. `python -m pytest tests/test_feature_fixtures.py -v`
+3. `python -m pytest tests/test_real_world_corpus.py -q`
+4. `python scripts/build_feature_graph.py "D:\3D Files\FDM" --output artifacts/fdm_graphs.json --triage-output artifacts/feature_graph_triage.json`
+5. `python scripts/summarize_feature_triage.py artifacts/feature_graph_triage.json --top 10`
+6. `python scripts/score_real_world_corpus.py --manifest tests/data/real_world_corpus_manifest.json --baseline artifacts/real_world_recall_baseline.json --output artifacts/real_world_recall_maintainer.json --delta-output artifacts/real_world_recall_delta_maintainer.json --merge-gate`
+
+### Merge acceptance criteria for this parallel cycle
+
+1. Immediate priorities #2 and #3 are closed with fixtures and round-trip tests.
+2. Immediate priority #4 has at least one profile-class promotion path merged behind conservative thresholds, with no revolve regressions.
+3. No fixture invariant regressions:
+   - byte-exact regeneration
+   - dimensional round-trip
+   - roadmap stress-case coverage
+4. Real-world merge-gate passes (or, if baseline update is intended, baseline change is reviewed and approved in the same PR).

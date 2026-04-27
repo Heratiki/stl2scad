@@ -84,6 +84,8 @@ class DetectorConfig:
     cylinder_cross_section_squareness_min: float = 0.80
     # Minimum fraction of total surface area contributed by the two flat caps together.
     cylinder_cap_area_fraction_min: float = 0.08
+    # Maximum inward-pointing fraction of lateral area before rejecting as non-solid.
+    cylinder_max_inward_lateral_area_fraction: float = 0.05
     cylinder_confidence_min: float = 0.70
 
     # --- Pattern thresholds ---

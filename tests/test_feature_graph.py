@@ -1643,6 +1643,78 @@ def test_rotated_plate_has_rotation_euler_deg(test_output_dir):
     )
 
 
+def test_rotated_plate_scad_preview_uses_local_frame_multmatrix(test_output_dir):
+    """Rotated plate preview should emit a basis-driven transform, not only Euler angles."""
+    stl_file = test_output_dir / "rotated_plate_preview_transform.stl"
+    _create_rotated_plate(stl_file, plate_size=(20.0, 10.0, 2.0), rotate_x_deg=30.0)
+    graph = build_feature_graph_for_stl(stl_file)
+    scad = emit_feature_graph_scad_preview(graph)
+
+    assert scad is not None
+    assert "plate_local_u = [" in scad
+    assert "plate_local_v = [" in scad
+    assert "plate_local_n = [" in scad
+    assert "multmatrix(plate_transform)" in scad
+
+
+def test_cylinder_inward_lateral_threshold_is_configurable():
+    """Cylinder inward-area rejection threshold must be read from DetectorConfig."""
+    from stl2scad.core.feature_graph import _extract_cylinder_like_solid
+    from stl2scad.tuning.config import DetectorConfig
+
+    cap_normals = np.array([
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, -1.0],
+    ])
+    cap_areas = np.array([80.0, 80.0])
+
+    lateral_count = 13
+    thetas = np.linspace(0.0, 2.0 * np.pi, lateral_count, endpoint=False)
+    lateral_normals = np.array([[float(np.cos(t)), float(np.sin(t)), 0.0] for t in thetas])
+    # Flip one sidewall normal inward so inward_frac is above 0.05 but below 0.10.
+    lateral_normals[0] *= -1.0
+    lateral_areas = np.full((lateral_count,), 5.0, dtype=float)
+
+    normals = np.vstack([cap_normals, lateral_normals])
+    face_areas = np.concatenate([cap_areas, lateral_areas])
+
+    vertices = np.zeros((len(normals), 3, 3), dtype=float)
+    for i, theta in enumerate(thetas, start=2):
+        centroid = np.array([4.0 * np.cos(theta), 4.0 * np.sin(theta), 4.0])
+        vertices[i, :, :] = centroid
+
+    bbox = {
+        "min_x": -5.0,
+        "max_x": 5.0,
+        "min_y": -5.0,
+        "max_y": 5.0,
+        "min_z": 0.0,
+        "max_z": 8.0,
+        "width": 10.0,
+        "height": 10.0,
+        "depth": 8.0,
+    }
+
+    default_result = _extract_cylinder_like_solid(
+        normals,
+        face_areas,
+        bbox,
+        vertices,
+        config=DetectorConfig(),
+    )
+    relaxed_result = _extract_cylinder_like_solid(
+        normals,
+        face_areas,
+        bbox,
+        vertices,
+        config=DetectorConfig(cylinder_max_inward_lateral_area_fraction=0.10),
+    )
+
+    assert default_result == []
+    assert len(relaxed_result) == 1
+    assert relaxed_result[0]["type"] == "cylinder_like_solid"
+
+
 def test_rotated_plate_ir_tree_has_transform_rotate(test_output_dir):
     """IR tree for a rotated plate must wrap PrimitivePlate in TransformRotate."""
     stl_file = test_output_dir / "rotated_plate_ir.stl"

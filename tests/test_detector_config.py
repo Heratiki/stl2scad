@@ -37,6 +37,16 @@ def test_config_exposes_hole_thresholds():
     assert config.hole_max_radius_ratio == 0.45
 
 
+def test_config_exposes_cylinder_thresholds():
+    config = DetectorConfig()
+    assert config.cylinder_cap_fill_ratio_min == 0.68
+    assert config.cylinder_cap_fill_ratio_max == 0.93
+    assert config.cylinder_cross_section_squareness_min == 0.80
+    assert config.cylinder_cap_area_fraction_min == 0.08
+    assert config.cylinder_max_inward_lateral_area_fraction == 0.05
+    assert config.cylinder_confidence_min == 0.70
+
+
 def test_config_override_preserves_others():
     config = DetectorConfig(normal_axis_threshold=0.90)
     assert config.normal_axis_threshold == 0.90

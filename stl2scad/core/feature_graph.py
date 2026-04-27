@@ -723,6 +723,11 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         f"plate_origin = {_scad_vector(origin)};",
         f"plate_size = {_scad_vector(size)};",
     ]
+    if plate is not None:
+        transform_decls, plate_transform_expr = _plate_transform_scad(plate)
+        lines.extend(transform_decls)
+    else:
+        plate_transform_expr = "translate(plate_origin) "
     if holes or slots or counterbores or rectangular_cutouts or rectangular_pockets or local_holes:
         for pattern_index, pattern in enumerate(supported_patterns):
             if pattern.get(
@@ -872,7 +877,6 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
     )
 
     if is_rotated_with_local_holes:
-        angles = plate.get("rotation_euler_deg", [0.0, 0.0, 0.0])
         depth = float(size[thickness_axis_index])
         # Declare local-frame hole variables.
         for hole_local_index, hole in enumerate(local_holes):
@@ -886,7 +890,7 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         lines.extend(
             [
                 "",
-                f"translate(plate_origin) rotate([{angles[0]:.6f}, {angles[1]:.6f}, {angles[2]:.6f}]) {{",
+                f"{plate_transform_expr}{{",
                 "  difference() {",
                 "    cube(plate_size);",
             ]
@@ -903,20 +907,11 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         lines.extend(["  }", "}", ""])
         return "\n".join(lines)
 
-    if plate:
-        if plate.get("detected_via") == "rotated_plate":
-            angles = plate.get("rotation_euler_deg", [0.0, 0.0, 0.0])
-            rotation_expr = f"rotate([{angles[0]:.6f}, {angles[1]:.6f}, {angles[2]:.6f}]) "
-        else:
-            rotation_expr = ""
-    else:
-        rotation_expr = ""
-
     lines.extend(
         [
             "",
             "difference() {",
-            f"  translate(plate_origin) {rotation_expr}cube(plate_size);",
+            f"  {plate_transform_expr}cube(plate_size);",
         ]
     )
 
@@ -1208,7 +1203,7 @@ def _extract_rotated_plate_solid(
             "note": (
                 f"Rotated plate detected via dominant face-normal axis "
                 f"[{dominant_axis[0]:.3f}, {dominant_axis[1]:.3f}, {dominant_axis[2]:.3f}]. "
-                "rz cannot be recovered from surface normals alone."
+                "In-plane orientation is estimated from the footprint's minimum-area rectangle."
             ),
         }
     ]
@@ -1322,8 +1317,8 @@ def _extract_cylinder_like_solid(
         else:
             inward_frac = 0.0
 
-        # More than 5% inward lateral area → internal surface present → not solid
-        if inward_frac > 0.05:
+        # Significant inward lateral area implies an internal void/cavity.
+        if inward_frac > config.cylinder_max_inward_lateral_area_fraction:
             continue
 
         # Confidence: reward fill ratio closeness to π/4 and squareness
@@ -1722,6 +1717,39 @@ def _tolerant_box_confidence(
 
 def _scad_vector(values: list[float]) -> str:
     return "[" + ", ".join(f"{value:.6f}" for value in values) + "]"
+
+
+def _plate_transform_scad(plate: dict[str, Any]) -> tuple[list[str], str]:
+    """Return (declarations, transform_expr) for plate-local to world placement."""
+    if plate.get("detected_via") != "rotated_plate":
+        return [], "translate(plate_origin) "
+
+    local_u = plate.get("local_u_axis")
+    local_v = plate.get("local_v_axis")
+    local_n = plate.get("dominant_axis")
+    if (
+        isinstance(local_u, list)
+        and isinstance(local_v, list)
+        and isinstance(local_n, list)
+        and len(local_u) == 3
+        and len(local_v) == 3
+        and len(local_n) == 3
+    ):
+        declarations = [
+            f"plate_local_u = {_scad_vector([float(v) for v in local_u])};",
+            f"plate_local_v = {_scad_vector([float(v) for v in local_v])};",
+            f"plate_local_n = {_scad_vector([float(v) for v in local_n])};",
+            "plate_transform = [",
+            "  [plate_local_u[0], plate_local_v[0], plate_local_n[0], plate_origin[0]],",
+            "  [plate_local_u[1], plate_local_v[1], plate_local_n[1], plate_origin[1]],",
+            "  [plate_local_u[2], plate_local_v[2], plate_local_n[2], plate_origin[2]],",
+            "  [0, 0, 0, 1],",
+            "];",
+        ]
+        return declarations, "multmatrix(plate_transform) "
+
+    angles = plate.get("rotation_euler_deg", [0.0, 0.0, 0.0])
+    return [], f"translate(plate_origin) rotate([{angles[0]:.6f}, {angles[1]:.6f}, {angles[2]:.6f}]) "
 
 
 def _scad_named_linear_point_expression(pattern_name: str, index_name: str) -> str:

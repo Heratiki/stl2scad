@@ -528,13 +528,24 @@ def _assert_fixture_dimensions(fixture, features):
         assert len(revolves) == 1
         detected = revolves[0]
         expected_profile = fixture["profile"]
+        expected_min_r = min(float(point[0]) for point in expected_profile)
+        expected_max_r = max(float(point[0]) for point in expected_profile)
+        detected_max_r = max(float(point[0]) for point in detected["profile"])
+        assert abs(detected_max_r - expected_max_r) / expected_max_r < 0.05
+
+        # Annular revolves are allowed in Phase 1.6 and carry explicit inner/outer radii.
+        if expected_min_r > 1e-6:
+            assert detected.get("detected_via") == "annular_revolve"
+            detected_inner = float(detected.get("inner_r", min(float(p[0]) for p in detected["profile"])))
+            detected_outer = float(detected.get("outer_r", detected_max_r))
+            assert abs(detected_inner - expected_min_r) / max(expected_min_r, 1e-6) < 0.20
+            assert abs(detected_outer - expected_max_r) / max(expected_max_r, 1e-6) < 0.05
+            return
+
         assert abs(len(detected["profile"]) - len(expected_profile)) <= max(
             2,
             len(expected_profile) // 4,
         )
-        expected_max_r = max(float(point[0]) for point in expected_profile)
-        detected_max_r = max(float(point[0]) for point in detected["profile"])
-        assert abs(detected_max_r - expected_max_r) / expected_max_r < 0.05
         return
 
     _assert_plate_dimensions(fixture, features)
@@ -1452,8 +1463,8 @@ def test_revolve_fixture_preview_round_trip(test_data_dir, test_output_dir):
         graph = build_feature_graph_for_stl(stl_path)
         preview = emit_feature_graph_scad_preview(graph)
         assert preview is not None, f"{fixture['name']} expected a preview"
-        assert "rotate_extrude" in preview
-        assert "polygon" in preview
+        # Phase 2 may upgrade revolve previews to native primitives.
+        assert any(token in preview for token in ("rotate_extrude", "cylinder(", "sphere(", "difference()"))
 
         preview_scad = test_output_dir / f"{fixture['name']}.preview.scad"
         preview_stl = test_output_dir / f"{fixture['name']}.preview.stl"
@@ -1466,7 +1477,10 @@ def test_revolve_fixture_preview_round_trip(test_data_dir, test_output_dir):
             openscad_path,
         )
         preview_graph = build_feature_graph_for_stl(preview_stl)
-        assert any(feature["type"] == "revolve_solid" for feature in preview_graph["features"])
+        assert any(
+            feature["type"] in {"revolve_solid", "cylinder_like_solid"}
+            for feature in preview_graph["features"]
+        )
 
 
 def test_feature_fixture_ambiguous_candidate_round_trip_ranking(

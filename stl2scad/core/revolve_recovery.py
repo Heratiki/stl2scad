@@ -432,42 +432,66 @@ def classify_revolve_profile(
         # Fit a line r = a*z + b to the outermost profile points.
         # Use the points NOT on the axis to fit the slant.
         outer_pts = [(r, z) for r, z in pts if r > tol_r]
-        if len(outer_pts) >= 2:
-            # Linear least-squares fit: r = a*z + b
-            z_arr = np.array([p[1] for p in outer_pts])
-            r_arr = np.array([p[0] for p in outer_pts])
+        cone_structure_ok = (
+            (has_outer_lo and has_outer_hi)
+            or (has_outer_lo and has_axis_hi)
+            or (has_outer_hi and has_axis_lo)
+        )
+        # Restrict cone/frustum upgrades to simple low-vertex profiles to avoid
+        # collapsing richer revolve shapes (e.g. vases) into a linear frustum.
+        if cone_structure_ok and len(outer_pts) >= 1 and len(pts) <= 6:
             if len(outer_pts) == 1:
-                a, b = 0.0, float(outer_pts[0][0])
+                # One-sided cone profile (triangle): infer the missing endpoint
+                # from the axis touch at the opposite z-end.
+                r_only, _z_only = outer_pts[0]
+                if has_outer_lo and has_axis_hi:
+                    r_bottom = float(r_only)
+                    r_top = 0.0
+                elif has_outer_hi and has_axis_lo:
+                    r_bottom = 0.0
+                    r_top = float(r_only)
+                else:
+                    r_bottom = float(r_only)
+                    r_top = float(r_only)
+                cone_confidence = 1.0
             else:
+                z_arr = np.array([p[1] for p in outer_pts])
+                r_arr = np.array([p[0] for p in outer_pts])
                 # np.polyfit: r = a*z + b
                 coeffs = np.polyfit(z_arr, r_arr, 1)
                 a, b = float(coeffs[0]), float(coeffs[1])
-            r_bottom = float(np.clip(a * z_lo + b, 0.0, None))
-            r_top = float(np.clip(a * z_hi + b, 0.0, None))
-            # Residual: every non-axis point should lie near the slant line
-            cone_residuals: list[float] = []
-            for r, z in pts:
-                if r < tol_r:
-                    continue  # axis points are valid cone/frustum caps
-                r_expected = a * z + b
-                cone_residuals.append(abs(r - r_expected))
-            if cone_residuals:
+                r_bottom = float(np.clip(a * z_lo + b, 0.0, None))
+                r_top = float(np.clip(a * z_hi + b, 0.0, None))
+                # Residual: every non-axis point should lie near the slant line
+                cone_residuals: list[float] = []
+                for r, z in pts:
+                    if r < tol_r:
+                        continue  # axis points are valid cone/frustum caps
+                    r_expected = a * z + b
+                    cone_residuals.append(abs(r - r_expected))
+                if not cone_residuals:
+                    cone_residuals = [0.0]
                 cone_mean_res = sum(cone_residuals) / len(cone_residuals)
+                cone_max_res = max(cone_residuals)
                 cone_confidence = max(0.0, 1.0 - cone_mean_res / r_max)
-                # A cone has one end at r=0; a frustum has both ends > 0
-                is_cone = r_bottom < tol_r or r_top < tol_r
-                if cone_confidence >= config.revolve_phase2_min_confidence:
-                    return {
-                        "type": "cone",
-                        "params": {
-                            "r1": float(max(r_bottom, 0.0)),
-                            "r2": float(max(r_top, 0.0)),
-                            "h": float(h),
-                            "z_lo": float(z_lo),
-                            "is_cone": bool(is_cone),
-                        },
-                        "confidence": float(cone_confidence),
-                    }
+                # Reject jagged profiles that only fit in mean (e.g. sawtooth).
+                if cone_max_res > mesh_scale * config.revolve_phase2_rect_tolerance_ratio:
+                    cone_confidence = 0.0
+
+            # A cone has one end at r=0; a frustum has both ends > 0
+            is_cone = r_bottom < tol_r or r_top < tol_r
+            if cone_confidence >= config.revolve_phase2_min_confidence:
+                return {
+                    "type": "cone",
+                    "params": {
+                        "r1": float(max(r_bottom, 0.0)),
+                        "r2": float(max(r_top, 0.0)),
+                        "h": float(h),
+                        "z_lo": float(z_lo),
+                        "is_cone": bool(is_cone),
+                    },
+                    "confidence": float(cone_confidence),
+                }
 
     # --- Sphere check: profile fits a circle arc in (r, z) space
     # A sphere profile is a semicircle: r^2 + (z - z_c)^2 = R^2,
@@ -544,11 +568,23 @@ def detect_revolve_solid(
         if outer_r < 1e-9 or inner_r / outer_r > 0.95:
             return []
 
-    # Pre-process slices for cross-consistency: keep max-r per z-level so that
-    # flat-cap interior crossings (which vary per angle) do not inflate the
-    # variance.  The raw slices are still used for aggregation.
-    slices_outer = [_max_r_per_z(sl) for sl in slices]
-    cross_slice_score = cross_slice_consistency(slices_outer, mesh_scale=mesh_scale)
+    if is_annular:
+        # For annular tubes, use inner/outer radius spread across slice angles.
+        # Interpolated z-profiles include cap interior points that can create
+        # large false spread even on valid axisymmetric rings.
+        inner_vals = np.array([float(sl[:, 0].min()) for sl in slices], dtype=np.float64)
+        outer_vals = np.array([float(sl[:, 0].max()) for sl in slices], dtype=np.float64)
+        inner_spread = float(inner_vals.max() - inner_vals.min())
+        outer_spread = float(outer_vals.max() - outer_vals.min())
+        blended = 0.5 * inner_spread + 0.5 * outer_spread
+        relative = blended / max(mesh_scale, 1e-12)
+        cross_slice_score = float(max(0.0, 1.0 - relative * 10.0))
+    else:
+        # Pre-process slices for cross-consistency: keep max-r per z-level so that
+        # flat-cap interior crossings (which vary per angle) do not inflate the
+        # variance.  The raw slices are still used for aggregation.
+        slices_outer = [_max_r_per_z(sl) for sl in slices]
+        cross_slice_score = cross_slice_consistency(slices_outer, mesh_scale=mesh_scale)
     # Accept when score is above the threshold derived from the tolerance ratio.
     cross_threshold = 1.0 - config.revolve_cross_slice_tolerance_ratio * 10.0
     if cross_slice_score < cross_threshold:

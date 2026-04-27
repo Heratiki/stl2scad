@@ -82,7 +82,13 @@ def _assert_box_dimensions(fixture, features):
     best = max(boxes, key=lambda item: float(item.get("confidence", 0.0)))
     expected_size = fixture.get("box_size", fixture.get("size"))
     assert expected_size is not None, f"{fixture['name']} expected box dimensions in fixture"
-    _assert_axis_aligned_size(best["size"], expected_size, fixture["name"], "box size")
+    if best.get("detected_via") == "rotated_box":
+        actual_sorted = sorted(float(v) for v in best["size"])
+        expected_sorted = sorted(float(v) for v in expected_size)
+        for i, (actual, expected) in enumerate(zip(actual_sorted, expected_sorted)):
+            _assert_close(actual, expected, _SIZE_TOL, f"{fixture['name']} box size dim {i}")
+    else:
+        _assert_axis_aligned_size(best["size"], expected_size, fixture["name"], "box size")
 
 
 def _assert_plate_hole_dimensions(fixture, features):

@@ -223,7 +223,7 @@ def _build_ir_tree(graph: dict[str, Any]) -> list[dict[str, Any]]:
 
         # Wrap rotated primitives in a TransformRotate node so the IR tree
         # encodes the orientation explicitly rather than burying it in metadata.
-        if prim.get("detected_via") == "rotated_plate":
+        if prim.get("detected_via") in {"rotated_plate", "rotated_box"}:
             angles = prim.get("rotation_euler_deg", [0.0, 0.0, 0.0])
             ir_prim = {
                 "type": "TransformRotate",
@@ -372,7 +372,19 @@ def build_feature_graph_for_stl(
                 if not solid_found
                 else []
             )
-            features = box_features + rotated_plate_features
+            if rotated_plate_features:
+                features = box_features + rotated_plate_features
+            elif not solid_found:
+                rotated_box_features = _extract_rotated_box_solid(
+                    normals,
+                    face_areas,
+                    bbox,
+                    vectors,
+                    resolved,
+                )
+                features = box_features + rotated_box_features
+            else:
+                features = box_features
     if not revolve_features:
         features.extend(
             _extract_axis_aligned_through_holes(
@@ -586,15 +598,22 @@ def _emit_box_scad_preview(graph: dict[str, Any], box: dict[str, Any]) -> str:
     """Emit parametric SCAD for a box_like_solid with optional through-holes."""
     origin = [float(v) for v in box["origin"]]
     size = [float(v) for v in box["size"]]
-    axis_depth = {"x": size[0], "y": size[1], "z": size[2]}
+    is_rotated = box.get("detected_via") == "rotated_box"
+    axis_depth = {} if is_rotated else {"x": size[0], "y": size[1], "z": size[2]}
 
-    holes = [
-        f
-        for f in graph.get("features", [])
-        if f.get("type") == "hole_like_cutout"
-        and float(f.get("confidence", 0.0)) >= 0.70
-        and f.get("axis") in axis_depth
-    ]
+    holes = (
+        []
+        if is_rotated
+        else [
+            f
+            for f in graph.get("features", [])
+            if f.get("type") == "hole_like_cutout"
+            and float(f.get("confidence", 0.0)) >= 0.70
+            and f.get("axis") in axis_depth
+        ]
+    )
+
+    transform_decls, box_transform_expr = _box_transform_scad(box)
 
     lines = [
         "// Feature graph SCAD preview",
@@ -604,6 +623,7 @@ def _emit_box_scad_preview(graph: dict[str, Any], box: dict[str, Any]) -> str:
         f"box_origin = {_scad_vector(origin)};",
         f"box_size = {_scad_vector(size)};",
     ]
+    lines.extend(transform_decls)
 
     for hole_index, hole in enumerate(holes):
         center = [float(v) for v in hole["center"]]
@@ -630,7 +650,7 @@ def _emit_box_scad_preview(graph: dict[str, Any], box: dict[str, Any]) -> str:
         [
             "",
             "difference() {",
-            "  translate(box_origin) cube(box_size);",
+            f"  {box_transform_expr}cube(box_size);",
         ]
     )
 
@@ -1209,6 +1229,120 @@ def _extract_rotated_plate_solid(
     ]
 
 
+def _extract_rotated_box_solid(
+    normals: np.ndarray,
+    face_areas: np.ndarray,
+    bbox: dict[str, float],
+    vertices: np.ndarray,
+    config: DetectorConfig = DetectorConfig(),
+) -> list[dict[str, Any]]:
+    """Detect a box with arbitrary orientation using normal covariance PCA."""
+    del bbox  # Unused for oriented-box extraction.
+    if len(normals) == 0 or len(face_areas) == 0 or vertices is None:
+        return []
+
+    total_area = float(np.sum(face_areas))
+    if total_area < 1e-12:
+        return []
+
+    weights = face_areas / total_area
+    C = np.einsum("i,ij,ik->jk", weights, normals, normals)
+    eigenvalues, eigenvectors = np.linalg.eigh(C)
+    max_ev = float(max(eigenvalues[-1], 1e-12))
+    min_ev = float(eigenvalues[0])
+
+    # Degenerate spectra are typically plate/cylinder-like, not box-like.
+    if min_ev / max_ev < 0.05:
+        return []
+
+    axes: list[np.ndarray] = []
+    for idx in (2, 1, 0):
+        axis = eigenvectors[:, idx].copy()
+        for dim in (2, 1, 0):
+            if abs(axis[dim]) > 1e-6:
+                if axis[dim] < 0.0:
+                    axis = -axis
+                break
+        axes.append(axis)
+
+    if float(np.dot(np.cross(axes[0], axes[1]), axes[2])) < 0.0:
+        axes[1] = -axes[1]
+
+    pair_coverages: list[float] = []
+    pair_areas: list[float] = []
+    covered_area = 0.0
+    for axis in axes:
+        pos_mask = (normals @ axis) >= config.normal_axis_threshold
+        neg_mask = (normals @ (-axis)) >= config.normal_axis_threshold
+        pos_area = float(np.sum(face_areas[pos_mask]))
+        neg_area = float(np.sum(face_areas[neg_mask]))
+        if pos_area <= 0.0 or neg_area <= 0.0:
+            return []
+        pair_area = pos_area + neg_area
+        pair_coverages.append(pair_area / total_area)
+        pair_areas.append(pair_area)
+        covered_area += pair_area
+
+    confidence = float(min(1.0, covered_area / total_area))
+    if confidence < config.box_confidence_min:
+        return []
+
+    all_verts = vertices.reshape(-1, 3)
+    axis_spans: list[tuple[float, float, np.ndarray]] = []
+    for axis in axes:
+        projections = all_verts @ axis
+        min_proj = float(np.min(projections))
+        max_proj = float(np.max(projections))
+        axis_spans.append((max_proj - min_proj, min_proj, axis))
+
+    unsorted_spans = [item[0] for item in axis_spans]
+    for axis_index in range(3):
+        other = [i for i in range(3) if i != axis_index]
+        ideal_pair_area = 2.0 * unsorted_spans[other[0]] * unsorted_spans[other[1]]
+        if ideal_pair_area <= 1e-9:
+            return []
+        pair_support = pair_areas[axis_index] / ideal_pair_area
+        if pair_support < 0.85:
+            return []
+
+    # Deterministic local frame: order by increasing span.
+    axis_spans.sort(key=lambda item: item[0])
+    span_u, min_u, u_axis = axis_spans[0]
+    span_v, min_v, v_axis = axis_spans[1]
+    span_n, min_n, n_axis = axis_spans[2]
+
+    if float(np.dot(np.cross(u_axis, v_axis), n_axis)) < 0.0:
+        v_axis = -v_axis
+
+    origin_3d = min_u * u_axis + min_v * v_axis + min_n * n_axis
+    R = np.column_stack((u_axis, v_axis, n_axis))
+    euler_angles = _matrix_to_euler_xyz(R)
+
+    return [
+        {
+            "type": "box_like_solid",
+            "confidence": confidence,
+            "detected_via": "rotated_box",
+            "rotation_euler_deg": euler_angles,
+            "origin": origin_3d.tolist(),
+            "size": [float(span_u), float(span_v), float(span_n)],
+            "local_u_axis": u_axis.tolist(),
+            "local_v_axis": v_axis.tolist(),
+            "local_n_axis": n_axis.tolist(),
+            "parameters": {
+                "size_u": float(span_u),
+                "size_v": float(span_v),
+                "size_n": float(span_n),
+                "axis_coverages": [float(v) for v in pair_coverages],
+            },
+            "note": (
+                "Rotated box detected via area-weighted normal covariance "
+                "eigenbasis and oriented bounding extents."
+            ),
+        }
+    ]
+
+
 def _extract_cylinder_like_solid(
     normals: np.ndarray,
     face_areas: np.ndarray,
@@ -1750,6 +1884,39 @@ def _plate_transform_scad(plate: dict[str, Any]) -> tuple[list[str], str]:
 
     angles = plate.get("rotation_euler_deg", [0.0, 0.0, 0.0])
     return [], f"translate(plate_origin) rotate([{angles[0]:.6f}, {angles[1]:.6f}, {angles[2]:.6f}]) "
+
+
+def _box_transform_scad(box: dict[str, Any]) -> tuple[list[str], str]:
+    """Return (declarations, transform_expr) for box-local to world placement."""
+    if box.get("detected_via") != "rotated_box":
+        return [], "translate(box_origin) "
+
+    local_u = box.get("local_u_axis")
+    local_v = box.get("local_v_axis")
+    local_n = box.get("local_n_axis")
+    if (
+        isinstance(local_u, list)
+        and isinstance(local_v, list)
+        and isinstance(local_n, list)
+        and len(local_u) == 3
+        and len(local_v) == 3
+        and len(local_n) == 3
+    ):
+        declarations = [
+            f"box_local_u = {_scad_vector([float(v) for v in local_u])};",
+            f"box_local_v = {_scad_vector([float(v) for v in local_v])};",
+            f"box_local_n = {_scad_vector([float(v) for v in local_n])};",
+            "box_transform = [",
+            "  [box_local_u[0], box_local_v[0], box_local_n[0], box_origin[0]],",
+            "  [box_local_u[1], box_local_v[1], box_local_n[1], box_origin[1]],",
+            "  [box_local_u[2], box_local_v[2], box_local_n[2], box_origin[2]],",
+            "  [0, 0, 0, 1],",
+            "];",
+        ]
+        return declarations, "multmatrix(box_transform) "
+
+    angles = box.get("rotation_euler_deg", [0.0, 0.0, 0.0])
+    return [], f"translate(box_origin) rotate([{angles[0]:.6f}, {angles[1]:.6f}, {angles[2]:.6f}]) "
 
 
 def _scad_named_linear_point_expression(pattern_name: str, index_name: str) -> str:

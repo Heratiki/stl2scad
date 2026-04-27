@@ -956,7 +956,7 @@
           "confidence": 0.95,
           "expected_detection": {
             "plate_like_solid": false,
-            "box_like_solid": false,
+            "box_like_solid": true,
             "hole_count": 0,
             "slot_count": 0,
             "linear_pattern_count": 0,

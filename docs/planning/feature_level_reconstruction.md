@@ -66,9 +66,9 @@ For a single STL with a high-confidence plate/hole graph, the script can also wr
 python scripts/build_feature_graph.py input.stl --output artifacts/input_feature_graph.json --scad-preview artifacts/input_feature_preview.scad
 ```
 
-## Current State Assessment (2026-04-20)
+## Current State Assessment (2026-04-27)
 
-Three interconnected systems are now in place: feature inventory, feature graph, and manifest-driven feature fixtures. The focused feature test slice currently passes in the project virtualenv across `test_feature_inventory.py`, `test_feature_graph.py`, `test_feature_fixtures.py`, and the feature-specific CLI coverage in `test_cli.py`. CLI commands `feature-inventory`, `feature-graph`, and `feature-graph-from-inventory` are wired up with parallel worker support and progress reporting for directory scans, and `feature-graph` directory mode can now optionally inventory-prefilter before graph construction.
+Four interconnected systems are now in place: feature inventory, feature graph, revolve recovery, and linear-extrude recovery. The full test suite passes (259 tests) in the project virtualenv across `test_feature_inventory.py`, `test_feature_graph.py`, `test_feature_fixtures.py`, `test_linear_extrude_recovery.py`, `test_revolve_recovery.py`, and the feature-specific CLI coverage in `test_cli.py`. CLI commands `feature-inventory`, `feature-graph`, and `feature-graph-from-inventory` are wired up with parallel worker support and progress reporting for directory scans, and `feature-graph` directory mode can now optionally inventory-prefilter before graph construction.
 
 ### Feature Fixtures (`stl2scad/core/feature_fixtures.py`) — High value
 
@@ -145,6 +145,10 @@ The [ABC Dataset](https://deep-geometry.github.io/abc-dataset/) (~1M CAD models 
 
 ## Next Milestones
 
+### Recently completed (2026-04-27)
+
+- **Phase 3 — `linear_extrude` recovery** (`stl2scad/core/linear_extrude_recovery.py` wired into `feature_graph.py`). `detect_linear_extrude_solid` runs after all native primitive detectors fail (revolve → cylinder → plate → box → rotated-plate → rotated-box → linear-extrude dispatch order). Cross-section consistency gate + axis-quality gate + confidence threshold prevent false positives on spheres and tori. IR tree produces `ExtrudeLinear { Sketch2D(polygon) }` wrapped in `TransformRotate` when off-axis. SCAD preview emitter produces `linear_extrude(height=...) polygon([...])` calls. Fixtures updated: `negative_hex_prism` (hex prisms are correctly identified as linear extrusions), `l_bracket_plain` (L-shaped cross-section extruded along Y). All 259 tests pass.
+
 ### Recently completed (2026-04-22)
 
 The Next Work Package scoped for 2026-04-22 → 2026-05-31 (Tracks A–D) shipped ahead of schedule; all four tracks are complete.
@@ -190,7 +194,7 @@ Once the IR wrapping (priority #2) lands, the detector output becomes a tree, an
 1. **Detector-native interpretation ranking** — schema-v2 fixtures and harness-side candidate ranking are already in place, including a real hollow-box ambiguity fixture. Next step: make the detector emit ranked `Interpretation` candidates directly (per [detector_ir.md](detector_ir.md)) so the fixture harness can compare declared ranking/confidence against detector-produced ranking/confidence, not only against observed feature-count matches.
 2. **Manifest schema as a versioned contract** — `schema_version` is already enforced on load; next is documenting the schema so third-party fixture authors (or future detectors) have a stable target.
 3. ~~**Tier-2 primitive expansion** — cone/frustum, sphere, ellipsoid.~~ *Reframed 2026-04-22: absorbed into Immediate priority #1 / #4 (Sketch2D + `rotate_extrude` recovery). Each tier-2 primitive is a special case of a solid of revolution — rectangle profile → cylinder, triangle → cone, semicircle → sphere, trapezoid → frustum. Building the axisymmetric pipeline with a profile classifier gets all four primitives as a consequence instead of as four separate detectors.*
-4. ~~**Sketch2D + ExtrudeLinear / ExtrudeRevolve recovery from mesh cross-sections**~~ — *Promoted 2026-04-22 from this "Beyond dimensional parity" list to the active work package. Full spec in [docs/superpowers/specs/2026-04-22-rotate-extrude-and-sketch2d-recovery-design.md](../superpowers/specs/2026-04-22-rotate-extrude-and-sketch2d-recovery-design.md). Phase 1 (axisymmetric `rotate_extrude`) is Immediate priority #1; Phase 3 (linear extrude) stays deferred until Phase 1–2 land.*
+4. ~~**Sketch2D + ExtrudeLinear / ExtrudeRevolve recovery from mesh cross-sections**~~ — *Promoted 2026-04-22 from this list to the active work package. Phase 1 (axisymmetric `rotate_extrude`) is complete (2026-04-24). Phase 3 (linear extrude) is complete (2026-04-27). Phase 2 (profile classification) is Immediate priority #4.*
 
 (Noise-injection fixtures were promoted out of this section on 2026-04-20 and landed via Track C on 2026-04-22.)
 (Negative-class fixtures landed 2026-04-20 as `negative_sphere` and `negative_torus`; closed as a standing priority. Re-apply the pattern as new primitives come online via the axisymmetric pipeline.)
@@ -206,6 +210,8 @@ Once the IR wrapping (priority #2) lands, the detector output becomes a tree, an
 
 **Status:** Complete (updated 2026-04-24). Tasks 1–19 are complete. The cylinder manifest flip is landed, positive `revolve_*` and negative `non_revolve_*` fixtures are in the checked-in SCAD library, revolve confidence/profile/preview round-trip assertions are in place, `detector_ir.md` marks `ExtrudeRevolve` + `Sketch2D(polygon)` as detected, and full-suite verification passed locally (`226 passed, 8 warnings`).
 
+**Note (2026-04-27):** Phase 3 (linear-extrude recovery) has also shipped — see [Recently completed (2026-04-27)](#recently-completed-2026-04-27) below.
+
 **What's landed:** `stl2scad/core/revolve_recovery.py` (full gate pipeline), `detect_revolve_solid` wired into `_build_feature_graph` with one-owner dispatch, IR wrapping (`BooleanUnion → TransformRotate → ExtrudeRevolve → Sketch2D(polygon)`), SCAD preview emitter, fixture schema extended for `revolve`/`non_revolve` types.
 
 **What remains:** none for Phase 1. The next rotate-extrude work is Phase 2 profile classification.
@@ -219,9 +225,9 @@ Once the IR wrapping (priority #2) lands, the detector output becomes a tree, an
 **Why this is the critical path now:** the previous work package (rotated fixtures, cylinder as positive primitive, inventory guidance, negative-class fixtures) is complete. Building tier-2 primitives (cone/frustum/sphere/ellipsoid) as individual detectors duplicates signal the axisymmetric pipeline already produces — one detector subsumes all four. Sketch2D + `rotate_extrude` was previously listed under "Beyond dimensional parity #4" as the single largest outstanding roadmap win; promoting it ahead of individual tier-2 detectors avoids throwaway work.
 
 **Phase boundaries:**
-- **Phase 1:** axisymmetry test + radial slice + profile polygon + `rotate_extrude()` emission. Every axisymmetric solid emits as a polygon revolve.
-- **Phase 2:** profile classifier upgrades recognizable polygons to `cylinder()` / `cone()` / `sphere()` / frustum.
-- **Phase 3:** linear-extrude detector (same shape, translational symmetry instead of rotational). Deferred.
+- **Phase 1:** axisymmetry test + radial slice + profile polygon + `rotate_extrude()` emission. Every axisymmetric solid emits as a polygon revolve. ✓ Complete (2026-04-24).
+- **Phase 2:** profile classifier upgrades recognizable polygons to `cylinder()` / `cone()` / `sphere()` / frustum. *Immediate priority #4 — in progress.*
+- **Phase 3:** linear-extrude detector (translational symmetry instead of rotational). ✓ Complete (2026-04-27) — `stl2scad/core/linear_extrude_recovery.py` wired into the `feature_graph.py` dispatch pipeline; `negative_hex_prism` and `l_bracket_plain` fixtures detect as `linear_extrude_solid`; 259 tests passing.
 - **Phase 4:** composition detector for meshes that are neither single-revolve nor single-extrude but compositions of such. Explicitly speculative until Phases 1-3 are in main.
 
 **Acceptance criteria for Phase 1:**
@@ -363,7 +369,7 @@ Plans in this doc span four sections (Real-World Feedback Loop, Immediate priori
 **Parallelism summary (updated 2026-04-22 late):**
 
 - Completed end-of-day 2026-04-22: Tracks A–D, IR wrapping, chamfer/fillet IR, rotated-plate detection, cylinder as positive primitive, negative-class fixtures, and richer inventory guidance.
-- Critical path: Immediate #1 (Sketch2D + `rotate_extrude` Phase 1) → Immediate #2 (rotated cutouts on rotated plates) → Immediate #3 (rotated-box detector) → Immediate #4 (Sketch2D + `rotate_extrude` Phase 2 / profile classification) → Phase 3 linear extrude → Phase 4 composition detector → ABC dataset (Phase 3 of Real-World Feedback Loop).
+- **Critical path: ~~Immediate #1 (Sketch2D + `rotate_extrude` Phase 1)~~ → Immediate #2 (rotated cutouts on rotated plates) → Immediate #3 (rotated-box detector) → Immediate #4 (Sketch2D + `rotate_extrude` Phase 2 / profile classification) → ~~Phase 3 linear extrude~~ → Phase 4 composition detector → ABC dataset (Phase 3 of Real-World Feedback Loop).
 - Parallel to anything: Ongoing items (threshold tightening, user-assisted labeling, confidence gating).
 - Cadence rule still applies: after each Immediate priority closes, re-run triage and re-score recall before starting the next.
 - Rule 5 (Boolean + Transform IR wrapping must precede new positive primitives) remains in force. The axisymmetric revolve detector is a new positive primitive class and inherits the existing `BooleanUnion` wrapping slot — no further IR prerequisite.

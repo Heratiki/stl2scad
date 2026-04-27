@@ -1640,6 +1640,32 @@
           }
         }
       ]
+    },
+    {
+      "name": "revolve_annular_tube",
+      "fixture_type": "revolve",
+      "description": "Annular tube (inner r=3, outer r=6, height=10) revolved around Z; Phase 1.6 annular revolve.",
+      "output_filename": "revolve_annular_tube.scad",
+      "profile": [[3.0, 0.0], [6.0, 0.0], [6.0, 10.0], [3.0, 10.0]],
+      "axis": "z",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.90,
+          "expected_detection": {
+            "revolve_solid": true,
+            "cylinder_like_solid": false,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
     }
   ]
 }

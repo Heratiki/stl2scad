@@ -528,21 +528,17 @@ def _build_feature_graph_for_folder_file(
 
 
 def _emit_revolve_scad_preview(graph: dict[str, Any], revolve: dict[str, Any]) -> str:
-    """Emit parametric SCAD for a revolve_solid feature."""
+    """Emit parametric SCAD for a revolve_solid feature.
+
+    Dispatch order (per Phase 2 Rule 4):
+    1. If a ``primitive_upgrade`` field is present and classifies as a native
+       primitive (cylinder / cone / sphere), emit the native primitive call.
+    2. If the revolve is ``detected_via == "annular_revolve"``, emit a
+       ``difference() { cylinder(outer); cylinder(inner); }`` tube.
+    3. Otherwise emit the generic ``rotate_extrude() polygon(...)`` form.
+    """
     axis = [float(v) for v in revolve["axis"]]
     origin = [float(v) for v in revolve["axis_origin"]]
-    profile = [(float(r), float(z)) for r, z in revolve["profile"]]
-
-    points_scad = ",\n    ".join(f"[{r:.6f}, {z:.6f}]" for r, z in profile)
-
-    lines: list[str] = [
-        "// generated from axisymmetric revolve feature",
-        f"// axis = [{axis[0]:.6f}, {axis[1]:.6f}, {axis[2]:.6f}]",
-        "revolve_profile = [",
-        f"    {points_scad}",
-        "];",
-        "",
-    ]
 
     angles = _axis_to_world_z_euler_xyz(axis)
     rotation_expr = ""
@@ -553,11 +549,103 @@ def _emit_revolve_scad_preview(graph: dict[str, Any], revolve: dict[str, Any]) -
     if any(abs(c) > 1e-6 for c in origin):
         translate_expr = f"translate([{origin[0]:.6f}, {origin[1]:.6f}, {origin[2]:.6f}]) "
 
-    lines.extend([
+    header = [
+        "// generated from axisymmetric revolve feature",
+        f"// axis = [{axis[0]:.6f}, {axis[1]:.6f}, {axis[2]:.6f}]",
+        f"// detected_via = {revolve.get('detected_via', 'axisymmetric_revolve')}",
+    ]
+
+    # --- Phase 2: native primitive upgrade ---
+    upgrade = revolve.get("primitive_upgrade")
+    if upgrade is not None:
+        ptype = upgrade.get("type")
+        params = upgrade.get("params", {})
+
+        if ptype == "cylinder":
+            r = float(params.get("r", 1.0))
+            h = float(params.get("h", 1.0))
+            z_lo = float(params.get("z_lo", 0.0))
+            translate_z = ""
+            if abs(z_lo) > 1e-6:
+                translate_z = f"translate([0, 0, {z_lo:.6f}]) "
+            lines = header + [
+                f"revolve_r = {r:.6f};",
+                f"revolve_h = {h:.6f};",
+                "",
+                f"{translate_expr}{rotation_expr}{translate_z}cylinder(r=revolve_r, h=revolve_h, $fn=128);",
+                "",
+            ]
+            return "\n".join(lines)
+
+        if ptype == "cone":
+            r1 = float(params.get("r1", 0.0))
+            r2 = float(params.get("r2", 0.0))
+            h = float(params.get("h", 1.0))
+            z_lo = float(params.get("z_lo", 0.0))
+            translate_z = ""
+            if abs(z_lo) > 1e-6:
+                translate_z = f"translate([0, 0, {z_lo:.6f}]) "
+            lines = header + [
+                f"revolve_r1 = {r1:.6f};",
+                f"revolve_r2 = {r2:.6f};",
+                f"revolve_h = {h:.6f};",
+                "",
+                f"{translate_expr}{rotation_expr}{translate_z}cylinder(r1=revolve_r1, r2=revolve_r2, h=revolve_h, $fn=128);",
+                "",
+            ]
+            return "\n".join(lines)
+
+        if ptype == "sphere":
+            r = float(params.get("r", 1.0))
+            z_center = float(params.get("z_center", 0.0))
+            translate_z = ""
+            if abs(z_center) > 1e-6:
+                translate_z = f"translate([0, 0, {z_center:.6f}]) "
+            lines = header + [
+                f"revolve_r = {r:.6f};",
+                "",
+                f"{translate_expr}{rotation_expr}{translate_z}sphere(r=revolve_r, $fn=128);",
+                "",
+            ]
+            return "\n".join(lines)
+
+    # --- Annular revolve: difference of two cylinders ---
+    if revolve.get("detected_via") == "annular_revolve":
+        inner_r = float(revolve.get("inner_r", 0.0))
+        outer_r = float(revolve.get("outer_r", 1.0))
+        profile = [(float(r), float(z)) for r, z in revolve["profile"]]
+        z_vals = [p[1] for p in profile]
+        h = max(z_vals) - min(z_vals)
+        z_lo = min(z_vals)
+        translate_z = ""
+        if abs(z_lo) > 1e-6:
+            translate_z = f"translate([0, 0, {z_lo:.6f}]) "
+        lines = header + [
+            f"revolve_inner_r = {inner_r:.6f};",
+            f"revolve_outer_r = {outer_r:.6f};",
+            f"revolve_h = {h:.6f};",
+            "",
+            f"{translate_expr}{rotation_expr}{translate_z}difference() {{",
+            f"  cylinder(r=revolve_outer_r, h=revolve_h, $fn=128);",
+            f"  cylinder(r=revolve_inner_r, h=revolve_h, $fn=128);",
+            "}",
+            "",
+        ]
+        return "\n".join(lines)
+
+    # --- Generic rotate_extrude fallback ---
+    profile = [(float(r), float(z)) for r, z in revolve["profile"]]
+    points_scad = ",\n    ".join(f"[{r:.6f}, {z:.6f}]" for r, z in profile)
+
+    lines = header + [
+        "revolve_profile = [",
+        f"    {points_scad}",
+        "];",
+        "",
         f"{translate_expr}{rotation_expr}rotate_extrude($fn=128)",
         "    polygon(points=revolve_profile);",
         "",
-    ])
+    ]
     return "\n".join(lines)
 
 

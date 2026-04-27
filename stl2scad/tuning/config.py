@@ -101,3 +101,9 @@ class DetectorConfig:
     revolve_profile_max_vertices: int = 64
     revolve_douglas_peucker_tolerance_ratio: float = 0.005
     revolve_confidence_min: float = 0.70
+
+    # --- Revolve Phase 2 profile classification thresholds ---
+    revolve_phase2_enabled: bool = True
+    revolve_phase2_min_confidence: float = 0.85
+    revolve_phase2_rect_tolerance_ratio: float = 0.08
+    revolve_phase2_circle_fit_tolerance_ratio: float = 0.08

@@ -358,6 +358,144 @@ def _max_r_per_z(slice_rz: np.ndarray, tol: float = 1e-6) -> np.ndarray:
     return np.column_stack([result_r, result_z])
 
 
+def classify_revolve_profile(
+    profile: list[tuple[float, float]],
+    mesh_scale: float,
+    config: "DetectorConfig",
+) -> Optional[dict[str, Any]]:
+    """Attempt to classify a simplified revolve profile as a native primitive.
+
+    Returns a dict with keys {type, params, confidence} when a native primitive
+    matches with confidence >= config.revolve_phase2_min_confidence, else None.
+
+    Primitive types returned:
+      "cylinder" — rectangle profile: params = {r, h, z_lo}
+      "cone"     — right triangle / linear frustum: params = {r1, r2, h, z_lo}
+      "sphere"   — semicircle arc profile: params = {r, z_center}
+
+    Phase 2 does NOT produce a new IR node type. The returned dict is stored on
+    the revolve_solid feature as "primitive_upgrade" and consumed only by the
+    SCAD emitter.
+    """
+    if not profile or len(profile) < 2:
+        return None
+
+    pts = list(profile)
+    r_vals = [p[0] for p in pts]
+    z_vals = [p[1] for p in pts]
+    r_max = max(r_vals)
+    z_lo = min(z_vals)
+    z_hi = max(z_vals)
+    h = z_hi - z_lo
+
+    if r_max < 1e-9 or h < 1e-9 or mesh_scale < 1e-9:
+        return None
+
+    tol_r = mesh_scale * config.revolve_phase2_rect_tolerance_ratio
+    tol_z = mesh_scale * config.revolve_phase2_rect_tolerance_ratio
+
+    # --- Cylinder check: rectangle profile ---
+    # A cylinder's (r,z) profile is a rectangle with two edges at r=0 and r=r_max,
+    # and two edges at z=z_lo and z=z_hi. Every profile point must lie near one of
+    # the four rectangle edges.
+    cylinder_residuals: list[float] = []
+    for r, z in pts:
+        d_axis = r                      # distance to r=0 edge
+        d_outer = abs(r - r_max)        # distance to r=r_max edge
+        d_bottom = abs(z - z_lo)        # distance to z=z_lo edge
+        d_top = abs(z - z_hi)           # distance to z=z_hi edge
+        cylinder_residuals.append(min(d_axis, d_outer, d_bottom, d_top))
+    cyl_mean_res = sum(cylinder_residuals) / len(cylinder_residuals)
+    cyl_confidence = max(0.0, 1.0 - cyl_mean_res / r_max)
+
+    # Additional structural check: the profile must include points near all 4 corners.
+    # Without this, a single diagonal line segment would score well.
+    has_axis_lo = any(r < tol_r and abs(z - z_lo) < tol_z for r, z in pts)
+    has_axis_hi = any(r < tol_r and abs(z - z_hi) < tol_z for r, z in pts)
+    has_outer_lo = any(abs(r - r_max) < tol_r and abs(z - z_lo) < tol_z for r, z in pts)
+    has_outer_hi = any(abs(r - r_max) < tol_r and abs(z - z_hi) < tol_z for r, z in pts)
+
+    if (has_axis_lo and has_axis_hi and has_outer_lo and has_outer_hi
+            and cyl_confidence >= config.revolve_phase2_min_confidence):
+        return {
+            "type": "cylinder",
+            "params": {"r": float(r_max), "h": float(h), "z_lo": float(z_lo)},
+            "confidence": float(cyl_confidence),
+        }
+
+    # --- Cone/frustum check: the lateral profile is a straight line from
+    # (r_bottom, z_lo) to (r_top, z_hi), with the endpoints on or near the axis
+    # at one or both ends.
+    # We compute r values at z_lo and z_hi by linear interpolation/extrapolation
+    # across all points, then check the residual of every point from that line.
+    if len(pts) >= 2:
+        # Fit a line r = a*z + b to the outermost profile points.
+        # Use the points NOT on the axis to fit the slant.
+        outer_pts = [(r, z) for r, z in pts if r > tol_r]
+        if len(outer_pts) >= 2:
+            # Linear least-squares fit: r = a*z + b
+            z_arr = np.array([p[1] for p in outer_pts])
+            r_arr = np.array([p[0] for p in outer_pts])
+            if len(outer_pts) == 1:
+                a, b = 0.0, float(outer_pts[0][0])
+            else:
+                # np.polyfit: r = a*z + b
+                coeffs = np.polyfit(z_arr, r_arr, 1)
+                a, b = float(coeffs[0]), float(coeffs[1])
+            r_bottom = float(np.clip(a * z_lo + b, 0.0, None))
+            r_top = float(np.clip(a * z_hi + b, 0.0, None))
+            # Residual: every non-axis point should lie near the slant line
+            cone_residuals: list[float] = []
+            for r, z in pts:
+                if r < tol_r:
+                    continue  # axis points are valid cone/frustum caps
+                r_expected = a * z + b
+                cone_residuals.append(abs(r - r_expected))
+            if cone_residuals:
+                cone_mean_res = sum(cone_residuals) / len(cone_residuals)
+                cone_confidence = max(0.0, 1.0 - cone_mean_res / r_max)
+                # A cone has one end at r=0; a frustum has both ends > 0
+                is_cone = r_bottom < tol_r or r_top < tol_r
+                if cone_confidence >= config.revolve_phase2_min_confidence:
+                    return {
+                        "type": "cone",
+                        "params": {
+                            "r1": float(max(r_bottom, 0.0)),
+                            "r2": float(max(r_top, 0.0)),
+                            "h": float(h),
+                            "z_lo": float(z_lo),
+                            "is_cone": bool(is_cone),
+                        },
+                        "confidence": float(cone_confidence),
+                    }
+
+    # --- Sphere check: profile fits a circle arc in (r, z) space
+    # A sphere profile is a semicircle: r^2 + (z - z_c)^2 = R^2,
+    # with z_c = (z_lo + z_hi) / 2, R = h / 2 (for a full sphere).
+    # Check if the profile fits this pattern.
+    z_c = (z_lo + z_hi) / 2.0
+    R_expected = h / 2.0
+    if R_expected > 0:
+        sphere_residuals = [
+            abs(np.sqrt(max(0.0, R_expected**2 - (z - z_c)**2)) - r)
+            for r, z in pts
+        ]
+        sphere_mean_res = sum(sphere_residuals) / len(sphere_residuals)
+        sphere_confidence = max(0.0, 1.0 - sphere_mean_res / R_expected)
+        # Sphere profile must touch the axis at both ends
+        touches_axis_lo = any(r < tol_r and abs(z - z_lo) < tol_z for r, z in pts)
+        touches_axis_hi = any(r < tol_r and abs(z - z_hi) < tol_z for r, z in pts)
+        if (touches_axis_lo and touches_axis_hi
+                and sphere_confidence >= config.revolve_phase2_min_confidence):
+            return {
+                "type": "sphere",
+                "params": {"r": float(R_expected), "z_center": float(z_c)},
+                "confidence": float(sphere_confidence),
+            }
+
+    return None
+
+
 def detect_revolve_solid(
     vertices: np.ndarray,
     triangles: np.ndarray,
@@ -387,12 +525,24 @@ def detect_revolve_solid(
             return []
         slices.append(sl)
 
-    # Phase 1 excludes annular revolves.  Use the whole slice set rather than
-    # requiring every sampled half-plane to hit r=0; rendered cap triangulation
-    # can miss the exact axis for some angles even on solid cylinders.
+    # Phase 1 excludes partial revolves and non-axisymmetric shapes, but we
+    # now support both solid revolves (profile touches the axis, r_min ≈ 0)
+    # and annular revolves (profile is a ring/tube that does NOT touch the
+    # axis).  The detected_via field distinguishes the two cases so the
+    # emitter can produce the appropriate SCAD.
     slices_min_r = min(float(sl[:, 0].min()) for sl in slices)
-    if slices_min_r > 1e-3 * mesh_scale:
-        return []
+    slices_max_r = max(float(sl[:, 0].max()) for sl in slices)
+    axis_tol = 1e-3 * mesh_scale
+
+    # A solid revolve touches the axis; an annular revolve does not.
+    is_annular = slices_min_r > axis_tol
+    if is_annular:
+        # Annular: there must be a meaningful inner radius (not just noise)
+        # and the inner/outer ratio must be < 0.95 (otherwise it's degenerate).
+        inner_r = float(slices_min_r)
+        outer_r = float(slices_max_r)
+        if outer_r < 1e-9 or inner_r / outer_r > 0.95:
+            return []
 
     # Pre-process slices for cross-consistency: keep max-r per z-level so that
     # flat-cap interior crossings (which vary per angle) do not inflate the
@@ -420,12 +570,10 @@ def detect_revolve_solid(
     # §1.4 Profile validity
     if len(profile) > config.revolve_profile_max_vertices:
         return []
-    # Use the raw slices (already verified to touch the axis in §1.2) rather
-    # than the aggregated simplified profile to determine profile_validity.
-    # The median aggregation in aggregate_profile can lose the r=0 cap points
-    # for solids with flat end-caps (e.g. cylinders), so checking the profile
-    # min-r would falsely reject valid revolve candidates.
-    profile_validity = 1.0 if slices_min_r < 1e-3 * mesh_scale else 0.0
+    # For solid revolves: at least one raw slice must touch the axis (r=0).
+    # For annular revolves this check is skipped — they intentionally don't
+    # touch the axis.
+    profile_validity = 1.0 if (is_annular or slices_min_r < 1e-3 * mesh_scale) else 0.0
     if profile_validity < 1.0:
         return []
 
@@ -438,9 +586,10 @@ def detect_revolve_solid(
     if confidence < config.revolve_confidence_min:
         return []
 
-    return [{
+    detected_via = "annular_revolve" if is_annular else "axisymmetric_revolve"
+    feature: dict[str, Any] = {
         "type": "revolve_solid",
-        "detected_via": "axisymmetric_revolve",
+        "detected_via": detected_via,
         "axis": [float(x) for x in axis],
         "axis_origin": [float(x) for x in origin],
         "profile": [(float(r), float(z)) for r, z in profile],
@@ -451,4 +600,20 @@ def detect_revolve_solid(
             "normal_field_agreement": nf_q,
             "profile_validity": pv_q,
         },
-    }]
+    }
+
+    if is_annular:
+        feature["inner_r"] = float(inner_r)
+        feature["outer_r"] = float(outer_r)
+
+    # §Phase 2: attempt primitive classification of the validated profile.
+    if config.revolve_phase2_enabled:
+        upgrade = classify_revolve_profile(
+            [(float(r), float(z)) for r, z in profile],
+            mesh_scale,
+            config,
+        )
+        if upgrade is not None:
+            feature["primitive_upgrade"] = upgrade
+
+    return [feature]

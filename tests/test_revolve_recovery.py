@@ -254,3 +254,165 @@ def test_detect_revolve_solid_rejects_cube():
 
     features = detect_revolve_solid(verts, tris, DetectorConfig())
     assert features == []
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: profile classification tests
+# ---------------------------------------------------------------------------
+
+from stl2scad.core.revolve_recovery import classify_revolve_profile
+
+
+def test_classify_revolve_profile_cylinder():
+    """Rectangle profile classifies as cylinder."""
+    profile = [(0.0, 0.0), (5.0, 0.0), (5.0, 10.0), (0.0, 10.0)]
+    result = classify_revolve_profile(profile, mesh_scale=10.0, config=DetectorConfig())
+    assert result is not None
+    assert result["type"] == "cylinder"
+    assert result["params"]["r"] == pytest.approx(5.0, abs=0.1)
+    assert result["params"]["h"] == pytest.approx(10.0, abs=0.1)
+    assert result["confidence"] >= 0.85
+
+
+def test_classify_revolve_profile_cone():
+    """Triangle (cone) profile classifies as cone."""
+    # Right triangle: base at (r=6, z=0), apex at (r=0, z=12)
+    profile = [(0.0, 0.0), (6.0, 0.0), (0.0, 12.0)]
+    result = classify_revolve_profile(profile, mesh_scale=12.0, config=DetectorConfig())
+    assert result is not None
+    assert result["type"] == "cone"
+    assert result["params"]["is_cone"] is True
+    assert result["confidence"] >= 0.85
+
+
+def test_classify_revolve_profile_frustum():
+    """Trapezoid (frustum) profile with r1 != r2 classifies as cone (frustum)."""
+    # Trapezoid: bottom r=6, top r=3
+    profile = [(0.0, 0.0), (6.0, 0.0), (3.0, 10.0), (0.0, 10.0)]
+    result = classify_revolve_profile(profile, mesh_scale=10.0, config=DetectorConfig())
+    assert result is not None
+    assert result["type"] == "cone"
+    assert result["params"]["r1"] == pytest.approx(6.0, abs=0.5)
+    assert result["params"]["r2"] == pytest.approx(3.0, abs=0.5)
+
+
+def test_classify_revolve_profile_sphere():
+    """Semicircle profile classifies as sphere."""
+    # Semicircle of radius 5 centered at z=0
+    R = 5.0
+    n = 9
+    profile = [(R * np.sin(t), -R * np.cos(t)) for t in np.linspace(0, np.pi, n)]
+    result = classify_revolve_profile(profile, mesh_scale=10.0, config=DetectorConfig())
+    assert result is not None
+    assert result["type"] == "sphere"
+    assert result["params"]["r"] == pytest.approx(R, abs=0.3)
+    assert result["confidence"] >= 0.85
+
+
+def test_classify_revolve_profile_complex_returns_none():
+    """Christmas-tree sawtooth profile does not classify as any primitive."""
+    profile = [(0.0, 0.0), (2.0, 0.8), (4.0, 2.2), (2.8, 3.4), (5.0, 4.8), (3.2, 6.0), (6.0, 7.4), (0.0, 9.0)]
+    result = classify_revolve_profile(profile, mesh_scale=9.0, config=DetectorConfig())
+    assert result is None
+
+
+def test_detect_revolve_solid_cylinder_has_primitive_upgrade():
+    """A cylinder mesh should produce a revolve_solid with primitive_upgrade type=cylinder."""
+    verts, tris = _make_cylinder_mesh(height=10.0, radius=5.0, segments=64)
+    features = detect_revolve_solid(verts, tris, DetectorConfig())
+    assert len(features) == 1
+    feat = features[0]
+    # Phase 2 primitive upgrade should be present
+    upgrade = feat.get("primitive_upgrade")
+    assert upgrade is not None
+    assert upgrade["type"] == "cylinder"
+    assert upgrade["params"]["r"] == pytest.approx(5.0, abs=0.3)
+    assert upgrade["params"]["h"] == pytest.approx(10.0, abs=0.3)
+    assert upgrade["confidence"] >= 0.85
+
+
+def test_detect_revolve_solid_phase2_can_be_disabled():
+    """With phase2 disabled, no primitive_upgrade field in the result."""
+    import dataclasses
+    cfg = dataclasses.replace(DetectorConfig(), revolve_phase2_enabled=False)
+    verts, tris = _make_cylinder_mesh(height=10.0, radius=5.0, segments=64)
+    features = detect_revolve_solid(verts, tris, cfg)
+    assert len(features) == 1
+    assert "primitive_upgrade" not in features[0]
+
+
+# ---------------------------------------------------------------------------
+# Annular revolve detection tests (Phase 1.6)
+# ---------------------------------------------------------------------------
+
+def _make_tube_mesh(
+    height: float = 10.0,
+    inner_r: float = 3.0,
+    outer_r: float = 6.0,
+    segments: int = 32,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return (vertices, triangles) for a hollow tube (annular cylinder) about +Z."""
+    theta = np.linspace(0.0, 2 * np.pi, segments, endpoint=False)
+    # Inner ring vertices (bottom/top)
+    inner_bot = np.column_stack([inner_r * np.cos(theta), inner_r * np.sin(theta), np.zeros_like(theta)])
+    inner_top = np.column_stack([inner_r * np.cos(theta), inner_r * np.sin(theta), np.full_like(theta, height)])
+    # Outer ring vertices (bottom/top)
+    outer_bot = np.column_stack([outer_r * np.cos(theta), outer_r * np.sin(theta), np.zeros_like(theta)])
+    outer_top = np.column_stack([outer_r * np.cos(theta), outer_r * np.sin(theta), np.full_like(theta, height)])
+    vertices = np.vstack([inner_bot, inner_top, outer_bot, outer_top])
+    # offsets
+    ib = 0
+    it = segments
+    ob = 2 * segments
+    ot = 3 * segments
+    tris = []
+    for i in range(segments):
+        j = (i + 1) % segments
+        # Inner wall (facing inward, winding is reversed to face inward)
+        tris.append([ib + i, ib + j, it + j])
+        tris.append([ib + i, it + j, it + i])
+        # Outer wall
+        tris.append([ob + j, ob + i, ot + i])
+        tris.append([ob + j, ot + i, ot + j])
+        # Bottom cap (annular ring)
+        tris.append([ib + i, ob + i, ob + j])
+        tris.append([ib + i, ob + j, ib + j])
+        # Top cap (annular ring)
+        tris.append([it + j, ot + j, ot + i])
+        tris.append([it + j, ot + i, it + i])
+    return vertices, np.asarray(tris, dtype=np.int64)
+
+
+def test_detect_revolve_solid_accepts_annular_tube():
+    """A hollow tube mesh should be detected as an annular revolve_solid."""
+    verts, tris = _make_tube_mesh(height=10.0, inner_r=3.0, outer_r=6.0, segments=64)
+    features = detect_revolve_solid(verts, tris, DetectorConfig())
+
+    assert len(features) == 1
+    feat = features[0]
+    assert feat["type"] == "revolve_solid"
+    assert feat["detected_via"] == "annular_revolve"
+    assert "inner_r" in feat
+    assert "outer_r" in feat
+    assert feat["inner_r"] == pytest.approx(3.0, abs=0.5)
+    assert feat["outer_r"] == pytest.approx(6.0, abs=0.5)
+    assert feat["confidence"] >= 0.70
+
+
+def test_detect_revolve_solid_annular_has_confidence_components():
+    """Annular detection should preserve all confidence_components."""
+    verts, tris = _make_tube_mesh(height=10.0, inner_r=3.0, outer_r=6.0, segments=64)
+    features = detect_revolve_solid(verts, tris, DetectorConfig())
+    assert len(features) == 1
+    comps = features[0]["confidence_components"]
+    for key in ("axis_quality", "cross_slice_consistency", "normal_field_agreement", "profile_validity"):
+        assert key in comps
+        assert 0.0 <= float(comps[key]) <= 1.0
+
+
+def test_detect_revolve_solid_degenerate_annular_rejected():
+    """A tube with inner/outer ratio > 0.95 (nearly solid ring) should be rejected."""
+    # inner_r = 5.85, outer_r = 6.0 → ratio = 0.975, should reject
+    verts, tris = _make_tube_mesh(height=10.0, inner_r=5.85, outer_r=6.0, segments=64)
+    features = detect_revolve_solid(verts, tris, DetectorConfig())
+    assert features == []

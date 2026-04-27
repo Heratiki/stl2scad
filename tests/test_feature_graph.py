@@ -1855,3 +1855,153 @@ def test_build_feature_graph_detects_revolve_before_cylinder(tmp_path):
     types = [f["type"] for f in graph["features"]]
     assert types.count("revolve_solid") == 1
     assert types.count("cylinder_like_solid") == 0
+
+
+def test_emit_revolve_scad_preview_cylinder_upgrade_emits_cylinder():
+    """Phase 2: rectangle profile with primitive_upgrade emits cylinder() call."""
+    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+
+    graph = {
+        "schema_version": 1,
+        "source_file": "synthetic.stl",
+        "features": [{
+            "type": "revolve_solid",
+            "detected_via": "axisymmetric_revolve",
+            "axis": [0.0, 0.0, 1.0],
+            "axis_origin": [0.0, 0.0, 0.0],
+            "profile": [(0.0, 0.0), (5.0, 0.0), (5.0, 10.0), (0.0, 10.0)],
+            "confidence": 0.95,
+            "confidence_components": {
+                "axis_quality": 0.97, "cross_slice_consistency": 0.98,
+                "normal_field_agreement": 0.95, "profile_validity": 1.0,
+            },
+            "primitive_upgrade": {
+                "type": "cylinder",
+                "params": {"r": 5.0, "h": 10.0, "z_lo": 0.0},
+                "confidence": 0.96,
+            },
+        }],
+    }
+    scad = emit_feature_graph_scad_preview(graph)
+    assert scad is not None
+    assert "cylinder(" in scad
+    assert "rotate_extrude" not in scad
+    assert "revolve_r" in scad
+
+
+def test_emit_revolve_scad_preview_cone_upgrade_emits_cylinder_r1_r2():
+    """Phase 2: cone profile with primitive_upgrade emits cylinder(r1=..., r2=...) call."""
+    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+
+    graph = {
+        "schema_version": 1,
+        "source_file": "synthetic.stl",
+        "features": [{
+            "type": "revolve_solid",
+            "detected_via": "axisymmetric_revolve",
+            "axis": [0.0, 0.0, 1.0],
+            "axis_origin": [0.0, 0.0, 0.0],
+            "profile": [(0.0, 0.0), (6.0, 0.0), (0.0, 12.0)],
+            "confidence": 0.92,
+            "confidence_components": {
+                "axis_quality": 0.95, "cross_slice_consistency": 0.96,
+                "normal_field_agreement": 0.94, "profile_validity": 1.0,
+            },
+            "primitive_upgrade": {
+                "type": "cone",
+                "params": {"r1": 6.0, "r2": 0.0, "h": 12.0, "z_lo": 0.0, "is_cone": True},
+                "confidence": 0.93,
+            },
+        }],
+    }
+    scad = emit_feature_graph_scad_preview(graph)
+    assert scad is not None
+    assert "cylinder(r1=" in scad
+    assert "rotate_extrude" not in scad
+
+
+def test_emit_revolve_scad_preview_sphere_upgrade_emits_sphere():
+    """Phase 2: sphere profile with primitive_upgrade emits sphere() call."""
+    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+
+    graph = {
+        "schema_version": 1,
+        "source_file": "synthetic.stl",
+        "features": [{
+            "type": "revolve_solid",
+            "detected_via": "axisymmetric_revolve",
+            "axis": [0.0, 0.0, 1.0],
+            "axis_origin": [0.0, 0.0, 0.0],
+            "profile": [(0.0, -5.0), (5.0, 0.0), (0.0, 5.0)],
+            "confidence": 0.91,
+            "confidence_components": {
+                "axis_quality": 0.93, "cross_slice_consistency": 0.95,
+                "normal_field_agreement": 0.92, "profile_validity": 1.0,
+            },
+            "primitive_upgrade": {
+                "type": "sphere",
+                "params": {"r": 5.0, "z_center": 0.0},
+                "confidence": 0.91,
+            },
+        }],
+    }
+    scad = emit_feature_graph_scad_preview(graph)
+    assert scad is not None
+    assert "sphere(" in scad
+    assert "rotate_extrude" not in scad
+
+
+def test_emit_revolve_scad_preview_annular_emits_difference_cylinders():
+    """Annular revolve emits difference() of two cylinders."""
+    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+
+    graph = {
+        "schema_version": 1,
+        "source_file": "synthetic.stl",
+        "features": [{
+            "type": "revolve_solid",
+            "detected_via": "annular_revolve",
+            "axis": [0.0, 0.0, 1.0],
+            "axis_origin": [0.0, 0.0, 0.0],
+            "profile": [(3.0, 0.0), (6.0, 0.0), (6.0, 10.0), (3.0, 10.0)],
+            "inner_r": 3.0,
+            "outer_r": 6.0,
+            "confidence": 0.92,
+            "confidence_components": {
+                "axis_quality": 0.95, "cross_slice_consistency": 0.97,
+                "normal_field_agreement": 0.93, "profile_validity": 1.0,
+            },
+        }],
+    }
+    scad = emit_feature_graph_scad_preview(graph)
+    assert scad is not None
+    assert "difference()" in scad
+    assert "revolve_inner_r" in scad
+    assert "revolve_outer_r" in scad
+    assert "rotate_extrude" not in scad
+
+
+def test_emit_revolve_scad_preview_fallback_without_upgrade():
+    """Without primitive_upgrade, generic rotate_extrude is emitted."""
+    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+
+    graph = {
+        "schema_version": 1,
+        "source_file": "synthetic.stl",
+        "features": [{
+            "type": "revolve_solid",
+            "detected_via": "axisymmetric_revolve",
+            "axis": [0.0, 0.0, 1.0],
+            "axis_origin": [0.0, 0.0, 0.0],
+            "profile": [(0.0, 0.0), (2.0, 0.8), (4.0, 2.2), (0.0, 9.0)],
+            "confidence": 0.90,
+            "confidence_components": {
+                "axis_quality": 0.93, "cross_slice_consistency": 0.95,
+                "normal_field_agreement": 0.92, "profile_validity": 1.0,
+            },
+        }],
+    }
+    scad = emit_feature_graph_scad_preview(graph)
+    assert scad is not None
+    assert "rotate_extrude" in scad
+    assert "polygon" in scad

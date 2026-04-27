@@ -650,11 +650,8 @@ def _validate_revolve_fixture_geometry(spec: dict[str, Any], name: str) -> dict[
         if r < 0.0:
             raise ValueError(f"Revolve fixture '{name}' profile has negative r (r={r})")
         pts.append([r, z])
-    if min(p[0] for p in pts) > 1e-6:
-        raise ValueError(
-            f"Revolve fixture '{name}' profile must touch the axis (min r ≈ 0); "
-            "annular profiles are Phase-1-excluded."
-        )
+    # Phase 1.6 supports annular (tube) revolves — profiles that don't touch the
+    # axis are now valid.  Keep the check only for negative r values (handled above).
     axis = str(spec.get("axis", "z")).lower()
     if axis not in ("x", "y", "z"):
         raise ValueError(f"Revolve fixture '{name}' axis must be x/y/z")

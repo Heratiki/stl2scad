@@ -1058,7 +1058,7 @@
     {
       "name": "l_bracket_plain",
       "fixture_type": "l_bracket",
-      "description": "Plain L-bracket baseline for non-plate, non-box geometry.",
+      "description": "Plain L-bracket baseline: L-shaped cross-section extruded along Y; positive for linear_extrude_solid.",
       "output_filename": "l_bracket_plain.scad",
       "bracket_size": [
         24.0,
@@ -1072,6 +1072,7 @@
           "name": "primary",
           "confidence": 0.95,
           "expected_detection": {
+            "linear_extrude_solid": true,
             "plate_like_solid": false,
             "box_like_solid": false,
             "hole_count": 0,
@@ -1773,7 +1774,7 @@
     {
       "name": "negative_hex_prism",
       "fixture_type": "prism",
-      "description": "Hexagonal prism geometry as negative-class fixture to guard against cylinder over-detection.",
+      "description": "Hexagonal prism: negative-class for cylinder over-detection, positive-class for linear_extrude_solid (Phase 3).",
       "output_filename": "negative_hex_prism.scad",
       "radius": 10.0,
       "height": 20.0,
@@ -1784,6 +1785,7 @@
           "name": "primary",
           "confidence": 0.95,
           "expected_detection": {
+            "linear_extrude_solid": true,
             "plate_like_solid": false,
             "box_like_solid": false,
             "cylinder_like_solid": false,

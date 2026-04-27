@@ -26,6 +26,7 @@ PREVIEW_SOLID_CONFIDENCE_EPSILON = 0.002
 
 
 from stl2scad.tuning.config import DetectorConfig
+from stl2scad.core.linear_extrude_recovery import detect_linear_extrude_solid
 
 
 def _passes_preview_solid_confidence(confidence: Any) -> bool:
@@ -44,6 +45,7 @@ _SOLID_TO_IR_TYPE: dict[str, str] = {
     "plate_like_solid": "PrimitivePlate",
     "box_like_solid": "PrimitiveBox",
     "cylinder_like_solid": "PrimitiveCylinder",
+    "linear_extrude_solid": "ExtrudeLinear",
 }
 _CUTOUT_TO_IR_TYPE: dict[str, str] = {
     "hole_like_cutout": "HoleThrough",
@@ -214,23 +216,48 @@ def _build_ir_tree(graph: dict[str, Any]) -> list[dict[str, Any]]:
     interpretations: list[dict[str, Any]] = []
     for rank, prim in enumerate(primitives):
         solid_type = prim["type"]
-        ir_prim: dict[str, Any] = {
-            "type": _SOLID_TO_IR_TYPE[solid_type],
-            "confidence": float(prim.get("confidence", 0.0)),
-        }
-        for key in ("origin", "size", "axis", "radius", "height"):
-            if key in prim:
-                ir_prim[key] = prim[key]
 
-        # Wrap rotated primitives in a TransformRotate node so the IR tree
-        # encodes the orientation explicitly rather than burying it in metadata.
-        if prim.get("detected_via") in {"rotated_plate", "rotated_box"}:
-            angles = prim.get("rotation_euler_deg", [0.0, 0.0, 0.0])
-            ir_prim = {
-                "type": "TransformRotate",
-                "angles_deg": angles,
-                "child": ir_prim,
+        # linear_extrude_solid has a different IR structure: ExtrudeLinear with
+        # a nested Sketch2D profile, wrapped in TransformRotate when off-axis.
+        if solid_type == "linear_extrude_solid":
+            profile_pts = prim.get("profile", [])
+            sketch: dict[str, Any] = {
+                "type": "Sketch2D",
+                "kind": "polygon",
+                "points": [[float(p[0]), float(p[1])] for p in profile_pts],
             }
+            ir_prim = {
+                "type": "ExtrudeLinear",
+                "height": float(prim.get("height", 0.0)),
+                "confidence": float(prim.get("confidence", 0.0)),
+                "profile": sketch,
+            }
+            axis = prim.get("axis", [0.0, 0.0, 1.0])
+            angles = _axis_to_world_z_euler_xyz(axis)
+            if any(abs(a) > 0.01 for a in angles):
+                ir_prim = {
+                    "type": "TransformRotate",
+                    "angles_deg": angles,
+                    "child": ir_prim,
+                }
+        else:
+            ir_prim = {
+                "type": _SOLID_TO_IR_TYPE[solid_type],
+                "confidence": float(prim.get("confidence", 0.0)),
+            }
+            for key in ("origin", "size", "axis", "radius", "height"):
+                if key in prim:
+                    ir_prim[key] = prim[key]
+
+            # Wrap rotated primitives in a TransformRotate node so the IR tree
+            # encodes the orientation explicitly rather than burying it in metadata.
+            if prim.get("detected_via") in {"rotated_plate", "rotated_box"}:
+                angles = prim.get("rotation_euler_deg", [0.0, 0.0, 0.0])
+                ir_prim = {
+                    "type": "TransformRotate",
+                    "angles_deg": angles,
+                    "child": ir_prim,
+                }
 
         # Cutouts associated with this solid.
         solid_cutouts = [
@@ -387,6 +414,17 @@ def build_feature_graph_for_stl(
                 features = box_features + rotated_box_features
             else:
                 features = box_features
+    # Rule 2 (linear_extrude_recovery): runs AFTER all native primitive detectors,
+    # only when no solid was found.  Dispatch rule preserved: revolve > cylinder >
+    # plate > box > rotated-plate > rotated-box > linear-extrude.
+    if not revolve_features and not any(
+        f.get("type") in _SOLID_TO_IR_TYPE for f in features
+    ):
+        linear_extrude_feats = detect_linear_extrude_solid(
+            unique_verts, triangles_indices, config=resolved
+        )
+        if linear_extrude_feats:
+            features = [f for f in features if f.get("type") not in _SOLID_TO_IR_TYPE] + linear_extrude_feats
     if not revolve_features:
         features.extend(
             _extract_axis_aligned_through_holes(
@@ -759,6 +797,42 @@ def _emit_box_scad_preview(graph: dict[str, Any], box: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _emit_linear_extrude_scad_preview(graph: dict[str, Any], feature: dict[str, Any]) -> str:
+    """Emit a SCAD preview for a linear_extrude_solid feature."""
+    height = float(feature.get("height", 0.0))
+    axis = feature.get("axis", [0.0, 0.0, 1.0])
+    profile = feature.get("profile", [])
+
+    profile_str = ", ".join(f"[{float(p[0]):.6f}, {float(p[1]):.6f}]" for p in profile)
+
+    lines = [
+        "// Feature graph SCAD preview",
+        f"// source_file: {graph.get('source_file', '')}",
+        "// generated from linear_extrude feature candidate",
+        "",
+        f"extrude_height = {height:.6f};",
+        f"extrude_profile = [{profile_str}];",
+        "",
+    ]
+
+    inner = [
+        "linear_extrude(height = extrude_height)",
+        "  polygon(points = extrude_profile);",
+    ]
+
+    angles = _axis_to_world_z_euler_xyz(axis)
+    if any(abs(a) > 0.01 for a in angles):
+        rot = f"[{angles[0]:.6f}, {angles[1]:.6f}, {angles[2]:.6f}]"
+        lines.append(f"rotate({rot}) {{")
+        lines.extend(f"  {ln}" for ln in inner)
+        lines.append("}")
+    else:
+        lines.extend(inner)
+
+    lines.append("")
+    return "\n".join(lines)
+
+
 def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
     """
     Emit conservative SCAD preview for supported feature graph patterns.
@@ -771,6 +845,7 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         - one box_like_solid with optional through-holes along any axis
         - one cylinder_like_solid
         - one revolve_solid
+        - one linear_extrude_solid
     """
     revolve = _best_feature(graph, "revolve_solid")
     if revolve is not None and _passes_preview_solid_confidence(revolve.get("confidence")):
@@ -782,6 +857,9 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         if box is None or not _passes_preview_solid_confidence(box.get("confidence")):
             cylinder = _best_feature(graph, "cylinder_like_solid")
             if cylinder is None or not _passes_preview_solid_confidence(cylinder.get("confidence")):
+                linear_extrude = _best_feature(graph, "linear_extrude_solid")
+                if linear_extrude is not None and _passes_preview_solid_confidence(linear_extrude.get("confidence")):
+                    return _emit_linear_extrude_scad_preview(graph, linear_extrude)
                 return None
             return _emit_cylinder_scad_preview(graph, cylinder)
         return _emit_box_scad_preview(graph, box)

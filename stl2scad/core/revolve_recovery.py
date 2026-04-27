@@ -315,7 +315,14 @@ def normal_field_agreement(
     total_area = float(face_areas.sum())
     if total_area < 1e-12:
         return 0.0
-    norms = np.where(face_areas[:, None] > 1e-12, face_normals / (2.0 * face_areas[:, None]), 0.0)
+    norms = np.zeros_like(face_normals)
+    valid_faces = face_areas > 1e-12
+    np.divide(
+        face_normals,
+        2.0 * face_areas[:, None],
+        out=norms,
+        where=valid_faces[:, None],
+    )
 
     centroids = tri_verts.mean(axis=1)
     rel = centroids - origin

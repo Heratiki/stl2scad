@@ -1,7 +1,7 @@
 // Auto-generated from tests/data/feature_fixtures_manifest.json
 // fixture: l_bracket_plain
 // fixture_type: l_bracket
-// description: Plain L-bracket baseline for non-plate, non-box geometry.
+// description: Plain L-bracket baseline: L-shaped cross-section extruded along Y; positive for linear_extrude_solid.
 $fn = 96;
 
 bracket_size = [24.000000, 12.000000, 20.000000];

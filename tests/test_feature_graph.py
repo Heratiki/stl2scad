@@ -3,6 +3,7 @@ Tests for intermediate feature graph extraction.
 """
 
 from pathlib import Path
+import warnings
 
 import numpy as np
 import pytest
@@ -2005,6 +2006,41 @@ def test_emit_revolve_scad_preview_fallback_without_upgrade():
     assert scad is not None
     assert "rotate_extrude" in scad
     assert "polygon" in scad
+
+
+def test_normal_field_agreement_ignores_degenerate_faces_without_warning():
+    from stl2scad.core.revolve_recovery import normal_field_agreement
+
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [2.0, 0.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    triangles_valid = np.array([[0, 1, 2]], dtype=np.int64)
+    triangles_with_degenerate = np.array([[0, 1, 2], [0, 1, 3]], dtype=np.int64)
+    axis = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+    origin = np.array([0.0, 0.0, 0.0], dtype=np.float64)
+
+    score_valid = normal_field_agreement(vertices, triangles_valid, axis, origin)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", RuntimeWarning)
+        score_with_degenerate = normal_field_agreement(
+            vertices,
+            triangles_with_degenerate,
+            axis,
+            origin,
+        )
+
+    runtime_warnings = [
+        warning for warning in caught if issubclass(warning.category, RuntimeWarning)
+    ]
+    assert runtime_warnings == []
+    assert np.isclose(score_with_degenerate, score_valid)
 
 
 # ---------------------------------------------------------------------------

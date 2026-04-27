@@ -24,6 +24,7 @@ _BOOLEAN_EXPECTATION_TO_FEATURE = {
     "box_like_solid": "box_like_solid",
     "cylinder_like_solid": "cylinder_like_solid",
     "revolve_solid": "revolve_solid",
+    "linear_extrude_solid": "linear_extrude_solid",
 }
 
 

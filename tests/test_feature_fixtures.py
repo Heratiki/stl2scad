@@ -630,6 +630,29 @@ def _assert_grid_pattern_dimensions(fixture, features):
         )
 
 
+def _assert_linear_extrude_dimensions(fixture, features):
+    expected_le = bool(fixture["expected_detection"].get("linear_extrude_solid", False))
+    le_features = [
+        f for f in features
+        if f.get("type") == "linear_extrude_solid"
+        and float(f.get("confidence", 0.0)) >= 0.70
+    ]
+    if not expected_le:
+        assert not le_features, (
+            f"{fixture['name']} did not expect linear_extrude_solid but got {len(le_features)}"
+        )
+        return
+    assert le_features, f"{fixture['name']} expected linear_extrude_solid but none found"
+    best = max(le_features, key=lambda f: float(f.get("confidence", 0.0)))
+    if "height" in fixture:
+        _assert_close(
+            float(best["height"]),
+            float(fixture["height"]),
+            _SIZE_TOL,
+            f"{fixture['name']} linear extrude height",
+        )
+
+
 def _assert_fixture_dimensions(fixture, features):
     if fixture["fixture_type"] == "non_revolve":
         return
@@ -665,6 +688,7 @@ def _assert_fixture_dimensions(fixture, features):
 
     _assert_plate_dimensions(fixture, features)
     _assert_box_dimensions(fixture, features)
+    _assert_linear_extrude_dimensions(fixture, features)
     _assert_rectangular_cutout_dimensions(fixture, features)
     _assert_rectangular_pocket_dimensions(fixture, features)
 

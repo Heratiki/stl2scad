@@ -208,7 +208,8 @@ def _build_ir_tree(graph: dict[str, Any]) -> list[dict[str, Any]]:
     pattern_center_keys: set[tuple[float, float, float]] = set()
     for pat in pattern_features:
         for center in pat.get("centers", []):
-            pattern_center_keys.add(tuple(round(float(v), 4) for v in center))
+            ck: tuple[float, float, float] = (round(float(center[0]), 4), round(float(center[1]), 4), round(float(center[2]), 4))
+            pattern_center_keys.add(ck)
 
     interpretations: list[dict[str, Any]] = []
     for rank, prim in enumerate(primitives):
@@ -265,8 +266,9 @@ def _build_ir_tree(graph: dict[str, Any]) -> list[dict[str, Any]]:
         for cutout in solid_cutouts:
             # Skip holes that are subsumed by a pattern.
             if cutout.get("type") == "hole_like_cutout" and "center" in cutout:
-                key = tuple(round(float(v), 4) for v in cutout["center"])
-                if key in pattern_center_keys:
+                cx, cy, cz = cutout["center"]
+                ck = (round(float(cx), 4), round(float(cy), 4), round(float(cz), 4))
+                if ck in pattern_center_keys:
                     continue
             cuts.append(_ir_cutout_node(cutout))
 

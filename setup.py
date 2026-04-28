@@ -41,9 +41,17 @@ setup(
     extras_require={
         "parametric_phase1": [
             "trimesh>=4.0.0",
+            "networkx>=3.0",
         ],
         "parametric_phase2": [
             "cgal>=6.0.1",
+        ],
+        "reporting": [
+            "trimesh>=4.0.0",
+            "networkx>=3.0",
+            "pyglet>=1.5,<2",
+            "matplotlib>=3.5.0",
+            "pillow>=9.0.0",
         ],
     },
     entry_points={

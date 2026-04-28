@@ -1138,11 +1138,23 @@
       "fixture_type": "box",
       "description": "Box with a rectangular notch cut from the top face. The detector should preserve the box_like_solid base while also recovering the blind rectangular pocket volume.",
       "output_filename": "box_with_top_notch.scad",
-      "box_size": [24.0, 16.0, 12.0],
+      "box_size": [
+        24.0,
+        16.0,
+        12.0
+      ],
       "cutouts": [
         {
-          "center": [0.0, 0.0, 3.0],
-          "size": [8.0, 8.0, 6.0]
+          "center": [
+            0.0,
+            0.0,
+            3.0
+          ],
+          "size": [
+            8.0,
+            8.0,
+            6.0
+          ]
         }
       ],
       "candidates": [
@@ -1169,12 +1181,24 @@
       "fixture_type": "box",
       "description": "Rounded-edge box with a top-face notch. The detector should preserve a tolerant box_like_solid base while also recovering the blind rectangular pocket volume.",
       "output_filename": "box_rounded_edges_with_top_notch.scad",
-      "box_size": [24.0, 16.0, 12.0],
+      "box_size": [
+        24.0,
+        16.0,
+        12.0
+      ],
       "edge_radius": 2.0,
       "cutouts": [
         {
-          "center": [0.0, 0.0, 3.0],
-          "size": [8.0, 8.0, 6.0]
+          "center": [
+            0.0,
+            0.0,
+            3.0
+          ],
+          "size": [
+            8.0,
+            8.0,
+            6.0
+          ]
         }
       ],
       "candidates": [
@@ -1201,11 +1225,23 @@
       "fixture_type": "box",
       "description": "Hollow box with interior cavity - can be interpreted as single hollow box OR as six separate wall plates",
       "output_filename": "box_hollow_ambiguous.scad",
-      "box_size": [24.0, 16.0, 12.0],
+      "box_size": [
+        24.0,
+        16.0,
+        12.0
+      ],
       "cutouts": [
         {
-          "center": [0.0, 0.0, 0.0],
-          "size": [14.0, 6.0, 2.0]
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "size": [
+            14.0,
+            6.0,
+            2.0
+          ]
         }
       ],
       "candidates": [
@@ -1226,7 +1262,7 @@
         {
           "rank": 2,
           "name": "six_wall_plates_interpretation",
-          "confidence": 0.60,
+          "confidence": 0.6,
           "expected_detection": {
             "plate_like_solid": true,
             "box_like_solid": false,
@@ -1278,7 +1314,7 @@
         {
           "rank": 1,
           "name": "disk_cylinder",
-          "confidence": 0.90,
+          "confidence": 0.9,
           "expected_detection": {
             "revolve_solid": true,
             "cylinder_like_solid": false,
@@ -1305,7 +1341,7 @@
         {
           "rank": 1,
           "name": "cylinder_along_x",
-          "confidence": 0.90,
+          "confidence": 0.9,
           "expected_detection": {
             "revolve_solid": true,
             "cylinder_like_solid": false,
@@ -1331,14 +1367,22 @@
         2.0
       ],
       "transform": {
-        "rotate": [30.0, 0.0, 0.0],
-        "translate": [0.0, 0.0, 0.0]
+        "rotate": [
+          30.0,
+          0.0,
+          0.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
       },
       "candidates": [
         {
           "rank": 1,
           "name": "rotated_plate",
-          "confidence": 0.90,
+          "confidence": 0.9,
           "expected_detection": {
             "plate_like_solid": true,
             "box_like_solid": false,
@@ -1356,22 +1400,37 @@
       "fixture_type": "plate",
       "description": "Plate rotated 30° around Z with a single through-hole. Validates rotated-plate local-frame cutout detection for Z-axis rotation.",
       "output_filename": "plate_rotated_z30_with_hole.scad",
-      "plate_size": [20.0, 10.0, 2.0],
+      "plate_size": [
+        20.0,
+        10.0,
+        2.0
+      ],
       "holes": [
         {
-          "center": [0.0, 0.0],
+          "center": [
+            0.0,
+            0.0
+          ],
           "diameter": 4.0
         }
       ],
       "transform": {
-        "rotate": [0.0, 0.0, 30.0],
-        "translate": [0.0, 0.0, 0.0]
+        "rotate": [
+          0.0,
+          0.0,
+          30.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
       },
       "candidates": [
         {
           "rank": 1,
           "name": "rotated_plate_with_hole",
-          "confidence": 0.90,
+          "confidence": 0.9,
           "expected_detection": {
             "plate_like_solid": true,
             "box_like_solid": false,
@@ -1389,26 +1448,44 @@
       "fixture_type": "plate",
       "description": "Plate rotated 30° around X with two through-holes in a linear pattern. Validates rotated-plate local-frame cutout detection for non-Z-axis rotation.",
       "output_filename": "plate_rotated_x30_with_two_holes.scad",
-      "plate_size": [20.0, 10.0, 2.0],
+      "plate_size": [
+        20.0,
+        10.0,
+        2.0
+      ],
       "holes": [
         {
-          "center": [-4.0, 0.0],
+          "center": [
+            -4.0,
+            0.0
+          ],
           "diameter": 3.0
         },
         {
-          "center": [4.0, 0.0],
+          "center": [
+            4.0,
+            0.0
+          ],
           "diameter": 3.0
         }
       ],
       "transform": {
-        "rotate": [30.0, 0.0, 0.0],
-        "translate": [0.0, 0.0, 0.0]
+        "rotate": [
+          30.0,
+          0.0,
+          0.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
       },
       "candidates": [
         {
           "rank": 1,
           "name": "rotated_plate_with_holes",
-          "confidence": 0.90,
+          "confidence": 0.9,
           "expected_detection": {
             "plate_like_solid": true,
             "box_like_solid": false,
@@ -1424,25 +1501,43 @@
     {
       "name": "plate_rotated_z30_with_slot",
       "fixture_type": "plate",
-      "description": "Plate rotated 30\u00b0 around Z with a single slot. Validates rotated-plate local-frame slot detection.",
+      "description": "Plate rotated 30° around Z with a single slot. Validates rotated-plate local-frame slot detection.",
       "output_filename": "plate_rotated_z30_with_slot.scad",
-      "plate_size": [24.0, 12.0, 2.0],
+      "plate_size": [
+        24.0,
+        12.0,
+        2.0
+      ],
       "slots": [
         {
-          "start": [-3.5, 0.0],
-          "end": [3.5, 0.0],
+          "start": [
+            -3.5,
+            0.0
+          ],
+          "end": [
+            3.5,
+            0.0
+          ],
           "width": 3.0
         }
       ],
       "transform": {
-        "rotate": [0.0, 0.0, 30.0],
-        "translate": [0.0, 0.0, 0.0]
+        "rotate": [
+          0.0,
+          0.0,
+          30.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
       },
       "candidates": [
         {
           "rank": 1,
           "name": "rotated_plate_with_slot",
-          "confidence": 0.90,
+          "confidence": 0.9,
           "expected_detection": {
             "plate_like_solid": true,
             "box_like_solid": false,
@@ -1458,23 +1553,53 @@
     {
       "name": "plate_rotated_z30_with_linear_pattern",
       "fixture_type": "plate",
-      "description": "Plate rotated 30\u00b0 around Z with three equally-spaced holes forming a linear pattern. Validates rotated-plate local-frame pattern detection.",
+      "description": "Plate rotated 30° around Z with three equally-spaced holes forming a linear pattern. Validates rotated-plate local-frame pattern detection.",
       "output_filename": "plate_rotated_z30_with_linear_pattern.scad",
-      "plate_size": [30.0, 12.0, 2.0],
+      "plate_size": [
+        30.0,
+        12.0,
+        2.0
+      ],
       "holes": [
-        {"center": [-8.0, 0.0], "diameter": 3.0},
-        {"center": [0.0, 0.0], "diameter": 3.0},
-        {"center": [8.0, 0.0], "diameter": 3.0}
+        {
+          "center": [
+            -8.0,
+            0.0
+          ],
+          "diameter": 3.0
+        },
+        {
+          "center": [
+            0.0,
+            0.0
+          ],
+          "diameter": 3.0
+        },
+        {
+          "center": [
+            8.0,
+            0.0
+          ],
+          "diameter": 3.0
+        }
       ],
       "transform": {
-        "rotate": [0.0, 0.0, 30.0],
-        "translate": [0.0, 0.0, 0.0]
+        "rotate": [
+          0.0,
+          0.0,
+          30.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
       },
       "candidates": [
         {
           "rank": 1,
           "name": "rotated_plate_with_linear_pattern",
-          "confidence": 0.90,
+          "confidence": 0.9,
           "expected_detection": {
             "plate_like_solid": true,
             "box_like_solid": false,
@@ -1493,7 +1618,24 @@
       "description": "Rectangle profile revolved around Z; Phase 2 → cylinder primitive upgrade.",
       "phase2_expected_primitive": "cylinder",
       "output_filename": "revolve_rectangle_profile.scad",
-      "profile": [[0.0, 0.0], [5.0, 0.0], [5.0, 10.0], [0.0, 10.0]],
+      "profile": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          5.0,
+          0.0
+        ],
+        [
+          5.0,
+          10.0
+        ],
+        [
+          0.0,
+          10.0
+        ]
+      ],
       "axis": "z",
       "candidates": [
         {
@@ -1520,7 +1662,20 @@
       "description": "Triangle profile revolved around Z; Phase 2 → cone primitive upgrade.",
       "phase2_expected_primitive": "cone",
       "output_filename": "revolve_triangle_profile.scad",
-      "profile": [[0.0, 0.0], [6.0, 0.0], [0.0, 12.0]],
+      "profile": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          6.0,
+          0.0
+        ],
+        [
+          0.0,
+          12.0
+        ]
+      ],
       "axis": "z",
       "candidates": [
         {
@@ -1547,7 +1702,36 @@
       "description": "Semicircle-like profile revolved around Z; Phase 2 → sphere primitive upgrade.",
       "phase2_expected_primitive": "sphere",
       "output_filename": "revolve_semicircle_profile.scad",
-      "profile": [[0.0, -5.0], [2.5, -4.330127], [4.330127, -2.5], [5.0, 0.0], [4.330127, 2.5], [2.5, 4.330127], [0.0, 5.0]],
+      "profile": [
+        [
+          0.0,
+          -5.0
+        ],
+        [
+          2.5,
+          -4.330127
+        ],
+        [
+          4.330127,
+          -2.5
+        ],
+        [
+          5.0,
+          0.0
+        ],
+        [
+          4.330127,
+          2.5
+        ],
+        [
+          2.5,
+          4.330127
+        ],
+        [
+          0.0,
+          5.0
+        ]
+      ],
       "axis": "z",
       "candidates": [
         {
@@ -1573,13 +1757,46 @@
       "fixture_type": "revolve",
       "description": "Sawtooth tree profile that should emit one compact rotate_extrude polygon.",
       "output_filename": "revolve_christmas_tree.scad",
-      "profile": [[0.0, 0.0], [2.0, 0.8], [4.0, 2.2], [2.8, 3.4], [5.0, 4.8], [3.2, 6.0], [6.0, 7.4], [0.0, 9.0]],
+      "profile": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          2.0,
+          0.8
+        ],
+        [
+          4.0,
+          2.2
+        ],
+        [
+          2.8,
+          3.4
+        ],
+        [
+          5.0,
+          4.8
+        ],
+        [
+          3.2,
+          6.0
+        ],
+        [
+          6.0,
+          7.4
+        ],
+        [
+          0.0,
+          9.0
+        ]
+      ],
       "axis": "z",
       "candidates": [
         {
           "rank": 1,
           "name": "primary",
-          "confidence": 0.90,
+          "confidence": 0.9,
           "expected_detection": {
             "revolve_solid": true,
             "cylinder_like_solid": false,
@@ -1599,13 +1816,42 @@
       "fixture_type": "revolve",
       "description": "Vase-like radius profile for generic polygon revolve recovery.",
       "output_filename": "revolve_vase.scad",
-      "profile": [[0.0, 0.0], [3.0, 0.0], [4.0, 2.0], [2.5, 4.0], [5.0, 7.0], [4.0, 10.0], [0.0, 10.0]],
+      "profile": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          3.0,
+          0.0
+        ],
+        [
+          4.0,
+          2.0
+        ],
+        [
+          2.5,
+          4.0
+        ],
+        [
+          5.0,
+          7.0
+        ],
+        [
+          4.0,
+          10.0
+        ],
+        [
+          0.0,
+          10.0
+        ]
+      ],
       "axis": "z",
       "candidates": [
         {
           "rank": 1,
           "name": "primary",
-          "confidence": 0.90,
+          "confidence": 0.9,
           "expected_detection": {
             "revolve_solid": true,
             "cylinder_like_solid": false,
@@ -1625,13 +1871,46 @@
       "fixture_type": "revolve",
       "description": "Stepped shaft profile for generic polygon revolve recovery.",
       "output_filename": "revolve_stepped_shaft.scad",
-      "profile": [[0.0, 0.0], [3.0, 0.5], [3.5, 2.0], [5.0, 3.5], [5.5, 5.0], [4.0, 7.0], [3.0, 9.0], [0.0, 10.0]],
+      "profile": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          3.0,
+          0.5
+        ],
+        [
+          3.5,
+          2.0
+        ],
+        [
+          5.0,
+          3.5
+        ],
+        [
+          5.5,
+          5.0
+        ],
+        [
+          4.0,
+          7.0
+        ],
+        [
+          3.0,
+          9.0
+        ],
+        [
+          0.0,
+          10.0
+        ]
+      ],
       "axis": "z",
       "candidates": [
         {
           "rank": 1,
           "name": "primary",
-          "confidence": 0.90,
+          "confidence": 0.9,
           "expected_detection": {
             "revolve_solid": true,
             "cylinder_like_solid": false,
@@ -1652,7 +1931,11 @@
       "description": "Unit cube. Balanced inertia tensor edge-case; must be rejected.",
       "output_filename": "non_revolve_cube.scad",
       "shape": "cube",
-      "size": [10.0, 10.0, 10.0],
+      "size": [
+        10.0,
+        10.0,
+        10.0
+      ],
       "expected_rejection_gate": "axis_quality",
       "candidates": [
         {
@@ -1678,13 +1961,17 @@
       "description": "Square cross-section extruded along Z; cross-slice radial profiles differ by angle.",
       "output_filename": "non_revolve_square_prism.scad",
       "shape": "square_prism",
-      "size": [10.0, 10.0, 20.0],
+      "size": [
+        10.0,
+        10.0,
+        20.0
+      ],
       "expected_rejection_gate": "cross_slice_consistency",
       "candidates": [
         {
           "rank": 1,
           "name": "primary",
-          "confidence": 0.90,
+          "confidence": 0.9,
           "expected_detection": {
             "revolve_solid": false,
             "box_like_solid": true,
@@ -1704,7 +1991,11 @@
       "description": "Plate with mirrored bosses; symmetric but not a revolve.",
       "output_filename": "non_revolve_symmetric_composite.scad",
       "shape": "symmetric_composite",
-      "size": [30.0, 10.0, 4.0],
+      "size": [
+        30.0,
+        10.0,
+        4.0
+      ],
       "expected_rejection_gate": "cross_slice_consistency",
       "candidates": [
         {
@@ -1729,7 +2020,11 @@
       "description": "Near-axisymmetric shaft with one axial keyway slot.",
       "output_filename": "non_revolve_shaft_with_keyway.scad",
       "shape": "shaft_with_keyway",
-      "size": [10.0, 10.0, 20.0],
+      "size": [
+        10.0,
+        10.0,
+        20.0
+      ],
       "expected_rejection_gate": "cross_slice_consistency",
       "candidates": [
         {
@@ -1806,18 +2101,1683 @@
       "fixture_type": "revolve",
       "description": "Annular tube (inner r=3, outer r=6, height=10) revolved around Z; Phase 1.6 annular revolve.",
       "output_filename": "revolve_annular_tube.scad",
-      "profile": [[3.0, 0.0], [6.0, 0.0], [6.0, 10.0], [3.0, 10.0]],
+      "profile": [
+        [
+          3.0,
+          0.0
+        ],
+        [
+          6.0,
+          0.0
+        ],
+        [
+          6.0,
+          10.0
+        ],
+        [
+          3.0,
+          10.0
+        ]
+      ],
       "axis": "z",
       "candidates": [
         {
           "rank": 1,
           "name": "primary",
-          "confidence": 0.90,
+          "confidence": 0.9,
           "expected_detection": {
             "revolve_solid": true,
             "cylinder_like_solid": false,
             "plate_like_solid": false,
             "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_single_hole",
+      "fixture_type": "plate",
+      "description": "Single centered hole in a plain plate. Simplest positive hole detection case.",
+      "output_filename": "plate_single_hole.scad",
+      "plate_size": [
+        20.0,
+        10.0,
+        2.0
+      ],
+      "holes": [
+        {
+          "center": [
+            0.0,
+            0.0
+          ],
+          "diameter": 4.0
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 1,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_two_slots",
+      "fixture_type": "plate",
+      "description": "Two parallel Y-direction slots on a plate. Tests multi-slot counting.",
+      "output_filename": "plate_two_slots.scad",
+      "plate_size": [
+        24.0,
+        12.0,
+        2.0
+      ],
+      "slots": [
+        {
+          "start": [
+            -6.0,
+            -3.5
+          ],
+          "end": [
+            -6.0,
+            3.5
+          ],
+          "width": 2.0
+        },
+        {
+          "start": [
+            6.0,
+            -3.5
+          ],
+          "end": [
+            6.0,
+            3.5
+          ],
+          "width": 2.0
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 2,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_4x4_grid",
+      "fixture_type": "plate",
+      "description": "Dense 4x4 hole grid to exercise nested-loop emission and large hole counts.",
+      "output_filename": "plate_4x4_grid.scad",
+      "plate_size": [
+        36.0,
+        36.0,
+        2.0
+      ],
+      "grid_hole_patterns": [
+        {
+          "origin": [
+            -12.0,
+            -12.0
+          ],
+          "col_step": [
+            8.0,
+            0.0
+          ],
+          "row_step": [
+            0.0,
+            8.0
+          ],
+          "cols": 4,
+          "rows": 4,
+          "diameter": 2.0
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 16,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 1,
+            "counterbore_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_3x3_grid",
+      "fixture_type": "plate",
+      "description": "3x3 hole grid with slightly larger diameter to vary the grid geometry.",
+      "output_filename": "plate_3x3_grid.scad",
+      "plate_size": [
+        28.0,
+        28.0,
+        2.0
+      ],
+      "grid_hole_patterns": [
+        {
+          "origin": [
+            -8.0,
+            -8.0
+          ],
+          "col_step": [
+            8.0,
+            0.0
+          ],
+          "row_step": [
+            0.0,
+            8.0
+          ],
+          "cols": 3,
+          "rows": 3,
+          "diameter": 2.5
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 9,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 1,
+            "counterbore_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_counterbore_pair",
+      "fixture_type": "plate",
+      "description": "Two side-by-side counterbore holes in a thick plate.",
+      "output_filename": "plate_counterbore_pair.scad",
+      "plate_size": [
+        50.0,
+        24.0,
+        8.0
+      ],
+      "counterbores": [
+        {
+          "center": [
+            -12.0,
+            0.0
+          ],
+          "through_diameter": 4.0,
+          "bore_diameter": 8.0,
+          "bore_depth": 4.0
+        },
+        {
+          "center": [
+            12.0,
+            0.0
+          ],
+          "through_diameter": 4.0,
+          "bore_diameter": 8.0,
+          "bore_depth": 4.0
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 2,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_chamfered_with_hole",
+      "fixture_type": "plate",
+      "description": "Chamfered-edge plate with a single centered hole. Combines chamfer and hole detection.",
+      "output_filename": "plate_chamfered_with_hole.scad",
+      "plate_size": [
+        20.0,
+        10.0,
+        2.0
+      ],
+      "edge_chamfer": 0.8,
+      "holes": [
+        {
+          "center": [
+            0.0,
+            0.0
+          ],
+          "diameter": 3.0
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 1,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_filleted_grid_holes",
+      "fixture_type": "plate",
+      "description": "Filleted-edge plate with a 2x2 hole grid. Combines edge fillet with grid detection.",
+      "output_filename": "plate_filleted_grid_holes.scad",
+      "plate_size": [
+        28.0,
+        16.0,
+        2.0
+      ],
+      "edge_radius": 1.0,
+      "grid_hole_patterns": [
+        {
+          "origin": [
+            -5.0,
+            -5.0
+          ],
+          "col_step": [
+            10.0,
+            0.0
+          ],
+          "row_step": [
+            0.0,
+            10.0
+          ],
+          "cols": 2,
+          "rows": 2,
+          "diameter": 2.0
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 4,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 1,
+            "counterbore_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_two_rectangular_pockets",
+      "fixture_type": "plate",
+      "description": "Two symmetrically placed rectangular blind pockets in a thick plate.",
+      "output_filename": "plate_two_rectangular_pockets.scad",
+      "plate_size": [
+        40.0,
+        24.0,
+        6.0
+      ],
+      "rectangular_pockets": [
+        {
+          "center": [
+            -10.0,
+            0.0
+          ],
+          "size": [
+            10.0,
+            8.0
+          ],
+          "depth": 3.0
+        },
+        {
+          "center": [
+            10.0,
+            0.0
+          ],
+          "size": [
+            10.0,
+            8.0
+          ],
+          "depth": 3.0
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_cutout_and_hole",
+      "fixture_type": "plate",
+      "description": "Plate with one rectangular through-cutout and one separate round hole.",
+      "output_filename": "plate_cutout_and_hole.scad",
+      "plate_size": [
+        36.0,
+        20.0,
+        3.0
+      ],
+      "rectangular_cutouts": [
+        {
+          "center": [
+            -8.0,
+            0.0
+          ],
+          "size": [
+            8.0,
+            8.0
+          ]
+        }
+      ],
+      "holes": [
+        {
+          "center": [
+            8.0,
+            0.0
+          ],
+          "diameter": 4.0
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 1,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0,
+            "rectangular_cutout_count": 1,
+            "rectangular_pocket_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_square",
+      "fixture_type": "plate",
+      "description": "Square-aspect-ratio plate (20x20x2) with one centered hole. Tests non-elongated plate detection.",
+      "output_filename": "plate_square.scad",
+      "plate_size": [
+        20.0,
+        20.0,
+        2.0
+      ],
+      "holes": [
+        {
+          "center": [
+            0.0,
+            0.0
+          ],
+          "diameter": 4.0
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 1,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_three_holes",
+      "fixture_type": "plate",
+      "description": "Three irregularly spaced holes (no pattern) to test hole counting without forcing a linear pattern.",
+      "output_filename": "plate_three_holes.scad",
+      "plate_size": [
+        30.0,
+        14.0,
+        2.0
+      ],
+      "holes": [
+        {
+          "center": [
+            -10.0,
+            0.0
+          ],
+          "diameter": 3.0
+        },
+        {
+          "center": [
+            0.0,
+            2.0
+          ],
+          "diameter": 4.0
+        },
+        {
+          "center": [
+            9.0,
+            -1.0
+          ],
+          "diameter": 2.5
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 3,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_slot_pair",
+      "fixture_type": "plate",
+      "description": "Two parallel X-direction slots offset in Y. Tests multi-slot counting on a single plate.",
+      "output_filename": "plate_slot_pair.scad",
+      "plate_size": [
+        30.0,
+        14.0,
+        2.0
+      ],
+      "slots": [
+        {
+          "start": [
+            -9.0,
+            -3.0
+          ],
+          "end": [
+            9.0,
+            -3.0
+          ],
+          "width": 2.0
+        },
+        {
+          "start": [
+            -9.0,
+            3.0
+          ],
+          "end": [
+            9.0,
+            3.0
+          ],
+          "width": 2.0
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 2,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_counterbore_and_slot",
+      "fixture_type": "plate",
+      "description": "One counterbore plus one slot on a single thick plate. Exercises mixed detection.",
+      "output_filename": "plate_counterbore_and_slot.scad",
+      "plate_size": [
+        40.0,
+        20.0,
+        6.0
+      ],
+      "counterbores": [
+        {
+          "center": [
+            -10.0,
+            0.0
+          ],
+          "through_diameter": 4.0,
+          "bore_diameter": 8.0,
+          "bore_depth": 3.0
+        }
+      ],
+      "slots": [
+        {
+          "start": [
+            5.0,
+            0.0
+          ],
+          "end": [
+            15.0,
+            0.0
+          ],
+          "width": 2.0
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 1,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 1,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_rotated_z45_plain",
+      "fixture_type": "plate",
+      "description": "Plain plate rotated 45 degrees around Z. Extends rotated-plate detection to a steeper angle.",
+      "output_filename": "plate_rotated_z45_plain.scad",
+      "plate_size": [
+        20.0,
+        10.0,
+        2.0
+      ],
+      "transform": {
+        "rotate": [
+          0.0,
+          0.0,
+          45.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "plate_wide_linear",
+      "fixture_type": "plate",
+      "description": "Wide plate with a 4-hole linear pattern along X. High-span pattern on a wide footprint.",
+      "output_filename": "plate_wide_linear.scad",
+      "plate_size": [
+        60.0,
+        20.0,
+        2.0
+      ],
+      "linear_hole_patterns": [
+        {
+          "origin": [
+            -21.0,
+            0.0
+          ],
+          "step": [
+            14.0,
+            0.0
+          ],
+          "count": 4,
+          "diameter": 3.0
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": true,
+            "box_like_solid": false,
+            "hole_count": 4,
+            "slot_count": 0,
+            "linear_pattern_count": 1,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "box_plain",
+      "fixture_type": "box",
+      "description": "Baseline plain box with no holes or cutouts. Simplest positive box_like_solid case.",
+      "output_filename": "box_plain.scad",
+      "box_size": [
+        20.0,
+        14.0,
+        10.0
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": true,
+            "hole_count": 0,
+            "slot_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "box_y_through_hole",
+      "fixture_type": "box",
+      "description": "Box with one through-hole along the y axis. Covers y-axis hole case missing from existing suite.",
+      "output_filename": "box_y_through_hole.scad",
+      "box_size": [
+        18.0,
+        12.0,
+        10.0
+      ],
+      "holes": [
+        {
+          "axis": "y",
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "diameter": 4.0
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": true,
+            "hole_count": 1,
+            "slot_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "box_two_z_holes",
+      "fixture_type": "box",
+      "description": "Box with two z-axis through-holes offset symmetrically on X. Tests multi-hole counting.",
+      "output_filename": "box_two_z_holes.scad",
+      "box_size": [
+        24.0,
+        16.0,
+        10.0
+      ],
+      "holes": [
+        {
+          "axis": "z",
+          "center": [
+            -5.0,
+            0.0,
+            0.0
+          ],
+          "diameter": 3.0
+        },
+        {
+          "axis": "z",
+          "center": [
+            5.0,
+            0.0,
+            0.0
+          ],
+          "diameter": 3.0
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": true,
+            "hole_count": 2,
+            "slot_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0,
+            "linear_pattern_count": 1,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "box_cubic",
+      "fixture_type": "box",
+      "description": "Cubic box (15x15x15) to verify unity-aspect-ratio handling without misclassification.",
+      "output_filename": "box_cubic.scad",
+      "box_size": [
+        15.0,
+        15.0,
+        15.0
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": true,
+            "hole_count": 0,
+            "slot_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "box_tall_narrow",
+      "fixture_type": "box",
+      "description": "Tall narrow box (10x10x30) stressing the plate/box boundary on the tall axis.",
+      "output_filename": "box_tall_narrow.scad",
+      "box_size": [
+        10.0,
+        10.0,
+        30.0
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": true,
+            "hole_count": 0,
+            "slot_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "box_small",
+      "fixture_type": "box",
+      "description": "Small box (8x6x4 mm) to verify scale invariance of the box_like_solid detector.",
+      "output_filename": "box_small.scad",
+      "box_size": [
+        8.0,
+        6.0,
+        4.0
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": true,
+            "hole_count": 0,
+            "slot_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "box_rotated_x20",
+      "fixture_type": "box",
+      "description": "Plain box rotated 20 degrees around X. Complements existing Z-rotated cases with X-tilt baseline.",
+      "output_filename": "box_rotated_x20.scad",
+      "box_size": [
+        18.0,
+        12.0,
+        8.0
+      ],
+      "transform": {
+        "rotate": [
+          20.0,
+          0.0,
+          0.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": true,
+            "hole_count": 0,
+            "slot_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "box_large_z_hole",
+      "fixture_type": "box",
+      "description": "Box with one large-diameter z-axis through-hole (d=8). Stresses hole-to-face-area ratio.",
+      "output_filename": "box_large_z_hole.scad",
+      "box_size": [
+        24.0,
+        16.0,
+        12.0
+      ],
+      "holes": [
+        {
+          "axis": "z",
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "diameter": 8.0
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": true,
+            "hole_count": 1,
+            "slot_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "box_side_cutout",
+      "fixture_type": "box",
+      "description": "Box with a rectangular channel cut through both Y faces. Tests through-cutout on a side face.",
+      "output_filename": "box_side_cutout.scad",
+      "box_size": [
+        30.0,
+        20.0,
+        15.0
+      ],
+      "cutouts": [
+        {
+          "center": [
+            0.0,
+            0.0,
+            3.0
+          ],
+          "size": [
+            8.0,
+            20.0,
+            8.0
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": true,
+            "hole_count": 0,
+            "slot_count": 0,
+            "rectangular_cutout_count": 1,
+            "rectangular_pocket_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "box_two_cutouts",
+      "fixture_type": "box",
+      "description": "Box with two symmetrically placed top-open rectangular notches. Tests multi-pocket counting.",
+      "output_filename": "box_two_cutouts.scad",
+      "box_size": [
+        30.0,
+        20.0,
+        12.0
+      ],
+      "cutouts": [
+        {
+          "center": [
+            -8.0,
+            0.0,
+            4.0
+          ],
+          "size": [
+            6.0,
+            8.0,
+            4.0
+          ]
+        },
+        {
+          "center": [
+            8.0,
+            0.0,
+            4.0
+          ],
+          "size": [
+            6.0,
+            8.0,
+            4.0
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": true,
+            "hole_count": 0,
+            "slot_count": 0,
+            "rectangular_cutout_count": 0,
+            "rectangular_pocket_count": 2,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "l_bracket_tall",
+      "fixture_type": "l_bracket",
+      "description": "Tall L-bracket (20x8x30 envelope, leg_thickness=3.5). High Z/X aspect ratio variant.",
+      "output_filename": "l_bracket_tall.scad",
+      "bracket_size": [
+        20.0,
+        8.0,
+        30.0
+      ],
+      "leg_thickness": 3.5,
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "linear_extrude_solid": true,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "l_bracket_wide",
+      "fixture_type": "l_bracket",
+      "description": "Wide L-bracket (30x10x20 envelope, leg_thickness=5.0). Wider Y extrusion depth variant.",
+      "output_filename": "l_bracket_wide.scad",
+      "bracket_size": [
+        30.0,
+        10.0,
+        20.0
+      ],
+      "leg_thickness": 5.0,
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.95,
+          "expected_detection": {
+            "linear_extrude_solid": true,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "revolve_y_axis",
+      "fixture_type": "revolve",
+      "description": "Rectangle profile revolved around Y axis; Phase 2 cylinder primitive upgrade.",
+      "output_filename": "revolve_y_axis.scad",
+      "profile": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          4.0,
+          0.0
+        ],
+        [
+          4.0,
+          12.0
+        ],
+        [
+          0.0,
+          12.0
+        ]
+      ],
+      "axis": "y",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "revolve_solid": true,
+            "cylinder_like_solid": false,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "revolve_frustum_trapezoid",
+      "fixture_type": "revolve",
+      "description": "Trapezoidal frustum profile revolved around Z; Phase 2 cone primitive upgrade (r1=6, r2=3).",
+      "phase2_expected_primitive": "cone",
+      "output_filename": "revolve_frustum_trapezoid.scad",
+      "profile": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          6.0,
+          0.0
+        ],
+        [
+          3.0,
+          10.0
+        ],
+        [
+          0.0,
+          10.0
+        ]
+      ],
+      "axis": "z",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "revolve_solid": true,
+            "cylinder_like_solid": false,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "revolve_inverted_cone",
+      "fixture_type": "revolve",
+      "description": "Frustum (r1=2, r2=5, h=8) revolved around Z; tip-heavy taper; Phase 2 cone upgrade.",
+      "phase2_expected_primitive": "cone",
+      "output_filename": "revolve_inverted_cone.scad",
+      "profile": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          2.0,
+          0.0
+        ],
+        [
+          5.0,
+          8.0
+        ],
+        [
+          0.0,
+          8.0
+        ]
+      ],
+      "axis": "z",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "revolve_solid": true,
+            "cylinder_like_solid": false,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "revolve_fat_disk",
+      "fixture_type": "revolve",
+      "description": "Wide low-aspect rectangle profile revolved around Z; Phase 2 cylinder primitive upgrade.",
+      "phase2_expected_primitive": "cylinder",
+      "output_filename": "revolve_fat_disk.scad",
+      "profile": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          10.0,
+          0.0
+        ],
+        [
+          10.0,
+          3.0
+        ],
+        [
+          0.0,
+          3.0
+        ]
+      ],
+      "axis": "z",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "revolve_solid": true,
+            "cylinder_like_solid": false,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "revolve_vase_dome",
+      "fixture_type": "revolve",
+      "description": "Complex vase-dome profile revolved around Z; no Phase 2 upgrade (curved non-primitive boundary).",
+      "output_filename": "revolve_vase_dome.scad",
+      "profile": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          4.0,
+          1.0
+        ],
+        [
+          5.0,
+          3.0
+        ],
+        [
+          4.5,
+          6.0
+        ],
+        [
+          3.0,
+          8.5
+        ],
+        [
+          0.0,
+          9.0
+        ]
+      ],
+      "axis": "z",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "revolve_solid": true,
+            "cylinder_like_solid": false,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "cylinder_y_axis",
+      "fixture_type": "cylinder",
+      "description": "Solid cylinder along y-axis to exercise non-z cylinder detection.",
+      "output_filename": "cylinder_y_axis.scad",
+      "diameter": 20.0,
+      "height": 35.0,
+      "axis": "y",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "revolve_solid": true,
+            "cylinder_like_solid": false,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "cylinder_large_diameter",
+      "fixture_type": "cylinder",
+      "description": "Large-diameter cylinder (d=50) stressing the cylinder/plate boundary at scale.",
+      "output_filename": "cylinder_large_diameter.scad",
+      "diameter": 50.0,
+      "height": 20.0,
+      "axis": "z",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "revolve_solid": true,
+            "cylinder_like_solid": false,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "cylinder_narrow_tall",
+      "fixture_type": "cylinder",
+      "description": "Narrow tall cylinder (d=8, h=60) for high-aspect-ratio revolve stress testing.",
+      "output_filename": "cylinder_narrow_tall.scad",
+      "diameter": 8.0,
+      "height": 60.0,
+      "axis": "z",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "revolve_solid": true,
+            "cylinder_like_solid": false,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "cone_steep",
+      "fixture_type": "cone",
+      "description": "Steep cone frustum (r1=15, r2=1, h=25); negative-class guard against cylinder over-detection.",
+      "output_filename": "cone_steep.scad",
+      "radius1": 15.0,
+      "radius2": 1.0,
+      "height": 25.0,
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "cylinder_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "cone_shallow",
+      "fixture_type": "cone",
+      "description": "Shallow frustum (r1=8, r2=6, h=10); near-cylinder negative-class guard.",
+      "output_filename": "cone_shallow.scad",
+      "radius1": 8.0,
+      "radius2": 6.0,
+      "height": 10.0,
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "cylinder_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "prism_triangle",
+      "fixture_type": "prism",
+      "description": "Triangular prism (3 sides); negative for cylinder, positive for linear_extrude_solid.",
+      "output_filename": "prism_triangle.scad",
+      "radius": 8.0,
+      "height": 20.0,
+      "sides": 3,
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "linear_extrude_solid": true,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "cylinder_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "prism_pentagon",
+      "fixture_type": "prism",
+      "description": "Pentagonal prism (5 sides); negative for cylinder, positive for linear_extrude_solid.",
+      "output_filename": "prism_pentagon.scad",
+      "radius": 10.0,
+      "height": 25.0,
+      "sides": 5,
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "linear_extrude_solid": true,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "cylinder_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "prism_octagon",
+      "fixture_type": "prism",
+      "description": "Octagonal prism (8 sides); near-cylinder negative guard for cylinder over-detection.",
+      "output_filename": "prism_octagon.scad",
+      "radius": 10.0,
+      "height": 20.0,
+      "sides": 8,
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "linear_extrude_solid": true,
+            "plate_like_solid": false,
+            "box_like_solid": false,
+            "cylinder_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "non_revolve_tall_box",
+      "fixture_type": "non_revolve",
+      "description": "Tall square-section prism; cross-slice radial profiles vary by angle, must be rejected as revolve.",
+      "output_filename": "non_revolve_tall_box.scad",
+      "shape": "square_prism",
+      "size": [
+        8.0,
+        8.0,
+        40.0
+      ],
+      "expected_rejection_gate": "cross_slice_consistency",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "revolve_solid": false,
+            "box_like_solid": true,
+            "plate_like_solid": false,
+            "hole_count": 0,
+            "slot_count": 0,
+            "linear_pattern_count": 0,
+            "grid_pattern_count": 0,
+            "counterbore_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "non_revolve_flat_symmetric",
+      "fixture_type": "non_revolve",
+      "description": "Wide flat symmetric composite; symmetric but not a revolve, must be rejected.",
+      "output_filename": "non_revolve_flat_symmetric.scad",
+      "shape": "symmetric_composite",
+      "size": [
+        40.0,
+        12.0,
+        3.0
+      ],
+      "expected_rejection_gate": "cross_slice_consistency",
+      "candidates": [
+        {
+          "rank": 1,
+          "name": "primary",
+          "confidence": 0.9,
+          "expected_detection": {
+            "revolve_solid": false,
+            "plate_like_solid": true,
             "hole_count": 0,
             "slot_count": 0,
             "linear_pattern_count": 0,

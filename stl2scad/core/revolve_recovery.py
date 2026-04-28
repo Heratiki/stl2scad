@@ -118,21 +118,24 @@ def extract_radial_slice(
     r_coord = points_rel @ radial
     z_coord = points_rel @ axis
 
+    _B_TOL = 1e-6   # tolerance for "edge lies on cutting half-plane" (float32 mesh safe)
+    _R_TOL = 1e-6   # tolerance for "intersection is on or inside the axis" (float32 mesh safe)
+
     intersections: list[tuple[float, float]] = []
     for tri in triangles:
         for e0, e1 in ((tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])):
             b0, b1 = float(b_coord[e0]), float(b_coord[e1])
-            if b0 == 0.0 and b1 == 0.0:
-                if r_coord[e0] >= 0.0:
-                    intersections.append((float(r_coord[e0]), float(z_coord[e0])))
-                if r_coord[e1] >= 0.0:
-                    intersections.append((float(r_coord[e1]), float(z_coord[e1])))
+            if abs(b0) <= _B_TOL and abs(b1) <= _B_TOL:
+                if float(r_coord[e0]) >= -_R_TOL:
+                    intersections.append((max(0.0, float(r_coord[e0])), float(z_coord[e0])))
+                if float(r_coord[e1]) >= -_R_TOL:
+                    intersections.append((max(0.0, float(r_coord[e1])), float(z_coord[e1])))
                 continue
             if (b0 > 0.0 and b1 > 0.0) or (b0 < 0.0 and b1 < 0.0):
                 continue
             t = b0 / (b0 - b1)
             r = float(r_coord[e0] + t * (r_coord[e1] - r_coord[e0]))
-            if r < -1e-9:
+            if r < -_R_TOL:
                 continue
             r = max(r, 0.0)  # clamp floating-point rounding near the axis
             z = float(z_coord[e0] + t * (z_coord[e1] - z_coord[e0]))

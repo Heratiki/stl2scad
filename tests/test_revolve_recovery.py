@@ -229,6 +229,68 @@ def test_detect_revolve_solid_accepts_cylinder_without_cap_center_vertices():
     assert max(rs) == pytest.approx(5.0, abs=0.25)
 
 
+def _make_float32_cylinder_mesh(
+    height: float = 10.0,
+    radius: float = 5.0,
+    segments: int = 96,
+):
+    """Simulate an OpenSCAD-rendered float32 STL cylinder.
+
+    Casts vertex coordinates to float32 and back to float64 to introduce
+    the same precision loss that the STL loader produces from a real .stl file.
+    """
+    theta = np.linspace(0.0, 2 * np.pi, segments, endpoint=False)
+    bottom_ring = np.column_stack(
+        [radius * np.cos(theta), radius * np.sin(theta), np.zeros_like(theta)]
+    )
+    top_ring = np.column_stack(
+        [radius * np.cos(theta), radius * np.sin(theta), np.full_like(theta, height)]
+    )
+    center_bottom = np.array([0.0, 0.0, 0.0])
+    center_top = np.array([0.0, 0.0, height])
+    vertices_f64 = np.vstack([bottom_ring, top_ring, center_bottom, center_top])
+    # Simulate float32 precision loss (OpenSCAD writes STL as IEEE 754 float32)
+    vertices_f32 = vertices_f64.astype(np.float32).astype(np.float64)
+    cb = 2 * segments
+    ct = 2 * segments + 1
+    tris = []
+    for i in range(segments):
+        j = (i + 1) % segments
+        tris.append([cb, j, i])
+        tris.append([ct, segments + i, segments + j])
+        tris.append([i, j, segments + j])
+        tris.append([i, segments + j, segments + i])
+    return vertices_f32, np.asarray(tris, dtype=np.int64)
+
+
+def test_detect_revolve_solid_accepts_float32_simulated_cylinder():
+    """Revolve detector must accept a cylinder whose vertices have float32 precision.
+
+    This guards against the regression where OpenSCAD-rendered STL files
+    (float32 vertices, $fn=96) returned [] from detect_revolve_solid even
+    though the programmatic float64 mesh passed all gates.
+    """
+    verts, tris = _make_float32_cylinder_mesh(height=10.0, radius=5.0, segments=96)
+    # Pre-process the same way _build_feature_graph does before calling the detector
+    # (expand to flat per-triangle vertex list, then deduplicate)
+    flat_verts = verts[tris].reshape(-1, 3)
+    rounded = np.round(flat_verts, decimals=6)
+    unique_verts, inv_idx = np.unique(rounded, axis=0, return_inverse=True)
+    triangles = inv_idx.reshape(-1, 3).astype(np.int64)
+
+    features = detect_revolve_solid(unique_verts, triangles, DetectorConfig())
+
+    assert len(features) == 1, (
+        "Revolve detector failed on float32-simulated cylinder. "
+        "Check r-threshold in extract_radial_slice."
+    )
+    feat = features[0]
+    assert feat["confidence"] >= 0.70
+    rs = [p[0] for p in feat["profile"]]
+    assert min(rs) < 0.5, "Profile must touch the axis (r_min near 0)"
+    assert max(rs) == pytest.approx(5.0, abs=0.3)
+
+
 def test_detect_revolve_solid_accepts_short_disk():
     verts, tris = _make_cylinder_mesh_without_cap_centers(height=2.0, radius=8.0, segments=64)
     features = detect_revolve_solid(verts, tris, DetectorConfig())

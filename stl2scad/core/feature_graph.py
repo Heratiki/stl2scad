@@ -3433,24 +3433,58 @@ _TRIAGE_BUCKETS = (
 )
 
 
-def _classify_graph_bucket(graph: dict[str, Any]) -> str:
-    """Assign a single graph to one of the five triage buckets.
+_CONFIRMED_PREVIEW_FEATURE_TYPES = frozenset(
+    {
+        "plate_like_solid",
+        "box_like_solid",
+        "cylinder_like_solid",
+        "revolve_solid",
+    }
+)
 
-    Bucket priority (highest wins):
-    1. ``error``              – graph has ``status == "error"``
-    2. ``parametric_preview`` – ``emit_feature_graph_scad_preview`` returns SCAD
-    3. ``feature_graph_no_preview`` – has plate or box candidates (any confidence)
-       but preview was not emitted
-    4. ``axis_pairs_only``    – only ``axis_boundary_plane_pair`` features present
-    5. ``polyhedron_fallback`` – no features at all
+
+def _has_confirmed_parametric_preview(graph: dict[str, Any]) -> bool:
+    """Return whether the graph has a preview in a trusted parametric family.
+
+    ``linear_extrude_solid`` previews are still emitted for inspection, but the
+    local-corpus triage should not count them as confirmed preview-ready output
+    until they have a stronger geometric validation signal than "SCAD was
+    emitted".
     """
+    if emit_feature_graph_scad_preview(graph) is None:
+        return False
+
+    feature_types = {str(f.get("type", "")) for f in graph.get("features", [])}
+    return bool(feature_types & _CONFIRMED_PREVIEW_FEATURE_TYPES)
+
+
+def _classify_graph_bucket(
+    graph: dict[str, Any],
+    preview_validator: Optional[Callable[[dict[str, Any]], bool]] = None,
+) -> str:
+    """Assign a single graph to one of the five triage buckets."""
     if graph.get("status") == "error":
         return "error"
-    if emit_feature_graph_scad_preview(graph) is not None:
+
+    preview_bucket = _has_confirmed_parametric_preview(graph)
+    if preview_validator is not None and emit_feature_graph_scad_preview(graph) is not None:
+        try:
+            preview_bucket = bool(preview_validator(graph))
+        except Exception:
+            preview_bucket = False
+
+    if preview_bucket:
         return "parametric_preview"
+
     features = graph.get("features", [])
     feature_types = {str(f.get("type", "")) for f in features}
-    solid_types = {"plate_like_solid", "box_like_solid"}
+    solid_types = {
+        "plate_like_solid",
+        "box_like_solid",
+        "cylinder_like_solid",
+        "revolve_solid",
+        "linear_extrude_solid",
+    }
     if feature_types & solid_types:
         return "feature_graph_no_preview"
     non_pair = feature_types - {"axis_boundary_plane_pair"}
@@ -3556,6 +3590,7 @@ def build_triage_report(
     graphs: list[dict[str, Any]],
     top_n: int = 5,
     input_dir: Optional[str] = None,
+    preview_validator: Optional[Callable[[dict[str, Any]], bool]] = None,
 ) -> dict[str, Any]:
     """Build a triage report from a list of feature graphs.
 
@@ -3579,7 +3614,7 @@ def build_triage_report(
     pattern_examples: dict[str, str] = {}
 
     for graph in graphs:
-        bucket = _classify_graph_bucket(graph)
+        bucket = _classify_graph_bucket(graph, preview_validator=preview_validator)
         bucket_counts[bucket] += 1
         source_file = str(graph.get("source_file", ""))
 

@@ -149,3 +149,77 @@ def test_compare_local_corpus_score_to_baseline_computes_deltas():
     assert delta["triage_bucket_delta"]["parametric_preview"] == 1
     assert delta["triage_bucket_delta"]["feature_graph_no_preview"] == 0
     assert delta["labeled_mean_score_delta"] == pytest.approx(0.25)
+
+
+def test_score_local_corpus_uses_geometric_preview_validation(
+    monkeypatch,
+    test_data_dir,
+    tmp_path,
+):
+    corpus_dir = _copy_fixture_corpus(test_data_dir, tmp_path)
+    manifest_path = tmp_path / ".local" / "local_corpus.json"
+    create_local_corpus_manifest(corpus_dir, output_path=manifest_path, recursive=False)
+
+    box_graph = {
+        "schema_version": 1,
+        "source_file": "primitive_box_axis_aligned.stl",
+        "mesh": {
+            "surface_area": 1.0,
+            "bounding_box": {"width": 20.0, "height": 12.0, "depth": 8.0},
+        },
+        "features": [
+            {
+                "type": "box_like_solid",
+                "confidence": 0.95,
+                "origin": [0.0, 0.0, 0.0],
+                "size": [20.0, 12.0, 8.0],
+            }
+        ],
+    }
+    sphere_graph = {
+        "schema_version": 1,
+        "source_file": "primitive_sphere.stl",
+        "mesh": {
+            "surface_area": 1.0,
+            "bounding_box": {"width": 20.0, "height": 20.0, "depth": 20.0},
+        },
+        "features": [
+            {
+                "type": "box_like_solid",
+                "confidence": 0.95,
+                "origin": [0.0, 0.0, 0.0],
+                "size": [20.0, 20.0, 20.0],
+            }
+        ],
+    }
+
+    def _fake_build_graph(stl_path, root_dir=None, config=None):
+        name = Path(stl_path).name
+        if name == "primitive_box_axis_aligned.stl":
+            return box_graph
+        return sphere_graph
+
+    def _fake_validate_preview(graph, corpus_root):
+        return {
+            "attempted": True,
+            "passed": graph["source_file"] == "primitive_box_axis_aligned.stl",
+            "reason": "verified",
+        }
+
+    monkeypatch.setattr(
+        "stl2scad.tuning.local_corpus.build_feature_graph_for_stl",
+        _fake_build_graph,
+    )
+    monkeypatch.setattr(
+        "stl2scad.tuning.local_corpus._validate_preview_geometry",
+        _fake_validate_preview,
+    )
+
+    score = score_local_corpus(manifest_path)
+
+    assert score["triage"]["bucket_counts"]["parametric_preview"] == 1
+    assert score["triage"]["bucket_counts"]["feature_graph_no_preview"] == 1
+    by_file = {entry["relative_path"]: entry for entry in score["per_file"]}
+    assert by_file["primitive_box_axis_aligned.stl"]["triage_bucket"] == "parametric_preview"
+    assert by_file["primitive_sphere.stl"]["triage_bucket"] == "feature_graph_no_preview"
+    assert by_file["primitive_box_axis_aligned.stl"]["preview_validation"]["attempted"] is True

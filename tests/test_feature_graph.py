@@ -1113,6 +1113,32 @@ def _make_parametric_preview_graph(test_output_dir) -> dict:
     return build_feature_graph_for_stl(stl_file)
 
 
+def _make_linear_extrude_preview_graph() -> dict:
+    """Synthetic graph with an emitted linear-extrude preview.
+
+    This is intentionally *not* treated as confirmed parametric preview in the
+    triage report until the preview path gains stronger geometric validation.
+    """
+    return {
+        "schema_version": 1,
+        "source_file": "mounted_clip.stl",
+        "mesh": {
+            "triangles": 100,
+            "surface_area": 100.0,
+            "bounding_box": {"width": 5.0, "height": 48.0, "depth": 28.0},
+        },
+        "features": [
+            {
+                "type": "linear_extrude_solid",
+                "confidence": 0.83,
+                "axis": [1.0, 0.0, 0.0],
+                "height": 5.0,
+                "profile": [[0.0, 0.0], [20.0, 0.0], [20.0, 10.0], [0.0, 10.0]],
+            }
+        ],
+    }
+
+
 def _make_error_graph() -> dict:
     """Synthetic error graph."""
     return {
@@ -1205,6 +1231,7 @@ def test_triage_report_bucket_accounting(test_output_dir):
     preview_graph = _make_parametric_preview_graph(test_output_dir)
     graphs = [
         preview_graph,
+        _make_linear_extrude_preview_graph(),
         _make_axis_pairs_only_graph(surface_area=300.0),
         _make_axis_pairs_only_graph(surface_area=300.0),
         _make_polyhedron_fallback_graph(),
@@ -1217,9 +1244,19 @@ def test_triage_report_bucket_accounting(test_output_dir):
     assert total == report["files_processed"]
     assert total == len(graphs)
     assert counts["parametric_preview"] == 1
+    assert counts["feature_graph_no_preview"] == 1
     assert counts["axis_pairs_only"] == 2
     assert counts["polyhedron_fallback"] == 1
     assert counts["error"] == 1
+
+
+def test_triage_report_demotes_linear_extrude_preview_to_unconfirmed_bucket():
+    """Emitted linear-extrude SCAD should not count as confirmed preview-ready output."""
+    report = build_triage_report([_make_linear_extrude_preview_graph()])
+
+    assert report["bucket_counts"]["parametric_preview"] == 0
+    assert report["bucket_counts"]["feature_graph_no_preview"] == 1
+    assert report["per_file"][0]["bucket"] == "feature_graph_no_preview"
 
 
 def test_triage_report_ranked_failure_patterns_shape(test_output_dir):

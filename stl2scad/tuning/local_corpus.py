@@ -12,20 +12,30 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
+import tempfile
 from typing import Any, Iterable, Optional
 
 from stl2scad.core.feature_graph import build_feature_graph_for_stl, build_triage_report
+from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
 from stl2scad.core.feature_inventory import (
     STL_SUFFIXES,
     InventoryConfig,
     analyze_stl_file,
 )
+from stl2scad.core.verification import verify_existing_conversion
 from stl2scad.tuning.config import DetectorConfig
 from stl2scad.tuning.scoring import FixtureScore, score_fixture_against_graph
 
 
 LOCAL_CORPUS_SCHEMA_VERSION = 1
 LOCAL_CORPUS_SCORE_SCHEMA_VERSION = 1
+LOCAL_CORPUS_PREVIEW_TOLERANCE = {
+    "volume": 5.0,
+    "surface_area": 10.0,
+    "bounding_box": 2.0,
+    "hausdorff_distance": 3.0,
+    "normal_deviation": 15.0,
+}
 
 
 def create_local_corpus_manifest(
@@ -225,7 +235,35 @@ def score_local_corpus(
             entry["label_score"] = _serialize_fixture_score(fixture_score)
         per_file.append(entry)
 
-    triage = build_triage_report(graphs, top_n=triage_top_n, input_dir=str(root))
+    preview_validation_cache: dict[str, dict[str, Any]] = {}
+
+    def _preview_validator(graph: dict[str, Any]) -> bool:
+        source_file = str(graph.get("source_file", ""))
+        if source_file in preview_validation_cache:
+            return bool(preview_validation_cache[source_file].get("passed", False))
+
+        result = _validate_preview_geometry(graph, root)
+        preview_validation_cache[source_file] = result
+        return bool(result.get("passed", False))
+
+    triage = build_triage_report(
+        graphs,
+        top_n=triage_top_n,
+        input_dir=str(root),
+        preview_validator=_preview_validator,
+    )
+
+    triage_by_source = {
+        str(entry.get("source_file", "")): entry for entry in triage.get("per_file", [])
+    }
+    for entry in per_file:
+        triage_entry = triage_by_source.get(str(entry.get("relative_path", "")))
+        if triage_entry is not None:
+            entry["triage_bucket"] = triage_entry.get("bucket")
+        preview_validation = preview_validation_cache.get(str(entry.get("relative_path", "")))
+        if preview_validation is not None:
+            entry["preview_validation"] = preview_validation
+
     labeled_summary = _summarize_labeled_scores(labeled_scores)
     preview_ready_ratio = (
         triage["bucket_counts"]["parametric_preview"] / triage["files_processed"]
@@ -246,6 +284,48 @@ def score_local_corpus(
         "triage": triage,
         "labeled_summary": labeled_summary,
         "per_file": per_file,
+    }
+
+
+def _validate_preview_geometry(graph: dict[str, Any], corpus_root: Path) -> dict[str, Any]:
+    """Render emitted SCAD preview and verify it against the source STL."""
+    scad_preview = emit_feature_graph_scad_preview(graph)
+    if scad_preview is None:
+        return {"attempted": False, "passed": False, "reason": "no_scad_preview"}
+
+    source_file = str(graph.get("source_file", "")).strip()
+    if not source_file:
+        return {"attempted": False, "passed": False, "reason": "missing_source_file"}
+
+    stl_path = corpus_root / source_file
+    if not stl_path.exists():
+        return {"attempted": False, "passed": False, "reason": "missing_source_stl"}
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="preview-verify-") as temp_dir:
+            temp_scad = Path(temp_dir) / f"{Path(source_file).stem}_preview.scad"
+            temp_scad.write_text(scad_preview, encoding="utf-8")
+            result = verify_existing_conversion(
+                stl_path,
+                temp_scad,
+                dict(LOCAL_CORPUS_PREVIEW_TOLERANCE),
+                debug=False,
+                sample_seed=0,
+            )
+    except Exception as exc:
+        return {
+            "attempted": True,
+            "passed": False,
+            "reason": f"verification_error:{type(exc).__name__}",
+            "error": str(exc),
+        }
+
+    return {
+        "attempted": True,
+        "passed": bool(result.passed),
+        "reason": "verified" if result.passed else "metrics_out_of_tolerance",
+        "comparison": result.comparison,
+        "tolerance": dict(result.tolerance),
     }
 
 

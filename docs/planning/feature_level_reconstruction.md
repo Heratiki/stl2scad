@@ -105,20 +105,23 @@ Batch-analyzes STL folders and produces JSON reports with geometry signals (boun
 
 ### Feature Graph (`stl2scad/core/feature_graph.py`) — High value
 
-Detects axis-aligned boxes, through-holes, slots, and repeated hole patterns (linear + grid) from raw STL geometry, then emits a SCAD preview.
+Detects plates, boxes, cylinders, rotated plates/boxes, through-holes, slots, repeated hole patterns (linear + grid), axisymmetric revolves, and linear extrudes from raw STL geometry, then emits a SCAD preview when confidence is high enough.
 
 **Strengths:**
 
 - Conservative by design (0.70 confidence threshold) — avoids false positives
 - Pattern detection (linear arrays, grids) is genuinely useful for mechanical parts
+- Rotated plate/box recovery now gives the detector a path beyond world-axis-aligned fixtures
+- `rotate_extrude()` and `linear_extrude()` recovery cover single-profile solids that are not well represented as simple boxes/plates/cylinders
 - SCAD preview emission with parameterized variables produces editable output
 
 **Limitations:**
 
-- Only handles axis-aligned geometry — rotated features are invisible
-- Pattern detection depends on hole centers being near-exactly spaced; real-world STLs from meshed CAD may have enough floating-point noise to break it
-- `plate_like_solid` requires strictly rectangular top/bottom faces — any chamfer or fillet on a plate edge drops detection to `axis_boundary_plane_pair` only and blocks SCAD preview emission. Observed on multiple real FDM parts (2026-04-20 sample); dominant real-world failure mode.
-- `box_like_solid` is detected (including a tolerant-confidence variant) but `emit_feature_graph_scad_preview` only consumes `plate_like_solid` — pure axis-aligned cuboids (e.g. Test_Cube) end up as a feature-graph entry with no parametric preview emitted.
+- Pattern detection still depends on holes and slots being regular enough to survive STL tessellation noise.
+- Current preview emission is still not the same thing as a production IR-to-SCAD emitter wired into the normal `convert` / `batch` / GUI workflows.
+- Cutout support is strongest for through-holes and slots; blind holes, counterbores from mesh, countersinks, pockets, and notches remain open.
+- Tolerant chamfer/fillet recognition preserves a base primitive, but edge kind and exact radius/distance recovery are not complete.
+- Composition detection is limited: many real CAD parts are assemblies of multiple extrudes/revolves/primitives and still require a higher-level partitioning strategy.
 
 ## Real-World Feedback Loop (2026-04-22)
 
@@ -129,6 +132,61 @@ The 2026-04-20 sample made it clear that fixture pass-rate no longer predicts re
 Run a folder of real STLs (starting with `D:\3D Files\FDM`) through `feature-graph` and bucket the outcomes by detector result: produced a parametric preview, detected features but below confidence threshold, fell through to `axis_boundary_plane_pair` only, or fell through to polyhedron. Rank buckets by which broken-edge pattern or geometry style costs the most parts. The triage loop does not itself fix anything — it replaces guesswork about "which detector gap matters most" with ranked evidence drawn from the user's actual corpus. Cheap to build on top of the existing folder-mode `feature-graph` and the confidence scores the detector already emits.
 
 This is distinct from *Immediate priority #2* ("real-world STLs with authored `expected_detection` counts"): triage works on unlabeled STLs, no hand-authored ground truth required. The two complement each other — triage identifies *which* real parts deserve the investment of authoring ground truth.
+
+### Local and public reproducibility loop (2026-04-28)
+
+The project should support three levels of reproducible real-world feedback. They are deliberately separate because the legal and engineering constraints are different.
+
+1. **User-local corpus loop.** Users can run the detector against any STL folder they have rights to use locally, without committing the STLs or linking them from the repo. A local manifest under a gitignored path such as `.local/` should capture file path, sha256, file size, bounds, detector config version, optional user-authored labels, and notes. The user can then re-run the same local benchmark after detector changes and compare triage/recall deltas. This is valuable for project refinement even when the raw models are private or cannot be redistributed.
+2. **Sanitized report loop.** Users may upstream aggregate results without the STLs: bucket counts, failure signatures, detector-family deltas, rounded dimensions, anonymized hash IDs, and representative notes. These reports are useful for prioritization, but they are not a hard merge gate because maintainers cannot independently reproduce private local files.
+3. **Public batch loop.** Use a public dataset in small, deterministic chunks, preferably 100 STL files at a time, with a committed manifest that records source IDs, license strings, source URLs, sha256 hashes, and selection seed. The actual downloaded STL cache can remain gitignored. Anyone can recreate the batch from the manifest.
+
+**Recommended public source:** [Thingi10K](https://huggingface.co/datasets/Thingi10K/Thingi10K) / [Thingi10K GitHub](https://github.com/Thingi10K/Thingi10K). It contains 10,000 real-world 3D-printing models, mostly STL, with per-model license metadata. For repo-safe batches, filter initially to public-domain-style entries (`Creative Commons - Public Domain Dedication`, `Public Domain`) and optionally permissive software-style entries (`BSD License`). CC-BY entries are usable only if attribution metadata is preserved carefully.
+
+**Secondary public source:** [Smithsonian Open Access](https://www.si.edu/openaccess) / [Smithsonian 3D Open Access](https://3d.si.edu/collections/openaccesshighlights). CC0-designated 3D assets are legally clean, but they are usually glTF/glb/obj rather than STL and are less mechanically focused, so they are better as converted broad-geometry or organic/negative-class stress cases.
+
+**Use with caution:** [NIH 3D](https://3d.nih.gov/) has open biomedical models, but licensing is per-entry and must be filtered. [ABC Dataset](https://deep-geometry.github.io/abc-dataset/) is technically excellent for CAD supervision, but model copyrights remain with creators and licensing flows through Onshape terms, so treat it as a later local/research corpus rather than a redistributable repo fixture source. ShapeNet is not a good fit for repo inclusion because access/use is research/education constrained and model copyrights remain with original creators.
+
+Planned tooling:
+
+```bash
+# Private local reproducibility, no STL redistribution.
+python scripts/create_local_corpus.py "D:\3D Files\FDM" --output .local/fdm_corpus.json
+python scripts/build_feature_graph.py "D:\3D Files\FDM" --output artifacts/fdm_graphs.json --triage-output artifacts/fdm_triage.json
+python scripts/summarize_feature_triage.py artifacts/fdm_triage.json --top 25
+python scripts/score_local_corpus.py --manifest .local/fdm_corpus.json --output artifacts/fdm_score.json
+
+# Public reproducibility from deterministic Thingi10K batches.
+python scripts/import_thingi10k_batch.py --licenses "Creative Commons - Public Domain Dedication,Public Domain,BSD License" --limit 100 --seed 1 --output tests/data/thingi10k_batch_001_manifest.json
+python scripts/materialize_thingi10k_batch.py --manifest tests/data/thingi10k_batch_001_manifest.json --cache .local/thingi10k
+python scripts/score_thingi10k_batch.py --manifest tests/data/thingi10k_batch_001_manifest.json --cache .local/thingi10k --output artifacts/thingi10k_batch_001_score.json
+```
+
+### Automated in-memory improvement loop (future)
+
+The script-based corpus loop above is the observable interface. The longer-term goal is an in-memory compute loop that keeps most intermediate state out of the filesystem, iterates over detector hypotheses, and only retains output that is relevant to review, approval, or reproducibility.
+
+**Intent:** run a bounded local optimization/review cycle over a local corpus or deterministic public batch, measure whether candidate changes improve feature recovery, and produce review-ready implementation patches. A candidate that reaches the human/Frontier LLM review stage should already be in a state that can be added to the project directly: code changes, tests, fixture updates, generated golden files, scoring deltas, and rollback context included. Human or Frontier LLM review is an approval and verification step, not a request for the reviewer to finish implementation work.
+
+**In-memory operating model:**
+
+1. Load a corpus manifest plus a bounded set of STL meshes into memory, using an LRU cache when the corpus is larger than memory.
+2. Run feature inventory, feature graph extraction, SCAD preview emission, and optional OpenSCAD preview round-trip checks without writing per-stage JSON for every file.
+3. Score each candidate using multiple signals: preview-ready ratio, labeled-case correctness, geometric round-trip agreement, confidence stability, fixture regression status, and failure-bucket movement.
+4. Generate and evaluate bounded hypotheses: detector config changes, confidence-gate changes, narrow detector-family patches, emitter patches, or new synthetic fixture proposals.
+5. Keep only review-relevant retained artifacts: candidate patch, summary score delta, representative failure IDs/hashes, minimal anonymized geometric signatures, newly generated fixtures/golden files, logs needed to reproduce failures, and explicit rejection reasons for discarded candidates.
+6. Discard irrelevant intermediate outputs by default: per-file transient graphs, temporary SCAD previews, temporary rendered STLs, low-scoring hypothesis traces, and verbose geometry dumps unless the candidate is promoted for review.
+7. For promoted candidates, generate a visual review bundle: rendered source STL, rendered candidate SCAD output, visual diff/overlay, geometric metric summary, and the emitted SCAD code displayed alongside the render so reviewers can judge both shape fidelity and human editability.
+
+**Review boundary:**
+
+- The loop may use a local model for cheap summarization or clustering assistance, but a local model is not a correctness oracle.
+- Frontier LLM review may be used for higher-quality code/design review, but it should receive a complete candidate patch and concise evidence bundle.
+- Human approval should include a visual diff check between the rendered STL and rendered SCAD result, plus direct inspection of the generated SCAD code for readability, parameter naming, and ease of editing.
+- Approval requires deterministic gates: fixture invariants, focused detector tests, local/public corpus score deltas, and any affected golden-output regeneration.
+- The loop must not silently edit checked-in fixture expectations, lower confidence thresholds to inflate preview counts, commit private corpus data, or accept unlabeled local improvements that regress labeled or fixture-backed cases.
+
+**Maintainability boundary:** keep this engine outside detector internals, e.g. under `stl2scad/corpus/` or `stl2scad/improvement_loop/`. The engine may import detectors and emit patches, but detectors should remain deterministic, directly testable modules. If profiling later shows Python orchestration is too slow, move hot geometry kernels behind narrow Rust/C/C++ extension boundaries rather than rewriting the policy/review layer.
 
 ### Phase 2: Close the dominant real-world failure pattern (weeks)
 
@@ -178,45 +236,69 @@ The Next Work Package scoped for 2026-04-22 → 2026-05-31 (Tracks A–D) shippe
 - **Manifest `schema_version` enforcement** — `load_feature_fixture_manifest` rejects unknown schema versions, and the checked-in fixture manifest is now schema version 2 with explicit candidate interpretations.
 - **Parametric preview round-trip** — SCAD previews now declare named variables for supported plate geometry and cutouts, and `test_feature_fixture_preview_round_trip_detection` re-renders those previews to STL and re-checks detector counts plus supported dimensions.
 
-### Immediate priorities (2026-04-27)
+### Immediate priorities (2026-04-28)
 
-Rotational and translational extrude recovery are complete (Phases 1 and 3, 2026-04-24 and 2026-04-27). The active front is profile classification (Phase 2) plus three structural refinements for rotated geometry handling.
+The 2026-04-27 active items have landed in current `main`: revolve profile classification/primitive upgrades, rotated-plate local-frame cutouts, rotated-box positive detection, and rotated-box local-frame hole extraction. The focused detector slice (`tests/test_feature_fixtures.py`, `tests/test_feature_graph.py`, `tests/test_revolve_recovery.py`, `tests/test_linear_extrude_recovery.py`) passes on the current checkout. The remaining work is now about making those capabilities useful on broad, messy, user-provided STL collections and turning the feature graph into full production SCAD output.
 
-1. **Sketch2D + `rotate_extrude` recovery — Phase 2: Profile classification → primitive upgrade.** Closes [detector_ir.md](detector_ir.md) tier-1 cone / sphere / frustum / ellipsoid rows as a consequence of the axisymmetric pipeline. Given a detected revolve with axial profile `polygon(pts)`, classify the profile shape and upgrade to `ExtrudeCone` / `ExtrudeSphere` / `ExtrudeFrustum` / `ExtrudeCylinder` IR nodes and emit compact SCAD (`cone(...)`, `sphere(...)`, etc.) instead of generic `rotate_extrude()`. Acceptance: at least three profile shapes (cone, sphere, cylinder) emit their primitive form and pass preview round-trip assertions; fixture additions: `revolve_cone_right_triangle`, `revolve_sphere_semicircle`, `revolve_frustum_trapezoid`.
-2. **Rotated cutouts on rotated plates.** The rotated-plate detector ([stl2scad/core/feature_graph.py:938](../../stl2scad/core/feature_graph.py#L938)) handles plate bodies at arbitrary orientation, but `_candidate_cutout_axes` still operates in world coordinates, so a rotated plate with holes/slots/patterns detects only the plate and misses the cutouts. Fix: extend cutout extraction to operate in the plate's local (u, v, thickness) frame when `detected_via == "rotated_plate"`.
-3. **Rotated-box detector (positive path).** `box_z_through_hole_rotated_z25` exists today only as a negative fixture asserting the detector does NOT misfire on rotated cuboids. Mirror the rotated-plate approach (dominant normal-pair detection extended from one axis-pair to three) to produce positive detection. Flip the negative fixture to a positive expectation once the detector lands.
+1. **Integrate feature-graph/IR emission into normal conversion.** The rich feature reconstruction path can emit previews, but the production `convert`, `batch`, and GUI workflows still primarily expose the older polyhedron / primitive-recognition path. Add a high-confidence feature-graph emitter path, preserve polyhedron fallback, and surface diagnostics consistently in CLI, GUI, and verification reports.
+2. **Build the user-local, Thingi10K, and in-memory improvement loops.** Add `create_local_corpus`, `score_local_corpus`, `import_thingi10k_batch`, `materialize_thingi10k_batch`, and `score_thingi10k_batch` tooling first, then layer an in-memory improvement engine over the same scoring contracts. The local loop gives user-specific reproducibility without redistributing models; the Thingi10K loop gives public, deterministic 100-file batches for shared regression runs; the in-memory loop turns high-confidence findings into review-ready patches while retaining only artifacts needed for approval.
+3. **Fill missing negative-feature detectors.** Counterbore fixture generation exists, but counterbore recovery from raw meshes is not complete. Add blind holes, counterbores, countersinks, rectangular pockets, notches, and face-local cutouts with explicit boolean polarity under `BooleanDifference`.
+4. **Promote tolerant edge recognition into editable edge treatment.** Today chamfered/filleted plates and boxes are recognized tolerantly and represented by a coarse `ChamferOrFilletEdge` annotation. Distinguish chamfer vs fillet, recover radius/distance, and emit editable SCAD modules or approximations.
+5. **Add structural feature families.** Shells/enclosure halves, bosses, ribs/webs, tabs/flanges, and brackets are the next major class of CAD intent that single primitive/extrude/revolve detectors do not capture.
+6. **Expand pattern recovery.** Linear and grid hole patterns exist. Add radial patterns, mirror patterns, and repeated non-hole feature patterns so emitted SCAD uses loops/modules rather than duplicated literals.
+7. **Add composition detection.** Many real parts are not a single plate, box, revolve, or linear extrusion; they are boolean compositions of multiple such features. Add a composition strategy that can partition a mesh into multiple high-confidence primitives/extrudes/revolves, combine them into one coherent editable SCAD model, and preserve enough parametric relationships that changing dimensions keeps the part functional.
+8. **Make interpretation ranking detector-native.** Schema-v2 fixtures and harness-side ranking exist, and `ir_tree` carries an `Interpretation` wrapper. The detector should emit ranked alternative interpretations directly so ambiguity can be evaluated without relying only on flat feature-count matches.
+9. **Document fixture and corpus schemas.** `schema_version` is enforced, but third-party fixture authors and future corpus contributors need stable schema documentation for synthetic fixtures, local corpus manifests, Thingi10K batch manifests, and sanitized reports.
+10. **Defer ABC/STEP supervision until the real-world floor is higher.** ABC remains valuable for later B-rep/STEP supervision, but it should follow the local/Thingi10K loop and common-feature detector expansion.
+
+### Multi-feature composition target
+
+The end-state for full parametric SCAD output is not only recognizing one fixture-like feature in an STL. The detector needs to recognize multiple individual feature families within one mesh, infer how they combine, and emit a single editable SCAD file that preserves the part's functional relationships.
+
+Target behavior:
+
+1. **Segment a single STL into candidate design features.** Identify base solids, added features, subtractive cutouts, edge treatments, and repeated patterns in local coordinate frames.
+2. **Assign polarity and ownership.** Decide which features are positive material (`union`) and which are negative material (`difference`), and attach cutouts to the correct parent feature or face.
+3. **Recover constraints and parameters.** Prefer named dimensions and relationships over literal coordinates: thickness, hole diameter, spacing, offsets from edges, pattern counts, boss radius, rib thickness, pocket depth, fillet radius, and local axes.
+4. **Compose features into one IR tree.** Use `BooleanUnion`, `BooleanDifference`, `Transform*`, `Pattern*`, `ExtrudeLinear`, `ExtrudeRevolve`, and primitive nodes so each detected feature remains independently editable while still reconstructing the whole part.
+5. **Emit maintainable SCAD.** Generate modules and variables that expose functional dimensions rather than only reproducing mesh coordinates. A user should be able to edit a hole diameter, plate thickness, pattern spacing, boss height, or shell thickness without manually repairing unrelated geometry.
+6. **Verify the composed result.** Render the emitted SCAD, compare it back to the source STL, and require both geometric agreement and detector re-recognition of the intended editable features.
+
+This implies a shift from "best single primitive" detection to "feature assembly" detection. A simple example is a plate with a boss, two slots, a grid of holes, chamfered perimeter, and a side notch: the target SCAD is one `difference()`/`union()` assembly with named parameters, not six independent previews or a polyhedron fallback.
 
 ### Beyond dimensional parity
 
-Once the IR wrapping (priority #2) lands, the detector output becomes a tree, and these next steps become tractable:
+The detector output now includes a tree-shaped `ir_tree`, so the next step is not just adding dimensions to existing nodes. The project needs higher-level design-intent recovery:
 
 1. **Detector-native interpretation ranking** — schema-v2 fixtures and harness-side candidate ranking are already in place, including a real hollow-box ambiguity fixture. Next step: make the detector emit ranked `Interpretation` candidates directly (per [detector_ir.md](detector_ir.md)) so the fixture harness can compare declared ranking/confidence against detector-produced ranking/confidence, not only against observed feature-count matches.
 2. **Manifest schema as a versioned contract** — `schema_version` is already enforced on load; next is documenting the schema so third-party fixture authors (or future detectors) have a stable target.
-3. ~~**Tier-2 primitive expansion** — cone/frustum, sphere, ellipsoid.~~ *Reframed 2026-04-22: absorbed into Immediate priority #1 / #4 (Sketch2D + `rotate_extrude` recovery). Each tier-2 primitive is a special case of a solid of revolution — rectangle profile → cylinder, triangle → cone, semicircle → sphere, trapezoid → frustum. Building the axisymmetric pipeline with a profile classifier gets all four primitives as a consequence instead of as four separate detectors.*
-4. ~~**Sketch2D + ExtrudeLinear / ExtrudeRevolve recovery from mesh cross-sections**~~ — *Promoted 2026-04-22 from this list to the active work package. Phase 1 (axisymmetric `rotate_extrude`) is complete (2026-04-24). Phase 3 (linear extrude) is complete (2026-04-27). Phase 2 (profile classification) is Immediate priority #4.*
+3. **Production IR-to-SCAD emitter** — preview emission proves the feature graph can produce editable SCAD snippets. A production emitter should consume `ir_tree`, factor reusable modules/variables/patterns, and decide when to emit feature SCAD versus polyhedron fallback.
+4. ~~**Tier-2 primitive expansion** — cone/frustum, sphere, ellipsoid.~~ *Reframed 2026-04-22: absorbed into Immediate priority #1 / #4 (Sketch2D + `rotate_extrude` recovery). Each tier-2 primitive is a special case of a solid of revolution — rectangle profile → cylinder, triangle → cone, semicircle → sphere, trapezoid → frustum. Building the axisymmetric pipeline with a profile classifier gets all four primitives as a consequence instead of as four separate detectors.*
+5. ~~**Sketch2D + ExtrudeLinear / ExtrudeRevolve recovery from mesh cross-sections**~~ — *Promoted 2026-04-22 from this list to the active work package. Phase 1 (axisymmetric `rotate_extrude`) is complete (2026-04-24). Phase 3 (linear extrude) is complete (2026-04-27). Phase 2 (profile classification) is Immediate priority #4.*
 
 (Noise-injection fixtures were promoted out of this section on 2026-04-20 and landed via Track C on 2026-04-22.)
 (Negative-class fixtures landed 2026-04-20 as `negative_sphere` and `negative_torus`; closed as a standing priority. Re-apply the pattern as new primitives come online via the axisymmetric pipeline.)
 
 ### Ongoing
 
-1. Tighten hole/slot detectors against real files and add confidence thresholds for SCAD emission readiness.
-2. Add targeted detectors for the most common candidate feature families.
+1. Tighten hole/slot/cutout detectors against real files and add confidence thresholds for SCAD emission readiness.
+2. Add targeted detectors for the most common feature families identified by local and Thingi10K triage.
 3. Emit feature-based SCAD templates only when confidence is high; otherwise fall back.
-4. Add optional user-assisted labeling for ambiguous features.
+4. Add optional user-assisted labeling for ambiguous local corpus cases.
+5. Re-run local corpus and public batch scores after every detector family lands.
 
-## Current Work Package — Phase 2: Profile Classification & Primitive Upgrade
+## Previous Work Package — Phase 2: Profile Classification & Primitive Upgrade
 
-**Status:** Enqueued (2026-04-27). Phase 1 and Phase 3 are shipped; Phase 2 is the next active milestone.
+**Status:** Complete in current `main` (verified 2026-04-28). Phase 1 and Phase 3 are also shipped.
 
-**What's needed:** Given a detected `revolve_solid` with axial profile `polygon(pts)`, classify the 2D profile shape (right triangle → cone, semicircle → sphere, rectangle → cylinder, trapezoid → frustum, etc.) and emit the corresponding primitive IR node and compact SCAD instead of generic `rotate_extrude()`. This unifies cone/sphere/frustum/cylinder detection under one axisymmetric pipeline rather than four separate detectors.
+**What landed:** Given a detected `revolve_solid` with axial profile `polygon(pts)`, the detector classifies clean 2D profile shapes (right triangle → cone/frustum, semicircle → sphere, rectangle → cylinder, trapezoid → frustum/cone-style `cylinder(r1=..., r2=...)`) and emits compact SCAD instead of generic `rotate_extrude()` when confidence is high. This unifies cone/sphere/frustum/cylinder detection under one axisymmetric pipeline rather than four separate detectors.
 
 **Acceptance criteria:**
-1. At least three profile shapes (cone, sphere, cylinder) are classified and emit their primitive form in both IR and SCAD.
-2. New fixtures `revolve_cone_right_triangle`, `revolve_sphere_semicircle`, `revolve_frustum_trapezoid` are added to the manifest, generated, and checked in.
-3. All three new fixtures pass `test_feature_fixture_preview_round_trip_detection`.
-4. No regressions in existing revolve, linear-extrude, or axis-aligned detection tests.
-5. The three fixture invariants from [CLAUDE.md](../../CLAUDE.md) remain intact.
+1. At least three profile shapes (cone, sphere, cylinder) are classified and emit their primitive form in both IR and SCAD. ✓
+2. Fixtures with `phase2_expected_primitive` cover cylinder, cone/frustum, and sphere-style upgrades. ✓
+3. Phase 2 fixtures pass preview round-trip assertions. ✓
+4. No regressions in existing revolve, linear-extrude, or axis-aligned detection tests. ✓
+5. The three fixture invariants from [CLAUDE.md](../../CLAUDE.md) remain intact. ✓
 
 **Design notes:**
 - Profile classification is deterministic (only shape, not noise): polygon edge count, angle distribution, curvature (via residuals from line fit), convexity.
@@ -244,7 +326,7 @@ Once the IR wrapping (priority #2) lands, the detector output becomes a tree, an
 
 **Phase boundaries:**
 - **Phase 1:** axisymmetry test + radial slice + profile polygon + `rotate_extrude()` emission. Every axisymmetric solid emits as a polygon revolve. ✓ Complete (2026-04-24).
-- **Phase 2:** profile classifier upgrades recognizable polygons to `cylinder()` / `cone()` / `sphere()` / frustum. *Active (Immediate priority #1, enqueued 2026-04-27).*
+- **Phase 2:** profile classifier upgrades recognizable polygons to `cylinder()` / `cone()` / `sphere()` / frustum. ✓ Complete in current `main` (verified 2026-04-28).
 - **Phase 3:** linear-extrude detector (translational symmetry instead of rotational). ✓ Complete (2026-04-27).
 - **Phase 4:** composition detector for meshes that are neither single-revolve nor single-extrude but compositions of such. Explicitly speculative until Phases 1-3 are in main.
 
@@ -260,7 +342,7 @@ Once the IR wrapping (priority #2) lands, the detector output becomes a tree, an
 
 **What's landed:** `detect_linear_extrude_solid` runs after all native primitive detectors fail (revolve → cylinder → plate → box → rotated-plate → rotated-box → linear-extrude dispatch order). Cross-section consistency gate + axis-quality gate + confidence threshold prevent false positives on spheres and tori. IR tree produces `ExtrudeLinear { Sketch2D(polygon) }` wrapped in `TransformRotate` when off-axis. SCAD preview emitter produces `linear_extrude(height=...) polygon([...])` calls. Fixtures: `negative_hex_prism` (hex prisms are correctly identified as linear extrusions), `l_bracket_plain` (L-shaped cross-section extruded along Y). All 259 tests pass.
 
-**What remains:** none for Phase 3. The next extrude work is Phase 2 profile classification for revolve solids, and optional Phase 4 (composition detection) once Phases 1–3 stabilize.
+**What remains:** none for Phase 3. Phase 2 profile classification is also complete in current `main`; the next extrude-related work is Phase 4 composition detection for meshes that are not a single revolve or single linear extrusion.
 
 ---
 

@@ -259,6 +259,15 @@ skips cleanly when the local corpus files are absent.
 reporting cannot be produced. `scripts/tune_detector.py` enforces the same gate by
 default; use `--allow-missing-real-world-gate` only for exploratory local runs.
 
+The detector roadmap also defines a planned user-local corpus loop,
+deterministic Thingi10K batch loop, and future in-memory improvement engine.
+The local loop lets users benchmark private STL folders without committing or
+linking the models; the Thingi10K loop is for public 100-file batches selected
+by license and seed; the in-memory loop is intended to retain only
+review-relevant artifacts and produce review-ready patches. See
+[docs/planning/feature_level_reconstruction.md](docs/planning/feature_level_reconstruction.md)
+for the planned scripts and schema expectations.
+
 Use gating thresholds for CI regression checks (multi-feature, not single-fixture):
 
 ```bash

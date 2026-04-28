@@ -1642,6 +1642,76 @@ def test_revolve_fixture_preview_round_trip(test_data_dir, test_output_dir):
         )
 
 
+def test_revolve_fixture_phase2_primitive_upgrade(test_data_dir, test_output_dir):
+    """Phase 2 acceptance: revolve fixtures with phase2_expected_primitive must produce
+    a matching primitive_upgrade in the feature graph and emit the corresponding
+    native SCAD primitive (cylinder / cone cylinder(r1=...) / sphere)."""
+    import json
+
+    manifest_path = test_data_dir / "feature_fixtures_manifest.json"
+    raw_fixtures = json.loads(manifest_path.read_text(encoding="utf-8"))["fixtures"]
+    phase2_fixtures = [f for f in raw_fixtures if f.get("phase2_expected_primitive")]
+    assert phase2_fixtures, "No fixtures with phase2_expected_primitive found in manifest"
+
+    write_feature_fixture_library(manifest_path, test_output_dir)
+
+    try:
+        openscad_path = get_openscad_path()
+    except FileNotFoundError as exc:
+        if os.getenv("CI", "").lower() == "true":
+            pytest.fail(f"OpenSCAD is required in CI for Phase 2 revolve checks: {exc}")
+        pytest.skip(f"OpenSCAD not available: {exc}")
+
+    # Token that must appear in the preview SCAD for each primitive kind.
+    _primitive_tokens = {
+        "cylinder": "cylinder(r=",
+        "cone": "cylinder(r1=",
+        "sphere": "sphere(",
+    }
+
+    for raw_fixture in phase2_fixtures:
+        name = raw_fixture["name"]
+        expected_primitive = raw_fixture["phase2_expected_primitive"]
+        assert expected_primitive in _primitive_tokens, (
+            f"{name}: unknown phase2_expected_primitive '{expected_primitive}'"
+        )
+
+        scad_path = test_output_dir / raw_fixture["output_filename"]
+        stl_path = test_output_dir / f"{Path(raw_fixture['output_filename']).stem}.stl"
+        log_path = test_output_dir / f"{name}.phase2.log"
+
+        assert run_openscad(
+            name,
+            ["--render", "-o", str(stl_path), str(scad_path)],
+            str(log_path),
+            openscad_path,
+        ), f"OpenSCAD render failed for {name}"
+
+        graph = build_feature_graph_for_stl(stl_path)
+        revolve = next(
+            (f for f in graph["features"] if f["type"] == "revolve_solid"),
+            None,
+        )
+        assert revolve is not None, f"{name}: expected revolve_solid in feature graph"
+
+        upgrade = revolve.get("primitive_upgrade")
+        assert upgrade is not None, (
+            f"{name}: revolve_solid has no primitive_upgrade; Phase 2 classification failed"
+        )
+        assert upgrade["type"] == expected_primitive, (
+            f"{name}: expected primitive_upgrade.type='{expected_primitive}', "
+            f"got '{upgrade['type']}'"
+        )
+
+        preview = emit_feature_graph_scad_preview(graph)
+        assert preview is not None, f"{name}: SCAD preview is None"
+        token = _primitive_tokens[expected_primitive]
+        assert token in preview, (
+            f"{name}: expected '{token}' in SCAD preview for {expected_primitive} upgrade; "
+            f"preview starts with:\n{preview[:400]}"
+        )
+
+
 def test_feature_fixture_ambiguous_candidate_round_trip_ranking(
     test_data_dir,
     test_output_dir,

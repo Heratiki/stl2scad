@@ -1490,7 +1490,8 @@
     {
       "name": "revolve_rectangle_profile",
       "fixture_type": "revolve",
-      "description": "Rectangle profile revolved around Z; generic Phase 1 cylinder-like revolve.",
+      "description": "Rectangle profile revolved around Z; Phase 2 → cylinder primitive upgrade.",
+      "phase2_expected_primitive": "cylinder",
       "output_filename": "revolve_rectangle_profile.scad",
       "profile": [[0.0, 0.0], [5.0, 0.0], [5.0, 10.0], [0.0, 10.0]],
       "axis": "z",
@@ -1516,7 +1517,8 @@
     {
       "name": "revolve_triangle_profile",
       "fixture_type": "revolve",
-      "description": "Triangle profile revolved around Z; generic Phase 1 cone-like revolve.",
+      "description": "Triangle profile revolved around Z; Phase 2 → cone primitive upgrade.",
+      "phase2_expected_primitive": "cone",
       "output_filename": "revolve_triangle_profile.scad",
       "profile": [[0.0, 0.0], [6.0, 0.0], [0.0, 12.0]],
       "axis": "z",
@@ -1542,7 +1544,8 @@
     {
       "name": "revolve_semicircle_profile",
       "fixture_type": "revolve",
-      "description": "Semicircle-like profile revolved around Z; generic Phase 1 sphere-like revolve.",
+      "description": "Semicircle-like profile revolved around Z; Phase 2 → sphere primitive upgrade.",
+      "phase2_expected_primitive": "sphere",
       "output_filename": "revolve_semicircle_profile.scad",
       "profile": [[0.0, -5.0], [2.5, -4.330127], [4.330127, -2.5], [5.0, 0.0], [4.330127, 2.5], [2.5, 4.330127], [0.0, 5.0]],
       "axis": "z",

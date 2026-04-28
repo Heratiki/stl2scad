@@ -1,7 +1,7 @@
 // Auto-generated from tests/data/feature_fixtures_manifest.json
 // fixture: revolve_triangle_profile
 // fixture_type: revolve
-// description: Triangle profile revolved around Z; generic Phase 1 cone-like revolve.
+// description: Triangle profile revolved around Z; Phase 2 → cone primitive upgrade.
 $fn = 96;
 
 profile = [

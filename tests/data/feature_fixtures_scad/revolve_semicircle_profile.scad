@@ -1,7 +1,7 @@
 // Auto-generated from tests/data/feature_fixtures_manifest.json
 // fixture: revolve_semicircle_profile
 // fixture_type: revolve
-// description: Semicircle-like profile revolved around Z; generic Phase 1 sphere-like revolve.
+// description: Semicircle-like profile revolved around Z; Phase 2 → sphere primitive upgrade.
 $fn = 96;
 
 profile = [

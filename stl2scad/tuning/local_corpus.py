@@ -35,6 +35,7 @@ def create_local_corpus_manifest(
     recursive: bool = True,
     max_files: Optional[int] = None,
     detector_config: DetectorConfig = DetectorConfig(),
+    progress_fn: Any = None,
 ) -> dict[str, Any]:
     """Create a reproducible manifest for a private local STL folder."""
     root = Path(input_dir)
@@ -47,10 +48,17 @@ def create_local_corpus_manifest(
     if max_files is not None:
         files = files[:max_files]
 
-    cases = [
-        _build_manifest_case(path, root, detector_config=detector_config)
-        for path in files
-    ]
+    file_iterable = files
+    if progress_fn is not None:
+        file_iterable = progress_fn(
+            files,
+            desc="Scanning STL files",
+            total=len(files),
+        )
+
+    cases = []
+    for path in file_iterable:
+        cases.append(_build_manifest_case(path, root, detector_config=detector_config))
     corpus_root = str(root)
     if output_path is not None:
         corpus_root = _relative_or_absolute_root(
@@ -146,6 +154,7 @@ def score_local_corpus(
     corpus_root: Path | str | None = None,
     detector_config: DetectorConfig = DetectorConfig(),
     triage_top_n: int = 5,
+    progress_fn: Any = None,
 ) -> dict[str, Any]:
     """Score a local corpus with triage buckets and optional labels."""
     manifest = load_local_corpus_manifest(manifest_path)
@@ -157,7 +166,16 @@ def score_local_corpus(
     fingerprint_mismatch_count = 0
     files_missing = 0
 
-    for case in manifest["cases"]:
+    cases = manifest["cases"]
+    case_iterable = cases
+    if progress_fn is not None:
+        case_iterable = progress_fn(
+            cases,
+            desc="Scoring STL files",
+            total=len(cases),
+        )
+
+    for case in case_iterable:
         rel_path = str(case["relative_path"])
         stl_path = root / rel_path
         if not stl_path.exists():
@@ -165,6 +183,7 @@ def score_local_corpus(
             per_file.append(
                 {
                     "relative_path": rel_path,
+                    "sha256": str(case.get("sha256", "")),
                     "status": "missing",
                     "fingerprint_verified": False,
                 }
@@ -193,9 +212,12 @@ def score_local_corpus(
 
         entry: dict[str, Any] = {
             "relative_path": rel_path,
+            "sha256": str(case.get("sha256", "")),
             "status": graph.get("status", "ok"),
             "fingerprint_verified": fingerprint_verified,
         }
+        if graph.get("status") == "error":
+            entry["error"] = str(graph.get("error", ""))
         labeled_fixture = _fixture_from_case_labels(case)
         if labeled_fixture is not None and graph.get("status") != "error":
             fixture_score = score_fixture_against_graph(labeled_fixture, graph)

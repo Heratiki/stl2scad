@@ -88,6 +88,7 @@ tests/.tmp_output/
 # Tuning artifacts
 artifacts/tuning/**/study.db
 artifacts/tuning/**/fixtures/
+artifacts/thumbs/
 
 # Generated verification output for external/non-project models
 artifacts/HMG7.3 Ender 5 V Wheel X Carriage V2_verification.html

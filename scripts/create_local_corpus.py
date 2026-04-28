@@ -11,6 +11,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from stl2scad.tuning.local_corpus import create_local_corpus_manifest
+from stl2scad.tuning.progress import corpus_progress
 
 
 def main(argv: list[str]) -> int:
@@ -39,6 +40,7 @@ def main(argv: list[str]) -> int:
         output_path=args.output,
         recursive=not args.no_recursive,
         max_files=args.max_files,
+        progress_fn=corpus_progress,
     )
     print(f"Local corpus manifest written to: {args.output}")
     print(f"Cases: {len(manifest['cases'])}")

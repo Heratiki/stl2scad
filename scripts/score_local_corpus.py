@@ -15,6 +15,7 @@ from stl2scad.tuning.local_corpus import (
     compare_local_corpus_score_to_baseline,
     score_local_corpus,
 )
+from stl2scad.tuning.progress import corpus_progress
 
 
 def main(argv: list[str]) -> int:
@@ -50,12 +51,28 @@ def main(argv: list[str]) -> int:
         default=5,
         help="Number of ranked failure patterns to retain.",
     )
+    parser.add_argument(
+        "--html-report",
+        action="store_true",
+        help="Generate a self-contained HTML report after scoring.",
+    )
+    parser.add_argument(
+        "--html-output",
+        default="artifacts/local_corpus_report.html",
+        help="Output HTML path when --html-report is supplied.",
+    )
+    parser.add_argument(
+        "--thumb-cache",
+        default="artifacts/thumbs",
+        help="Directory for cached STL thumbnail PNGs.",
+    )
     args = parser.parse_args(argv)
 
     score = score_local_corpus(
         args.manifest,
         corpus_root=args.corpus_root,
         triage_top_n=args.triage_top_n,
+        progress_fn=corpus_progress,
     )
 
     output_path = Path(args.output)
@@ -84,6 +101,16 @@ def main(argv: list[str]) -> int:
         delta_path.parent.mkdir(parents=True, exist_ok=True)
         delta_path.write_text(json.dumps(delta, indent=2), encoding="utf-8")
         print(f"Local corpus delta written to: {delta_path}")
+
+    if args.html_report:
+        from stl2scad.tuning.html_report import generate_html_report
+
+        report_path = generate_html_report(
+            output_path,
+            args.html_output,
+            thumb_cache_dir=args.thumb_cache,
+        )
+        print(f"Local corpus HTML report written to: {report_path}")
 
     return 0
 

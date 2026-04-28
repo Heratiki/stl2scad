@@ -47,6 +47,7 @@ setup(
             "cgal>=6.0.1",
         ],
         "reporting": [
+            "tqdm>=4.66.0",
             "trimesh>=4.0.0",
             "networkx>=3.0",
             "pyglet>=1.5,<2",

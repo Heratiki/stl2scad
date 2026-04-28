@@ -268,6 +268,19 @@ review-relevant artifacts and produce review-ready patches. See
 [docs/planning/feature_level_reconstruction.md](docs/planning/feature_level_reconstruction.md)
 for the planned scripts and schema expectations.
 
+Create and score a private local corpus manifest:
+
+```bash
+python scripts/create_local_corpus.py "D:\3D Files\FDM" --output .local/fdm_corpus.json
+python scripts/score_local_corpus.py --manifest .local/fdm_corpus.json --output artifacts/fdm_score.json
+python scripts/score_local_corpus.py --manifest .local/fdm_corpus.json --baseline artifacts/fdm_score.json --delta-output artifacts/fdm_delta.json
+```
+
+The `.local/` directory is gitignored. The manifest records relative file
+paths, sha256, file size, bounds, detector config version/config, optional
+labels, and notes; the score report records triage buckets, fingerprint drift,
+and optional labeled recall when labels are present.
+
 Use gating thresholds for CI regression checks (multi-feature, not single-fixture):
 
 ```bash

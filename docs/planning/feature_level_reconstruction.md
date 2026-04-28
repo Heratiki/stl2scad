@@ -162,6 +162,12 @@ python scripts/materialize_thingi10k_batch.py --manifest tests/data/thingi10k_ba
 python scripts/score_thingi10k_batch.py --manifest tests/data/thingi10k_batch_001_manifest.json --cache .local/thingi10k --output artifacts/thingi10k_batch_001_score.json
 ```
 
+The minimal user-local loop is now implemented by `scripts/create_local_corpus.py`,
+`scripts/score_local_corpus.py`, and `stl2scad/tuning/local_corpus.py`. It records
+private STL fingerprints, bounds, detector config version/config, and inventory
+metadata; re-runs feature-graph triage; reports fingerprint drift; and computes
+optional labeled recall when a local case has fixture-style `labels`.
+
 ### Automated in-memory improvement loop (future)
 
 The script-based corpus loop above is the observable interface. The longer-term goal is an in-memory compute loop that keeps most intermediate state out of the filesystem, iterates over detector hypotheses, and only retains output that is relevant to review, approval, or reproducibility.

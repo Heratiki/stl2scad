@@ -10,6 +10,7 @@ venv
 
 # Worktrees
 .worktrees/
+.local/
 
 # Jupyter notebook checkpoints
 .ipynb_checkpoints/

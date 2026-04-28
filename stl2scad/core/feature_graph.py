@@ -2090,7 +2090,7 @@ def _estimate_edge_treatment(
     the same units as the mesh bounding box.
 
     Algorithm:
-    1. Edge-band triangles: normals with max |dot(n, principal)| < 0.85.
+    1. Edge-band triangles: normals with max |dot(n, principal)| < 0.90.
     2. Assign each edge-band triangle to one of 12 bisector zones.
     3. Chamfer: max in-zone angular spread < 0.25 rad → all co-planar.
        Fillet: spread >= 0.25 rad → normals fan continuously.

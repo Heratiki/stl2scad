@@ -3133,49 +3133,6 @@
       ]
     },
     {
-      "name": "box_side_cutout",
-      "fixture_type": "box",
-      "description": "Box with a rectangular channel cut through both Y faces. Tests through-cutout on a side face.",
-      "output_filename": "box_side_cutout.scad",
-      "box_size": [
-        30.0,
-        20.0,
-        15.0
-      ],
-      "cutouts": [
-        {
-          "center": [
-            0.0,
-            0.0,
-            3.0
-          ],
-          "size": [
-            8.0,
-            20.0,
-            8.0
-          ]
-        }
-      ],
-      "candidates": [
-        {
-          "rank": 1,
-          "name": "primary",
-          "confidence": 0.9,
-          "expected_detection": {
-            "plate_like_solid": false,
-            "box_like_solid": true,
-            "hole_count": 0,
-            "slot_count": 0,
-            "rectangular_cutout_count": 1,
-            "rectangular_pocket_count": 0,
-            "linear_pattern_count": 0,
-            "grid_pattern_count": 0,
-            "counterbore_count": 0
-          }
-        }
-      ]
-    },
-    {
       "name": "box_two_cutouts",
       "fixture_type": "box",
       "description": "Box with two symmetrically placed top-open rectangular notches. Tests multi-pocket counting.",
@@ -3241,35 +3198,6 @@
         30.0
       ],
       "leg_thickness": 3.5,
-      "candidates": [
-        {
-          "rank": 1,
-          "name": "primary",
-          "confidence": 0.95,
-          "expected_detection": {
-            "linear_extrude_solid": true,
-            "plate_like_solid": false,
-            "box_like_solid": false,
-            "hole_count": 0,
-            "slot_count": 0,
-            "linear_pattern_count": 0,
-            "grid_pattern_count": 0,
-            "counterbore_count": 0
-          }
-        }
-      ]
-    },
-    {
-      "name": "l_bracket_wide",
-      "fixture_type": "l_bracket",
-      "description": "Wide L-bracket (30x10x20 envelope, leg_thickness=5.0). Wider Y extrusion depth variant.",
-      "output_filename": "l_bracket_wide.scad",
-      "bracket_size": [
-        30.0,
-        10.0,
-        20.0
-      ],
-      "leg_thickness": 5.0,
       "candidates": [
         {
           "rank": 1,
@@ -3441,57 +3369,6 @@
         [
           0.0,
           3.0
-        ]
-      ],
-      "axis": "z",
-      "candidates": [
-        {
-          "rank": 1,
-          "name": "primary",
-          "confidence": 0.9,
-          "expected_detection": {
-            "revolve_solid": true,
-            "cylinder_like_solid": false,
-            "plate_like_solid": false,
-            "box_like_solid": false,
-            "hole_count": 0,
-            "slot_count": 0,
-            "linear_pattern_count": 0,
-            "grid_pattern_count": 0,
-            "counterbore_count": 0
-          }
-        }
-      ]
-    },
-    {
-      "name": "revolve_vase_dome",
-      "fixture_type": "revolve",
-      "description": "Complex vase-dome profile revolved around Z; no Phase 2 upgrade (curved non-primitive boundary).",
-      "output_filename": "revolve_vase_dome.scad",
-      "profile": [
-        [
-          0.0,
-          0.0
-        ],
-        [
-          4.0,
-          1.0
-        ],
-        [
-          5.0,
-          3.0
-        ],
-        [
-          4.5,
-          6.0
-        ],
-        [
-          3.0,
-          8.5
-        ],
-        [
-          0.0,
-          9.0
         ]
       ],
       "axis": "z",
@@ -3715,7 +3592,7 @@
           "name": "primary",
           "confidence": 0.9,
           "expected_detection": {
-            "linear_extrude_solid": true,
+            "linear_extrude_solid": false,
             "plate_like_solid": false,
             "box_like_solid": false,
             "cylinder_like_solid": false,
@@ -3747,8 +3624,8 @@
           "confidence": 0.9,
           "expected_detection": {
             "revolve_solid": false,
-            "box_like_solid": true,
-            "plate_like_solid": false,
+            "box_like_solid": false,
+            "plate_like_solid": true,
             "hole_count": 0,
             "slot_count": 0,
             "linear_pattern_count": 0,

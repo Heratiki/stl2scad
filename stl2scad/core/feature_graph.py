@@ -2060,6 +2060,111 @@ def _tolerant_box_confidence(
     return min(1.0, 0.6 * min_axis_confidence + 0.4 * mean_axis_confidence)
 
 
+_AXIS_PRINCIPAL_NORMALS = np.array(
+    [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]],
+    dtype=np.float64,
+)
+_AXIS_EDGE_BISECTORS = np.array(
+    [
+        [1, 1, 0], [1, -1, 0], [-1, 1, 0], [-1, -1, 0],
+        [1, 0, 1], [1, 0, -1], [-1, 0, 1], [-1, 0, -1],
+        [0, 1, 1], [0, 1, -1], [0, -1, 1], [0, -1, -1],
+    ],
+    dtype=np.float64,
+)
+_AXIS_EDGE_BISECTORS = _AXIS_EDGE_BISECTORS / np.linalg.norm(
+    _AXIS_EDGE_BISECTORS, axis=1, keepdims=True
+)
+
+
+def _estimate_edge_treatment(
+    normals: np.ndarray,
+    vectors: np.ndarray,
+    face_areas: np.ndarray,
+    bbox: dict[str, float],
+) -> tuple[str, float]:
+    """Classify chamfer-vs-fillet edge treatment and estimate size in mesh units.
+
+    Returns a ``(kind, size)`` tuple where kind is ``"chamfer"``, ``"fillet"``,
+    or ``"unknown"``; size is the estimated chamfer distance or fillet radius in
+    the same units as the mesh bounding box.
+
+    Algorithm:
+    1. Edge-band triangles: normals with max |dot(n, principal)| < 0.85.
+    2. Assign each edge-band triangle to one of 12 bisector zones.
+    3. Chamfer: max in-zone angular spread < 0.25 rad → all co-planar.
+       Fillet: spread >= 0.25 rad → normals fan continuously.
+    4. Size: median second-smallest distance from edge-band vertices to any
+       bbox face.  Multiply by 3.41 for fillet (arc geometry correction).
+    """
+    if len(normals) == 0:
+        return "unknown", 0.0
+
+    # Step 1: find edge-band triangles
+    dots = np.abs(normals @ _AXIS_PRINCIPAL_NORMALS.T)   # (N, 6)
+    max_align = dots.max(axis=1)                          # (N,)
+    edge_mask = max_align < 0.90
+
+    if int(edge_mask.sum()) < 2:
+        return "unknown", 0.0
+
+    edge_normals = normals[edge_mask]   # (M, 3)
+    edge_vectors = vectors[edge_mask]   # (M, 3, 3)
+
+    # Step 2: assign to 12 bisector zones
+    zone_dots = edge_normals @ _AXIS_EDGE_BISECTORS.T     # (M, 12)
+    zone_assign = np.argmax(zone_dots, axis=1)            # (M,)
+
+    # Step 3: angular spread per zone
+    spreads: list[float] = []
+    for zone_idx in range(12):
+        zmask = zone_assign == zone_idx
+        if int(zmask.sum()) < 2:
+            continue
+        zn = edge_normals[zmask]                          # (K, 3)
+        cos_matrix = np.clip(zn @ zn.T, -1.0, 1.0)
+        angles = np.arccos(cos_matrix)
+        spreads.append(float(angles.max()))
+
+    if not spreads:
+        return "unknown", 0.0
+
+    mean_spread = float(np.mean(spreads))
+    kind = "chamfer" if mean_spread < 0.25 else "fillet"
+
+    # Step 4: size estimate from edge-band vertex distances to bbox faces
+    edge_verts = edge_vectors.reshape(-1, 3)              # (M*3, 3)
+    bbox_min = np.array(
+        [bbox["min_x"], bbox["min_y"], bbox["min_z"]], dtype=np.float64
+    )
+    bbox_max = np.array(
+        [bbox["max_x"], bbox["max_y"], bbox["max_z"]], dtype=np.float64
+    )
+    dist_min = edge_verts - bbox_min[None, :]
+    dist_max = bbox_max[None, :] - edge_verts
+    face_dists = np.minimum(dist_min, dist_max)
+    sorted_dists = np.sort(np.clip(face_dists, 0.0, None), axis=1)
+    second_dists = sorted_dists[:, 1]
+
+    positive_second = second_dists[second_dists > 1e-9]
+    if len(positive_second) == 0:
+        return kind, 0.0
+
+    size_raw = float(np.median(positive_second))
+    if size_raw <= 1e-9:
+        return kind, 0.0
+
+    if kind == "fillet":
+        # For a circular fillet of radius r, the median second-dist is
+        # approximately r * (1 - 1/sqrt(2)) ≈ 0.293*r.
+        # Invert: r ≈ size_raw / (1 - 1/sqrt(2)) ≈ size_raw * 3.414
+        size = size_raw / (1.0 - 1.0 / np.sqrt(2.0))
+    else:
+        size = size_raw
+
+    return kind, float(max(0.0, size))
+
+
 def _scad_vector(values: list[float]) -> str:
     return "[" + ", ".join(f"{value:.6f}" for value in values) + "]"
 

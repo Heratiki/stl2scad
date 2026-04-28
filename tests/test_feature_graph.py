@@ -15,6 +15,7 @@ from stl2scad.core.feature_graph import (
     build_feature_graph_for_stl,
     build_triage_report,
     emit_feature_graph_scad_preview,
+    _estimate_edge_treatment,
 )
 
 
@@ -1513,6 +1514,140 @@ def test_ir_tree_plate_with_linear_pattern_subsumes_hole_centers(test_output_dir
         assert offset not in pattern_centers, (
             f"Pattern member hole at {offset} should not appear as standalone TransformTranslate cut"
         )
+
+
+# ---------------------------------------------------------------------------
+# _estimate_edge_treatment helper tests
+# ---------------------------------------------------------------------------
+
+def _make_chamfered_box_data(w=20.0, h=15.0, d=10.0, c=1.0):
+    """Return (normals, vectors, face_areas, bbox) for a uniform-chamfer box.
+
+    Uses the hull-of-3-cubes construction: each face of the 3 inner cubes
+    contributes exact normals, and each chamfer triangle has a 45° bisector normal.
+    """
+    normals_list = []
+    verts_list = []
+    areas_list = []
+
+    def add_quad(v0, v1, v2, v3):
+        for tri_verts in [(v0, v1, v2), (v0, v2, v3)]:
+            a = np.array(tri_verts[0], dtype=np.float64)
+            b = np.array(tri_verts[1], dtype=np.float64)
+            c_v = np.array(tri_verts[2], dtype=np.float64)
+            ab, ac = b - a, c_v - a
+            n = np.cross(ab, ac)
+            area = np.linalg.norm(n) / 2.0
+            if area > 1e-10:
+                normals_list.append(n / np.linalg.norm(n))
+                verts_list.append([a, b, c_v])
+                areas_list.append(area)
+
+    # 6 flat faces (shrunk by c on the two perpendicular axes)
+    add_quad([0, c, c], [w, c, c], [w, h-c, c], [0, h-c, c])       # -Z
+    add_quad([0, c, d-c], [w, c, d-c], [w, h-c, d-c], [0, h-c, d-c])  # +Z
+    add_quad([0, c, c], [0, h-c, c], [0, h-c, d-c], [0, c, d-c])   # -X
+    add_quad([w, c, c], [w, h-c, c], [w, h-c, d-c], [w, c, d-c])   # +X
+    add_quad([c, 0, c], [w-c, 0, c], [w-c, 0, d-c], [c, 0, d-c])   # -Y
+    add_quad([c, h, c], [w-c, h, c], [w-c, h, d-c], [c, h, d-c])   # +Y
+
+    # 12 edge chamfer strips (one per edge, 45° bisector normal)
+    # Bottom-Z edges
+    add_quad([c, c, 0], [w-c, c, 0], [w-c, c, c], [c, c, c])
+    add_quad([c, h-c, 0], [w-c, h-c, 0], [w-c, h-c, c], [c, h-c, c])
+    add_quad([c, c, 0], [c, h-c, 0], [c, h-c, c], [c, c, c])
+    add_quad([w-c, c, 0], [w-c, h-c, 0], [w-c, h-c, c], [w-c, c, c])
+    # Top-Z edges
+    add_quad([c, c, d], [w-c, c, d], [w-c, c, d-c], [c, c, d-c])
+    add_quad([c, h-c, d], [w-c, h-c, d], [w-c, h-c, d-c], [c, h-c, d-c])
+    add_quad([c, c, d], [c, h-c, d], [c, h-c, d-c], [c, c, d-c])
+    add_quad([w-c, c, d], [w-c, h-c, d], [w-c, h-c, d-c], [w-c, c, d-c])
+    # Vertical Z edges
+    add_quad([c, 0, c], [c, 0, d-c], [0, c, d-c], [0, c, c])
+    add_quad([w-c, 0, c], [w-c, 0, d-c], [w, c, d-c], [w, c, c])
+    add_quad([c, h, c], [c, h, d-c], [0, h-c, d-c], [0, h-c, c])
+    add_quad([w-c, h, c], [w-c, h, d-c], [w, h-c, d-c], [w, h-c, c])
+
+    normals = np.array(normals_list, dtype=np.float64)
+    vectors = np.array(verts_list, dtype=np.float64)
+    areas = np.array(areas_list, dtype=np.float64)
+    bbox = {"min_x": 0.0, "max_x": w, "min_y": 0.0, "max_y": h, "min_z": 0.0, "max_z": d}
+    return normals, vectors, areas, bbox
+
+
+def _make_filleted_box_data(w=20.0, h=15.0, d=10.0, r=1.0, arc_segments=8):
+    """Return (normals, vectors, face_areas, bbox) for an approximated fillet box.
+
+    Edge fillets are approximated with arc_segments triangles per edge zone.
+    Normal vectors fan from one flat-face normal to the adjacent flat-face normal,
+    matching the curvature expected for a circular arc fillet.
+    """
+    normals_list = []
+    verts_list = []
+    areas_list = []
+
+    def add_tri(v0, v1, v2):
+        a, b, c_v = np.array(v0), np.array(v1), np.array(v2)
+        n = np.cross(b - a, c_v - a)
+        area = np.linalg.norm(n) / 2.0
+        if area > 1e-10:
+            normals_list.append(n / np.linalg.norm(n))
+            verts_list.append([a, b, c_v])
+            areas_list.append(area)
+
+    flat_face_area = 10.0
+    for normal, center in [
+        ([0, 0, -1], [w/2, h/2, 0]),
+        ([0, 0, 1], [w/2, h/2, d]),
+        ([-1, 0, 0], [0, h/2, d/2]),
+        ([1, 0, 0], [w, h/2, d/2]),
+        ([0, -1, 0], [w/2, 0, d/2]),
+        ([0, 1, 0], [w/2, h, d/2]),
+    ]:
+        n = np.array(normal, dtype=np.float64)
+        perp = np.array([n[1], n[2], n[0]])
+        t = r * 2
+        v0 = np.array(center) - perp * t
+        v1 = np.array(center) + perp * t
+        v2 = np.array(center) + np.cross(n, perp) * t
+        normals_list.append(n)
+        verts_list.append([v0, v1, v2])
+        areas_list.append(flat_face_area)
+
+    # One representative fillet edge zone: +X/+Y edge (fanning from +X to +Y normal)
+    for k in range(arc_segments):
+        theta = (np.pi / 2) * (k + 0.5) / arc_segments
+        n = np.array([np.cos(theta), np.sin(theta), 0.0])
+        cx = w - r + r * np.cos(theta)
+        cy = h - r + r * np.sin(theta)
+        v0 = np.array([cx, cy, d/3])
+        v1 = np.array([cx, cy, 2*d/3])
+        v2 = v0 + np.cross(n, [0, 0, 1]) * r * 0.1
+        normals_list.append(n / np.linalg.norm(n))
+        verts_list.append([v0, v1, v2])
+        areas_list.append(r * (d / 3) / arc_segments)
+
+    normals = np.array(normals_list, dtype=np.float64)
+    vectors = np.array(verts_list, dtype=np.float64)
+    areas = np.array(areas_list, dtype=np.float64)
+    bbox = {"min_x": 0.0, "max_x": w, "min_y": 0.0, "max_y": h, "min_z": 0.0, "max_z": d}
+    return normals, vectors, areas, bbox
+
+
+def test_estimate_edge_treatment_classifies_chamfer():
+    normals, vectors, areas, bbox = _make_chamfered_box_data(w=20.0, h=15.0, d=10.0, c=1.5)
+    kind, size = _estimate_edge_treatment(normals, vectors, areas, bbox)
+    assert kind == "chamfer"
+    assert 0.5 <= size <= 4.0, f"Chamfer size estimate {size:.3f} out of expected range"
+
+
+def test_estimate_edge_treatment_classifies_fillet():
+    normals, vectors, areas, bbox = _make_filleted_box_data(
+        w=20.0, h=15.0, d=10.0, r=1.5, arc_segments=8
+    )
+    kind, size = _estimate_edge_treatment(normals, vectors, areas, bbox)
+    assert kind == "fillet"
+    assert size > 0.0
 
 
 # ---------------------------------------------------------------------------

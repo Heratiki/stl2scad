@@ -178,14 +178,13 @@ The Next Work Package scoped for 2026-04-22 → 2026-05-31 (Tracks A–D) shippe
 - **Manifest `schema_version` enforcement** — `load_feature_fixture_manifest` rejects unknown schema versions, and the checked-in fixture manifest is now schema version 2 with explicit candidate interpretations.
 - **Parametric preview round-trip** — SCAD previews now declare named variables for supported plate geometry and cutouts, and `test_feature_fixture_preview_round_trip_detection` re-renders those previews to STL and re-checks detector counts plus supported dimensions.
 
-### Immediate priorities
+### Immediate priorities (2026-04-27)
 
-Reprioritized 2026-04-22 (late) after rotated plates, cylinder-as-positive-primitive, negative-class fixtures, and richer inventory guidance all landed end-of-day. The active front has moved up a tier: **Sketch2D + `rotate_extrude` recovery**, which unifies cone/sphere/ellipsoid detection with solids-of-revolution support and is the roadmap's single largest outstanding win.
+Rotational and translational extrude recovery are complete (Phases 1 and 3, 2026-04-24 and 2026-04-27). The active front is profile classification (Phase 2) plus three structural refinements for rotated geometry handling.
 
-1. **Sketch2D + `rotate_extrude` recovery — Phase 1** (see [Current Work Package](#current-work-package-phase-1-axisymmetric-rotate_extrude-recovery) below; full spec in [docs/superpowers/specs/2026-04-22-rotate-extrude-and-sketch2d-recovery-design.md](../superpowers/specs/2026-04-22-rotate-extrude-and-sketch2d-recovery-design.md)). Axisymmetry detection → radial profile extraction → `rotate_extrude() polygon([...])` emission. Subsumes the individual cone/sphere/ellipsoid detectors that were previously scoped separately.
+1. **Sketch2D + `rotate_extrude` recovery — Phase 2: Profile classification → primitive upgrade.** Closes [detector_ir.md](detector_ir.md) tier-1 cone / sphere / frustum / ellipsoid rows as a consequence of the axisymmetric pipeline. Given a detected revolve with axial profile `polygon(pts)`, classify the profile shape and upgrade to `ExtrudeCone` / `ExtrudeSphere` / `ExtrudeFrustum` / `ExtrudeCylinder` IR nodes and emit compact SCAD (`cone(...)`, `sphere(...)`, etc.) instead of generic `rotate_extrude()`. Acceptance: at least three profile shapes (cone, sphere, cylinder) emit their primitive form and pass preview round-trip assertions; fixture additions: `revolve_cone_right_triangle`, `revolve_sphere_semicircle`, `revolve_frustum_trapezoid`.
 2. **Rotated cutouts on rotated plates.** The rotated-plate detector ([stl2scad/core/feature_graph.py:938](../../stl2scad/core/feature_graph.py#L938)) handles plate bodies at arbitrary orientation, but `_candidate_cutout_axes` still operates in world coordinates, so a rotated plate with holes/slots/patterns detects only the plate and misses the cutouts. Fix: extend cutout extraction to operate in the plate's local (u, v, thickness) frame when `detected_via == "rotated_plate"`.
 3. **Rotated-box detector (positive path).** `box_z_through_hole_rotated_z25` exists today only as a negative fixture asserting the detector does NOT misfire on rotated cuboids. Mirror the rotated-plate approach (dominant normal-pair detection extended from one axis-pair to three) to produce positive detection. Flip the negative fixture to a positive expectation once the detector lands.
-4. **Sketch2D + `rotate_extrude` recovery — Phase 2** (profile classification → primitive upgrade). Closes [detector_ir.md](detector_ir.md) tier-1 cone / sphere / frustum / ellipsoid rows as a consequence of the axisymmetric pipeline, rather than as standalone detectors.
 
 ### Beyond dimensional parity
 
@@ -206,15 +205,34 @@ Once the IR wrapping (priority #2) lands, the detector output becomes a tree, an
 3. Emit feature-based SCAD templates only when confidence is high; otherwise fall back.
 4. Add optional user-assisted labeling for ambiguous features.
 
-## Current Work Package — Phase 1: Axisymmetric `rotate_extrude` recovery
+## Current Work Package — Phase 2: Profile Classification & Primitive Upgrade
 
-**Status:** Complete (updated 2026-04-24). Tasks 1–19 are complete. The cylinder manifest flip is landed, positive `revolve_*` and negative `non_revolve_*` fixtures are in the checked-in SCAD library, revolve confidence/profile/preview round-trip assertions are in place, `detector_ir.md` marks `ExtrudeRevolve` + `Sketch2D(polygon)` as detected, and full-suite verification passed locally (`226 passed, 8 warnings`).
+**Status:** Enqueued (2026-04-27). Phase 1 and Phase 3 are shipped; Phase 2 is the next active milestone.
 
-**Note (2026-04-27):** Phase 3 (linear-extrude recovery) has also shipped — see [Recently completed (2026-04-27)](#recently-completed-2026-04-27) below.
+**What's needed:** Given a detected `revolve_solid` with axial profile `polygon(pts)`, classify the 2D profile shape (right triangle → cone, semicircle → sphere, rectangle → cylinder, trapezoid → frustum, etc.) and emit the corresponding primitive IR node and compact SCAD instead of generic `rotate_extrude()`. This unifies cone/sphere/frustum/cylinder detection under one axisymmetric pipeline rather than four separate detectors.
 
-**What's landed:** `stl2scad/core/revolve_recovery.py` (full gate pipeline), `detect_revolve_solid` wired into `_build_feature_graph` with one-owner dispatch, IR wrapping (`BooleanUnion → TransformRotate → ExtrudeRevolve → Sketch2D(polygon)`), SCAD preview emitter, fixture schema extended for `revolve`/`non_revolve` types.
+**Acceptance criteria:**
+1. At least three profile shapes (cone, sphere, cylinder) are classified and emit their primitive form in both IR and SCAD.
+2. New fixtures `revolve_cone_right_triangle`, `revolve_sphere_semicircle`, `revolve_frustum_trapezoid` are added to the manifest, generated, and checked in.
+3. All three new fixtures pass `test_feature_fixture_preview_round_trip_detection`.
+4. No regressions in existing revolve, linear-extrude, or axis-aligned detection tests.
+5. The three fixture invariants from [CLAUDE.md](../../CLAUDE.md) remain intact.
 
-**What remains:** none for Phase 1. The next rotate-extrude work is Phase 2 profile classification.
+**Design notes:**
+- Profile classification is deterministic (only shape, not noise): polygon edge count, angle distribution, curvature (via residuals from line fit), convexity.
+- Reserve high confidence for "clean" matches (e.g., exactly 3 points for right triangle, semicircular arc for sphere); lower confidence for ambiguous or noisy profiles.
+- When confidence is below threshold, fall back to generic `rotate_extrude()` in preview output.
+- Add profile-classification test coverage in `test_revolve_recovery.py` for representative polygon shapes.
+
+---
+
+## Prior Work Packages — Phase 1 & Phase 3: Axisymmetric & Linear Extrude Recovery
+
+**Status:** Complete (Phase 1: 2026-04-24, Phase 3: 2026-04-27).
+
+### Phase 1: Axisymmetric `rotate_extrude` recovery
+
+**Phase 1 Status:** Complete (2026-04-24). Tasks 1–19 are complete. The cylinder manifest flip is landed, positive `revolve_*` and negative `non_revolve_*` fixtures are in the checked-in SCAD library, revolve confidence/profile/preview round-trip assertions are in place, `detector_ir.md` marks `ExtrudeRevolve` + `Sketch2D(polygon)` as detected, and the test suite passes (`259 tests`).
 
 **Blocking issue:** resolved. OpenSCAD-rendered cylinder STLs now pass the revolve detector.
 
@@ -226,15 +244,23 @@ Once the IR wrapping (priority #2) lands, the detector output becomes a tree, an
 
 **Phase boundaries:**
 - **Phase 1:** axisymmetry test + radial slice + profile polygon + `rotate_extrude()` emission. Every axisymmetric solid emits as a polygon revolve. ✓ Complete (2026-04-24).
-- **Phase 2:** profile classifier upgrades recognizable polygons to `cylinder()` / `cone()` / `sphere()` / frustum. *Immediate priority #4 — in progress.*
-- **Phase 3:** linear-extrude detector (translational symmetry instead of rotational). ✓ Complete (2026-04-27) — `stl2scad/core/linear_extrude_recovery.py` wired into the `feature_graph.py` dispatch pipeline; `negative_hex_prism` and `l_bracket_plain` fixtures detect as `linear_extrude_solid`; 259 tests passing.
+- **Phase 2:** profile classifier upgrades recognizable polygons to `cylinder()` / `cone()` / `sphere()` / frustum. *Active (Immediate priority #1, enqueued 2026-04-27).*
+- **Phase 3:** linear-extrude detector (translational symmetry instead of rotational). ✓ Complete (2026-04-27).
 - **Phase 4:** composition detector for meshes that are neither single-revolve nor single-extrude but compositions of such. Explicitly speculative until Phases 1-3 are in main.
 
 **Acceptance criteria for Phase 1:**
-1. Every Phase 1 `revolve_*` fixture round-trips with its expected profile within tolerance.
-2. A Christmas-tree-shaped input mesh emits a `rotate_extrude() polygon([...])` preview with fewer than 20 polygon points.
-3. No regressions in existing axis-aligned plate / box / cylinder detection.
-4. The three fixture invariants from [CLAUDE.md](../../CLAUDE.md) remain intact.
+1. Every Phase 1 `revolve_*` fixture round-trips with its expected profile within tolerance. ✓
+2. A Christmas-tree-shaped input mesh emits a `rotate_extrude() polygon([...])` preview with fewer than 20 polygon points. ✓
+3. No regressions in existing axis-aligned plate / box / cylinder detection. ✓
+4. The three fixture invariants from [CLAUDE.md](../../CLAUDE.md) remain intact. ✓
+
+### Phase 3: Linear `linear_extrude` recovery
+
+**Phase 3 Status:** Complete (2026-04-27). `stl2scad/core/linear_extrude_recovery.py` is wired into `_build_feature_graph` with full gate pipeline.
+
+**What's landed:** `detect_linear_extrude_solid` runs after all native primitive detectors fail (revolve → cylinder → plate → box → rotated-plate → rotated-box → linear-extrude dispatch order). Cross-section consistency gate + axis-quality gate + confidence threshold prevent false positives on spheres and tori. IR tree produces `ExtrudeLinear { Sketch2D(polygon) }` wrapped in `TransformRotate` when off-axis. SCAD preview emitter produces `linear_extrude(height=...) polygon([...])` calls. Fixtures: `negative_hex_prism` (hex prisms are correctly identified as linear extrusions), `l_bracket_plain` (L-shaped cross-section extruded along Y). All 259 tests pass.
+
+**What remains:** none for Phase 3. The next extrude work is Phase 2 profile classification for revolve solids, and optional Phase 4 (composition detection) once Phases 1–3 stabilize.
 
 ---
 

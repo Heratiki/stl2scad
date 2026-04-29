@@ -1094,6 +1094,8 @@ class _IREmitter:
         size = [float(v) for v in prim.get("size", [1.0, 1.0, 1.0])]
         thickness_axis_index = int(np.argmin(size))
         thickness_axis = ("x", "y", "z")[thickness_axis_index]
+        # depth is computed once here and reused by every module body below;
+        # for rotated plates the hole_cutout_local_n module also uses this value.
         depth = size[thickness_axis_index] + 0.2
 
         self._decls += [
@@ -1115,7 +1117,14 @@ class _IREmitter:
         else:
             transform_prefix = "translate(plate_origin) "
 
+        # Local plate normal – used to orient holes that were detected in the
+        # plate's local (u, v, n) frame and tagged with axis="local_n".
+        local_n_axis: Optional[list[float]] = (
+            prim.get("local_n_axis") or prim.get("dominant_axis")
+        )
+
         has_hole_mod = False
+        has_local_n_hole_mod = False
         has_slot_mod = False
         has_cbore_mod = False
         has_rect_mod = False
@@ -1137,12 +1146,20 @@ class _IREmitter:
                     f"{pn}_step = {_scad_vector(pat_step)};",
                     f"{pn}_diameter = {pat_diam:.6f};",
                 ]
-                has_hole_mod = True
-                cut_geom += [
-                    f"for (i = [0 : {pn}_count - 1]) {{",
-                    f"  hole_cutout({_scad_named_linear_point_expression(pn, 'i')}, {pn}_diameter);",
-                    "}",
-                ]
+                if cut.get("axis") == "local_n":
+                    has_local_n_hole_mod = True
+                    cut_geom += [
+                        f"for (i = [0 : {pn}_count - 1]) {{",
+                        f"  hole_cutout_local_n({_scad_named_linear_point_expression(pn, 'i')}, {pn}_diameter);",
+                        "}",
+                    ]
+                else:
+                    has_hole_mod = True
+                    cut_geom += [
+                        f"for (i = [0 : {pn}_count - 1]) {{",
+                        f"  hole_cutout({_scad_named_linear_point_expression(pn, 'i')}, {pn}_diameter);",
+                        "}",
+                    ]
 
             elif ctype == "PatternGrid":
                 gn = f"hole_grid_{self._grid_idx}"
@@ -1161,13 +1178,23 @@ class _IREmitter:
                     f"{gn}_col_step = {_scad_vector(g_col_step)};",
                     f"{gn}_diameter = {g_diam:.6f};",
                 ]
-                has_hole_mod = True
-                cut_geom += [
-                    f"for (row = [0 : {gn}_rows - 1]) {{",
-                    f"  for (col = [0 : {gn}_cols - 1]) {{",
-                    f"    hole_cutout({_scad_named_grid_point_expression(gn)}, {gn}_diameter);",
-                    "  }",
-                    "}",
+                if cut.get("axis") == "local_n":
+                    has_local_n_hole_mod = True
+                    cut_geom += [
+                        f"for (row = [0 : {gn}_rows - 1]) {{",
+                        f"  for (col = [0 : {gn}_cols - 1]) {{",
+                        f"    hole_cutout_local_n({_scad_named_grid_point_expression(gn)}, {gn}_diameter);",
+                        "  }",
+                        "}",
+                    ]
+                else:
+                    has_hole_mod = True
+                    cut_geom += [
+                        f"for (row = [0 : {gn}_rows - 1]) {{",
+                        f"  for (col = [0 : {gn}_cols - 1]) {{",
+                        f"    hole_cutout({_scad_named_grid_point_expression(gn)}, {gn}_diameter);",
+                        "  }",
+                        "}",
                 ]
 
             elif ctype == "TransformTranslate":
@@ -1177,14 +1204,22 @@ class _IREmitter:
 
                 if child_type == "HoleThrough":
                     diam = float(child.get("diameter", 0.0))
+                    ax = str(child.get("axis", thickness_axis))
                     hn = f"hole_{self._hole_idx}"
                     self._hole_idx += 1
                     self._decls += [
                         f"{hn}_center = {_scad_vector(offset)};",
                         f"{hn}_diameter = {diam:.6f};",
                     ]
-                    has_hole_mod = True
-                    cut_geom.append(f"hole_cutout({hn}_center, {hn}_diameter);")
+                    # Holes detected in the plate's local (u, v, n) frame carry
+                    # axis="local_n" and must bore along the plate normal, not a
+                    # world axis.  All other holes use the standard module.
+                    if ax == "local_n":
+                        has_local_n_hole_mod = True
+                        cut_geom.append(f"hole_cutout_local_n({hn}_center, {hn}_diameter);")
+                    else:
+                        has_hole_mod = True
+                        cut_geom.append(f"hole_cutout({hn}_center, {hn}_diameter);")
 
                 elif child_type == "HoleCounterbore":
                     through_d = float(child.get("through_diameter", 0.0))
@@ -1263,6 +1298,25 @@ class _IREmitter:
                     cut_geom.append(f"slot_cutout({sn}_start, {sn}_end, {sn}_width);")
 
         # Register modules that were actually needed.
+        if has_local_n_hole_mod and "hole_cutout_local_n" not in self._module_decls:
+            if local_n_axis is not None:
+                ln_euler = _axis_to_world_z_euler_xyz(local_n_axis)
+                rx, ry, rz = ln_euler
+                self._module_decls["hole_cutout_local_n"] = [
+                    "module hole_cutout_local_n(center, diameter) {",
+                    "  translate(center)",
+                    f"    rotate([{rx:.6f}, {ry:.6f}, {rz:.6f}])",
+                    f"      translate([0, 0, {-depth * 0.5:.6f}])",
+                    f"        cylinder(h={depth:.6f}, d=diameter, $fn=64);",
+                    "}",
+                ]
+            else:
+                # Fallback: bore along the thin-axis direction.
+                self._module_decls["hole_cutout_local_n"] = [
+                    "module hole_cutout_local_n(center, diameter) {",
+                    *_hole_cutout_module_body(depth, thickness_axis),
+                    "}",
+                ]
         if has_hole_mod and "hole_cutout" not in self._module_decls:
             self._module_decls["hole_cutout"] = [
                 "module hole_cutout(center, diameter) {",
@@ -1586,6 +1640,10 @@ class _IREmitter:
 
         # For rotated plates/boxes with local-axis data, delegate to the
         # multmatrix-capable emitters so the SCAD uses plate_local_u/v/n.
+        # This shortcut is only reached for standalone primitives (no cuts);
+        # plates/boxes with cuts are handled by _emit_boolean_difference →
+        # _emit_plate/box_difference via _unwrap_transform_rotate *before*
+        # the TransformRotate node is visited here.
         if child_type == "PrimitivePlate" and child.get("detected_via") == "rotated_plate":
             return self._emit_primitive_plate_standalone(child)
         if child_type == "PrimitiveBox" and child.get("detected_via") == "rotated_box":

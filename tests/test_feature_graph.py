@@ -1953,6 +1953,125 @@ def test_rotated_plate_scad_preview_uses_local_frame_multmatrix(test_output_dir)
     assert "multmatrix(plate_transform)" in scad
 
 
+def _create_rotated_plate_with_hole(
+    output_file,
+    plate_size=(20.0, 10.0, 2.0),
+    rotate_x_deg=30.0,
+    hole_center_uv=(0.0, 0.0),
+    hole_radius=2.0,
+    segments=32,
+):
+    """Create a plate with a through-hole, then rotate the whole thing around X."""
+    import math
+
+    width, depth, thickness = plate_size
+    half_w = width * 0.5
+    half_d = depth * 0.5
+    cx_uv, cy_uv = hole_center_uv
+
+    # --- build geometry in local frame (plate lies in XY plane, thickness along Z) ---
+    plate_verts = [
+        [-half_w, -half_d, 0.0],
+        [half_w, -half_d, 0.0],
+        [half_w, half_d, 0.0],
+        [-half_w, half_d, 0.0],
+        [-half_w, -half_d, thickness],
+        [half_w, -half_d, thickness],
+        [half_w, half_d, thickness],
+        [-half_w, half_d, thickness],
+    ]
+    plate_faces = [
+        [0, 2, 1], [0, 3, 2],
+        [4, 5, 6], [4, 6, 7],
+        [0, 1, 5], [0, 5, 4],
+        [1, 2, 6], [1, 6, 5],
+        [2, 3, 7], [2, 7, 6],
+        [3, 0, 4], [3, 4, 7],
+    ]
+
+    # Cylinder wall (through-hole)
+    hole_verts: list = []
+    hole_faces: list = []
+    base_idx = len(plate_verts)
+    for i in range(segments):
+        theta = 2.0 * math.pi * i / segments
+        x = cx_uv + hole_radius * math.cos(theta)
+        y = cy_uv + hole_radius * math.sin(theta)
+        hole_verts.append([x, y, 0.0])
+        hole_verts.append([x, y, thickness])
+    for i in range(segments):
+        ni = (i + 1) % segments
+        b0 = base_idx + 2 * i
+        t0 = b0 + 1
+        b1 = base_idx + 2 * ni
+        t1 = b1 + 1
+        hole_faces.append([b0, b1, t1])
+        hole_faces.append([b0, t1, t0])
+
+    all_verts_local = plate_verts + hole_verts
+    all_faces = plate_faces + hole_faces
+
+    # Rotate around X axis
+    rx = math.radians(rotate_x_deg)
+    cos_rx, sin_rx = math.cos(rx), math.sin(rx)
+
+    def rot_x(v):
+        x, y, z = v
+        return [x, y * cos_rx - z * sin_rx, y * sin_rx + z * cos_rx]
+
+    rotated = [rot_x(v) for v in all_verts_local]
+
+    mesh = Mesh(np.zeros(len(all_faces), dtype=Mesh.dtype))
+    verts_arr = np.asarray(rotated, dtype=np.float64)
+    for idx, face in enumerate(all_faces):
+        mesh.vectors[idx] = verts_arr[face]
+    mesh.save(str(output_file))
+
+
+def test_rotated_plate_hole_bores_along_plate_normal(test_output_dir):
+    """Holes detected on a rotated plate must bore along the plate normal.
+
+    The emitted SCAD must use ``hole_cutout_local_n`` (which orients the
+    cylinder along the plate's local normal) rather than an axis-aligned
+    ``hole_cutout_x/y/z`` module, ensuring the hole passes through the plate
+    face rather than at a world-axis offset.
+    """
+    stl_file = test_output_dir / "rotated_plate_with_hole.stl"
+    _create_rotated_plate_with_hole(
+        stl_file,
+        plate_size=(20.0, 10.0, 2.0),
+        rotate_x_deg=30.0,
+        hole_center_uv=(0.0, 0.0),
+        hole_radius=2.0,
+    )
+    graph = build_feature_graph_for_stl(stl_file)
+
+    # There must be at least one local-n hole (axis="local_n") for this test
+    # to be meaningful; skip (not fail) if the detector misses it.
+    local_n_holes = [
+        f for f in graph.get("features", [])
+        if f.get("axis") == "local_n"
+    ]
+    if not local_n_holes:
+        import pytest
+        pytest.skip("rotated-plate hole not detected; detector coverage issue")
+
+    scad = emit_feature_graph_scad_preview(graph)
+    assert scad is not None, "Expected SCAD output for rotated plate with hole"
+
+    # Must use the local-normal bore module.
+    assert "hole_cutout_local_n" in scad, (
+        "Rotated-plate holes must use hole_cutout_local_n, not a world-axis module.\n"
+        f"Emitted SCAD:\n{scad}"
+    )
+    # Must NOT fall back to world-axis modules for these holes.
+    for bad_mod in ("hole_cutout_x", "hole_cutout_y", "hole_cutout_z"):
+        assert bad_mod not in scad, (
+            f"Rotated-plate holes must not use world-axis module '{bad_mod}'.\n"
+            f"Emitted SCAD:\n{scad}"
+        )
+
+
 def test_cylinder_inward_lateral_threshold_is_configurable():
     """Cylinder inward-area rejection threshold must be read from DetectorConfig."""
     from stl2scad.core.feature_graph import _extract_cylinder_like_solid

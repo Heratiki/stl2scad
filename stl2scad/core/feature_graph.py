@@ -2080,7 +2080,6 @@ _AXIS_EDGE_BISECTORS = _AXIS_EDGE_BISECTORS / np.linalg.norm(
 def _estimate_edge_treatment(
     normals: np.ndarray,
     vectors: np.ndarray,
-    face_areas: np.ndarray,
     bbox: dict[str, float],
 ) -> tuple[str, float]:
     """Classify chamfer-vs-fillet edge treatment and estimate size in mesh units.

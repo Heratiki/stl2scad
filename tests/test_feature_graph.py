@@ -1586,15 +1586,6 @@ def _make_filleted_box_data(w=20.0, h=15.0, d=10.0, r=1.0, arc_segments=8):
     verts_list = []
     areas_list = []
 
-    def add_tri(v0, v1, v2):
-        a, b, c_v = np.array(v0), np.array(v1), np.array(v2)
-        n = np.cross(b - a, c_v - a)
-        area = np.linalg.norm(n) / 2.0
-        if area > 1e-10:
-            normals_list.append(n / np.linalg.norm(n))
-            verts_list.append([a, b, c_v])
-            areas_list.append(area)
-
     flat_face_area = 10.0
     for normal, center in [
         ([0, 0, -1], [w/2, h/2, 0]),
@@ -1636,7 +1627,7 @@ def _make_filleted_box_data(w=20.0, h=15.0, d=10.0, r=1.0, arc_segments=8):
 
 def test_estimate_edge_treatment_classifies_chamfer():
     normals, vectors, areas, bbox = _make_chamfered_box_data(w=20.0, h=15.0, d=10.0, c=1.5)
-    kind, size = _estimate_edge_treatment(normals, vectors, areas, bbox)
+    kind, size = _estimate_edge_treatment(normals, vectors, bbox)
     assert kind == "chamfer"
     assert 0.5 <= size <= 4.0, f"Chamfer size estimate {size:.3f} out of expected range"
 
@@ -1645,9 +1636,9 @@ def test_estimate_edge_treatment_classifies_fillet():
     normals, vectors, areas, bbox = _make_filleted_box_data(
         w=20.0, h=15.0, d=10.0, r=1.5, arc_segments=8
     )
-    kind, size = _estimate_edge_treatment(normals, vectors, areas, bbox)
+    kind, size = _estimate_edge_treatment(normals, vectors, bbox)
     assert kind == "fillet"
-    assert size > 0.0
+    assert 0.3 <= size <= 8.0
 
 
 # ---------------------------------------------------------------------------

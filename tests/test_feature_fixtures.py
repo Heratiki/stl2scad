@@ -565,7 +565,7 @@ def _expected_inferred_linear_patterns(fixture):
 
     inferred_patterns = []
     for diameter, centers in grouped.items():
-        if len(centers) != 2:
+        if len(centers) < 2:
             continue
         dx = abs(centers[1][0] - centers[0][0])
         dy = abs(centers[1][1] - centers[0][1])
@@ -576,11 +576,18 @@ def _expected_inferred_linear_patterns(fixture):
         else:
             ordered = sorted(centers, key=lambda center: (center[1], center[0]))
         step = [ordered[1][0] - ordered[0][0], ordered[1][1] - ordered[0][1]]
+        if len(ordered) > 2:
+            if any(
+                abs((ordered[index][0] - ordered[index - 1][0]) - step[0]) > 1e-6
+                or abs((ordered[index][1] - ordered[index - 1][1]) - step[1]) > 1e-6
+                for index in range(2, len(ordered))
+            ):
+                continue
         inferred_patterns.append(
             {
                 "origin": ordered[0],
                 "step": step,
-                "count": 2,
+                "count": len(ordered),
                 "diameter": float(diameter),
             }
         )

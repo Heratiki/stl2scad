@@ -525,6 +525,70 @@ def test_box_unknown_edge_treatment_unchanged():
     assert "minkowski" not in scad
 
 
+def test_box_scad_preview_emits_rectangular_pocket_cutout():
+    graph = {
+        "schema_version": 1,
+        "source_file": "box_with_pocket.stl",
+        "features": [
+            {
+                "type": "box_like_solid",
+                "confidence": 0.92,
+                "detected_via": "strict",
+                "origin": [-10.0, -8.0, -6.0],
+                "size": [20.0, 16.0, 12.0],
+            },
+            {
+                "type": "rectangular_pocket",
+                "confidence": 0.95,
+                "center": [0.0, 0.0, 3.0],
+                "size": [8.0, 6.0, 6.0],
+                "axis": "z",
+                "source_parent_type": "box_like_solid",
+            },
+        ],
+    }
+
+    scad = emit_feature_graph_scad_preview(graph)
+
+    assert scad is not None
+    assert "difference() {" in scad
+    assert "rect_pocket_0_center = [0.000000, 0.000000, 3.000000];" in scad
+    assert "rect_pocket_0_size = [8.000000, 6.000000, 6.000000];" in scad
+    assert "rectangular_prism_cutout(rect_pocket_0_center, rect_pocket_0_size);" in scad
+
+
+def test_box_scad_preview_prefers_rectangular_pocket_over_edge_treatment():
+    graph = {
+        "schema_version": 1,
+        "source_file": "rounded_box_with_pocket.stl",
+        "features": [
+            {
+                "type": "box_like_solid",
+                "confidence": 0.72,
+                "detected_via": "tolerant_chamfer_or_fillet",
+                "edge_treatment": {"kind": "fillet", "size": 3.0},
+                "origin": [-10.0, -8.0, -6.0],
+                "size": [20.0, 16.0, 12.0],
+            },
+            {
+                "type": "rectangular_pocket",
+                "confidence": 0.95,
+                "center": [0.0, 0.0, 3.0],
+                "size": [8.0, 6.0, 6.0],
+                "axis": "z",
+                "source_parent_type": "box_like_solid",
+            },
+        ],
+    }
+
+    scad = emit_feature_graph_scad_preview(graph)
+
+    assert scad is not None
+    assert "rectangular_prism_cutout(rect_pocket_0_center, rect_pocket_0_size);" in scad
+    assert "cube(box_size)" in scad
+    assert "minkowski()" not in scad
+
+
 def test_feature_graph_extracts_counterbore_hole(test_output_dir):
     stl_file = test_output_dir / "plate_with_counterbore.stl"
     through_radius = 2.0
@@ -2070,6 +2134,45 @@ def test_rotated_plate_hole_bores_along_plate_normal(test_output_dir):
             f"Rotated-plate holes must not use world-axis module '{bad_mod}'.\n"
             f"Emitted SCAD:\n{scad}"
         )
+
+
+def test_rotated_plate_slot_bores_along_plate_normal():
+    graph = {
+        "schema_version": 1,
+        "source_file": "rotated_plate_with_slot.stl",
+        "features": [
+            {
+                "type": "plate_like_solid",
+                "confidence": 0.80,
+                "detected_via": "rotated_plate",
+                "origin": [-7.392305, -11.196153, 0.0],
+                "size": [24.0, 12.0, 2.0],
+                "local_u_axis": [0.866025, 0.5, 0.0],
+                "local_v_axis": [-0.5, 0.866025, 0.0],
+                "local_n_axis": [0.0, 0.0, 1.0],
+                "dominant_axis": [0.0, 0.0, 1.0],
+                "rotation_euler_deg": [0.0, 0.0, 30.0],
+            },
+            {
+                "type": "slot_like_cutout",
+                "confidence": 0.95,
+                "axis": "local_n",
+                "source_parent_type": "plate_like_solid",
+                "center": [0.0, 0.0, 1.0],
+                "start": [-3.031089, -1.75, 1.0],
+                "end": [3.031089, 1.75, 1.0],
+                "width": 3.0,
+                "slot_axis": "x",
+            },
+        ],
+    }
+
+    scad = emit_feature_graph_scad_preview(graph)
+
+    assert scad is not None
+    assert "module slot_cutout_local_n" in scad
+    assert "hole_cutout_local_n(start, width);" in scad
+    assert "slot_cutout_local_n(slot_0_start, slot_0_end, slot_0_width);" in scad
 
 
 def test_cylinder_inward_lateral_threshold_is_configurable():

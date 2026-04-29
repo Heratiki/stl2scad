@@ -1126,6 +1126,7 @@ class _IREmitter:
         has_hole_mod = False
         has_local_n_hole_mod = False
         has_slot_mod = False
+        has_local_n_slot_mod = False
         has_cbore_mod = False
         has_rect_mod = False
         cut_geom: list[str] = []
@@ -1245,7 +1246,7 @@ class _IREmitter:
                     end = [float(v) for v in (child.get("end") or [0.0, 0.0, 0.0])]
                     width = float(child.get("width", 0.0))
                     ax = str(child.get("axis", thickness_axis))
-                    if ax == thickness_axis:
+                    if ax in {thickness_axis, "local_n"}:
                         sn = f"slot_{self._slot_idx}"
                         self._slot_idx += 1
                         self._decls += [
@@ -1253,9 +1254,16 @@ class _IREmitter:
                             f"{sn}_end = {_scad_vector(end)};",
                             f"{sn}_width = {width:.6f};",
                         ]
-                        has_hole_mod = True
-                        has_slot_mod = True
-                        cut_geom.append(f"slot_cutout({sn}_start, {sn}_end, {sn}_width);")
+                        if ax == "local_n":
+                            has_local_n_hole_mod = True
+                            has_local_n_slot_mod = True
+                            cut_geom.append(
+                                f"slot_cutout_local_n({sn}_start, {sn}_end, {sn}_width);"
+                            )
+                        else:
+                            has_hole_mod = True
+                            has_slot_mod = True
+                            cut_geom.append(f"slot_cutout({sn}_start, {sn}_end, {sn}_width);")
 
                 elif child_type == "RectangularCutout":
                     csize = [float(v) for v in (child.get("size") or [0.0, 0.0, 0.0])]
@@ -1285,7 +1293,7 @@ class _IREmitter:
                 end = [float(v) for v in (cut.get("end") or [0.0, 0.0, 0.0])]
                 width = float(cut.get("width", 0.0))
                 ax = str(cut.get("axis", thickness_axis))
-                if ax == thickness_axis:
+                if ax in {thickness_axis, "local_n"}:
                     sn = f"slot_{self._slot_idx}"
                     self._slot_idx += 1
                     self._decls += [
@@ -1293,9 +1301,16 @@ class _IREmitter:
                         f"{sn}_end = {_scad_vector(end)};",
                         f"{sn}_width = {width:.6f};",
                     ]
-                    has_hole_mod = True
-                    has_slot_mod = True
-                    cut_geom.append(f"slot_cutout({sn}_start, {sn}_end, {sn}_width);")
+                    if ax == "local_n":
+                        has_local_n_hole_mod = True
+                        has_local_n_slot_mod = True
+                        cut_geom.append(
+                            f"slot_cutout_local_n({sn}_start, {sn}_end, {sn}_width);"
+                        )
+                    else:
+                        has_hole_mod = True
+                        has_slot_mod = True
+                        cut_geom.append(f"slot_cutout({sn}_start, {sn}_end, {sn}_width);")
 
         # Register modules that were actually needed.
         if has_local_n_hole_mod and "hole_cutout_local_n" not in self._module_decls:
@@ -1329,6 +1344,15 @@ class _IREmitter:
                 "  hull() {",
                 "    hole_cutout(start, width);",
                 "    hole_cutout(end, width);",
+                "  }",
+                "}",
+            ]
+        if has_local_n_slot_mod and "slot_cutout_local_n" not in self._module_decls:
+            self._module_decls["slot_cutout_local_n"] = [
+                "module slot_cutout_local_n(start, end, width) {",
+                "  hull() {",
+                "    hole_cutout_local_n(start, width);",
+                "    hole_cutout_local_n(end, width);",
                 "  }",
                 "}",
             ]
@@ -1402,12 +1426,14 @@ class _IREmitter:
 
         axis_depth = {"x": size[0], "y": size[1], "z": size[2]}
 
-        # Collect through-hole cuts (the only box cutouts currently emitted).
+        # Collect box cutouts carried by the IR tree.
         hole_cuts: list[tuple[str, int]] = []  # (axis, hole_idx)
+        rect_cuts: list[str] = []
         for cut in cuts:
             if cut.get("type") == "TransformTranslate":
                 child = cut.get("child", {})
-                if child.get("type") == "HoleThrough":
+                child_type = child.get("type")
+                if child_type == "HoleThrough":
                     ax = str(child.get("axis", "z"))
                     offset = [float(v) for v in (cut.get("offset") or [0.0, 0.0, 0.0])]
                     hidx = self._hole_idx
@@ -1418,6 +1444,25 @@ class _IREmitter:
                         f"hole_{hidx}_diameter = {diam:.6f};",
                     ]
                     hole_cuts.append((ax, hidx))
+                elif child_type in {"RectangularCutout", "RectangularPocket"}:
+                    offset = [float(v) for v in (cut.get("offset") or [0.0, 0.0, 0.0])]
+                    csize = [float(v) for v in (child.get("size") or [0.0, 0.0, 0.0])]
+                    ridx = (
+                        self._rect_cutout_idx
+                        if child_type == "RectangularCutout"
+                        else self._rect_pocket_idx
+                    )
+                    if child_type == "RectangularCutout":
+                        self._rect_cutout_idx += 1
+                        name = f"rect_cutout_{ridx}"
+                    else:
+                        self._rect_pocket_idx += 1
+                        name = f"rect_pocket_{ridx}"
+                    self._decls += [
+                        f"{name}_center = {_scad_vector(offset)};",
+                        f"{name}_size = {_scad_vector(csize)};",
+                    ]
+                    rect_cuts.append(name)
 
         # Create axis-specific hole_cutout modules.
         axes_used = sorted({ax for ax, _ in hole_cuts})
@@ -1430,12 +1475,20 @@ class _IREmitter:
                     *_hole_cutout_module_body(dep, ax),
                     "}",
                 ]
+        if rect_cuts and "rectangular_prism_cutout" not in self._module_decls:
+            self._module_decls["rectangular_prism_cutout"] = [
+                "module rectangular_prism_cutout(center, size) {",
+                "  translate([center[0] - size[0] / 2, center[1] - size[1] / 2, center[2] - size[2] / 2])",
+                "    cube(size);",
+                "}",
+            ]
 
         # Determine whether to use edge treatment.
         use_et = (
             et_node is not None
             and et_node.get("edge_kind") in ("chamfer", "fillet")
             and not is_rotated
+            and not rect_cuts
         )
 
         if use_et:
@@ -1444,13 +1497,15 @@ class _IREmitter:
             et_lines = _emit_box_edge_treatment_scad(
                 size, {"kind": et_kind, "size": et_sz}, "cube(box_size)", box_transform_expr
             )
-            if hole_cuts:
+            if hole_cuts or rect_cuts:
                 result: list[str] = ["difference() {"]
                 result.extend(f"  {ln}" for ln in et_lines)
                 for ax, hidx in hole_cuts:
                     result.append(
                         f"  hole_cutout_{ax}(hole_{hidx}_center, hole_{hidx}_diameter);"
                     )
+                for name in rect_cuts:
+                    result.append(f"  rectangular_prism_cutout({name}_center, {name}_size);")
                 result.append("}")
                 return result
             return et_lines
@@ -1464,6 +1519,8 @@ class _IREmitter:
             result.append(
                 f"  hole_cutout_{ax}(hole_{hidx}_center, hole_{hidx}_diameter);"
             )
+        for name in rect_cuts:
+            result.append(f"  rectangular_prism_cutout({name}_center, {name}_size);")
         result.append("}")
         return result
 

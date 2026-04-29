@@ -1678,6 +1678,23 @@ def test_detected_via_tolerant_on_chamfered_plate(test_output_dir):
     )
 
 
+def test_tolerant_plate_feature_has_edge_treatment_fields(test_output_dir):
+    stl_file = test_output_dir / "edge_treatment_fields_chamfered_plate.stl"
+    _create_chamfered_plate(stl_file, plate_size=(20.0, 10.0, 2.0), edge_chamfer=1.0)
+    graph = build_feature_graph_for_stl(stl_file)
+
+    plate = next(
+        feature for feature in graph["features"] if feature.get("type") == "plate_like_solid"
+    )
+    edge_treatment = plate.get("edge_treatment")
+
+    assert plate["detected_via"] == "tolerant_chamfer_or_fillet"
+    assert edge_treatment is not None
+    assert edge_treatment["kind"] in {"chamfer", "fillet", "unknown"}
+    assert isinstance(edge_treatment["size"], float)
+    assert edge_treatment["size"] >= 0.0
+
+
 def test_ir_tree_strict_solid_has_no_chamfer_or_fillet_edge_node(test_data_dir):
     """A strict-path box should NOT produce a ChamferOrFilletEdge node in the IR."""
     fixtures_dir = test_data_dir / "benchmark_fixtures"
@@ -1712,6 +1729,9 @@ def test_ir_tree_tolerant_plate_has_chamfer_or_fillet_edge_node(test_output_dir)
         f"Expected exactly one ChamferOrFilletEdge; found {len(chamfer_nodes)}"
     )
     assert "note" in chamfer_nodes[0], "ChamferOrFilletEdge node should carry a 'note' field"
+    assert chamfer_nodes[0]["edge_kind"] in {"chamfer", "fillet", "unknown"}
+    assert isinstance(chamfer_nodes[0]["size"], float)
+    assert chamfer_nodes[0]["size"] >= 0.0
     assert root["base"]["type"] == "PrimitivePlate"
 
 

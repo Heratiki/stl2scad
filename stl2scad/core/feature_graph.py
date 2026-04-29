@@ -273,16 +273,23 @@ def _build_ir_tree(graph: dict[str, Any]) -> list[dict[str, Any]]:
 
         # Edge treatment: when the solid was detected via the tolerant path (chamfer
         # or fillet on outer edges), add a ChamferOrFilletEdge annotation node.
-        # This is a non-subtractive sibling of the base — it documents the edge
+        # This is a non-subtractive sibling of the base -- it documents the edge
         # treatment so the emitter can eventually print editable chamfer/fillet
         # parameters rather than silently approximating them.
         if prim.get("detected_via") == "tolerant_chamfer_or_fillet":
+            et = prim.get("edge_treatment", {})
+            et_kind = str(et.get("kind", "unknown"))
+            et_size = float(et.get("size", 0.0))
             cuts.append(
                 {
                     "type": "ChamferOrFilletEdge",
+                    "edge_kind": et_kind,
+                    "size": et_size,
                     "note": (
-                        "Outer edges were detected as chamfered or filleted. "
-                        "Kind (chamfer vs fillet) is not yet distinguished by the detector."
+                        f"Outer edges detected as {et_kind} "
+                        f"(size approximately {et_size:.3f} mm). "
+                        "Emitter wraps base solid with hull() for chamfer or "
+                        "minkowski() sphere for fillet."
                     ),
                 }
             )
@@ -1807,6 +1814,10 @@ def _extract_axis_aligned_box_features(
             and thin_ratio <= config.plate_thin_ratio_max
         )
         via_tolerant = not strict_plate_passes
+        edge_treatment: dict[str, Any] = {}
+        if via_tolerant:
+            et_kind, et_size = _estimate_edge_treatment(normals, vectors, bbox)
+            edge_treatment = {"kind": et_kind, "size": float(et_size)}
         features.append(
             {
                 "type": "plate_like_solid",
@@ -1838,6 +1849,8 @@ def _extract_axis_aligned_box_features(
                 ),
             }
         )
+        if via_tolerant:
+            features[-1]["edge_treatment"] = edge_treatment
     elif (paired_axes == config.box_paired_axes_required and confidence >= config.box_confidence_min) or tolerant_box_confidence >= config.box_tolerant_confidence_min:
         box_confidence = max(confidence, tolerant_box_confidence)
         strict_box_passes = (
@@ -1845,6 +1858,10 @@ def _extract_axis_aligned_box_features(
             and confidence >= config.box_confidence_min
         )
         via_tolerant_box = not strict_box_passes
+        box_edge_treatment: dict[str, Any] = {}
+        if via_tolerant_box:
+            et_kind, et_size = _estimate_edge_treatment(normals, vectors, bbox)
+            box_edge_treatment = {"kind": et_kind, "size": float(et_size)}
         features.append(
             {
                 "type": "box_like_solid",
@@ -1877,6 +1894,8 @@ def _extract_axis_aligned_box_features(
                 ),
             }
         )
+        if via_tolerant_box:
+            features[-1]["edge_treatment"] = box_edge_treatment
     return features
 
 

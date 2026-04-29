@@ -38,6 +38,9 @@ class DetectorConfig:
     tolerant_box_relaxed_fill_ratio: float = 0.55
     tolerant_box_full_fill_axes_min: int = 2
     tolerant_box_overall_support_ratio: float = 0.60
+    # Rotated box: strict pair-support threshold. Axes below this but above
+    # tolerant_box_relaxed_fill_ratio trigger "tolerant_chamfer_or_fillet" path.
+    rotated_box_strict_pair_support: float = 0.85
 
     # --- Hole (circular cutout) thresholds ---
     hole_interior_boundary_margin_ratio: float = 0.05

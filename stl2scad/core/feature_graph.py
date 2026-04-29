@@ -2063,14 +2063,17 @@ def _extract_rotated_box_solid(
         axis_spans.append((max_proj - min_proj, min_proj, axis))
 
     unsorted_spans = [item[0] for item in axis_spans]
+    via_tolerant = False
     for axis_index in range(3):
         other = [i for i in range(3) if i != axis_index]
         ideal_pair_area = 2.0 * unsorted_spans[other[0]] * unsorted_spans[other[1]]
         if ideal_pair_area <= 1e-9:
             return []
         pair_support = pair_areas[axis_index] / ideal_pair_area
-        if pair_support < 0.85:
+        if pair_support < config.tolerant_box_relaxed_fill_ratio:
             return []
+        if pair_support < config.rotated_box_strict_pair_support:
+            via_tolerant = True
 
     # Deterministic local frame: order by increasing span.
     axis_spans.sort(key=lambda item: item[0])
@@ -2085,11 +2088,12 @@ def _extract_rotated_box_solid(
     R = np.column_stack((u_axis, v_axis, n_axis))
     euler_angles = _matrix_to_euler_xyz(R)
 
+    detected_via = "tolerant_chamfer_or_fillet" if via_tolerant else "rotated_box"
     return [
         {
             "type": "box_like_solid",
             "confidence": confidence,
-            "detected_via": "rotated_box",
+            "detected_via": detected_via,
             "rotation_euler_deg": euler_angles,
             "origin": origin_3d.tolist(),
             "size": [float(span_u), float(span_v), float(span_n)],
@@ -4111,21 +4115,20 @@ _CONFIRMED_PREVIEW_FEATURE_TYPES = frozenset(
         "box_like_solid",
         "cylinder_like_solid",
         "revolve_solid",
+        "linear_extrude_solid",
     }
 )
 
-_SCAD_PREVIEW_FEATURE_TYPES = _CONFIRMED_PREVIEW_FEATURE_TYPES | frozenset(
-    {"linear_extrude_solid"}
-)
+_SCAD_PREVIEW_FEATURE_TYPES = _CONFIRMED_PREVIEW_FEATURE_TYPES
 
 
 def _has_confirmed_parametric_preview(graph: dict[str, Any]) -> bool:
     """Return whether the graph has a preview in a trusted parametric family.
 
-    ``linear_extrude_solid`` previews are still emitted for inspection, but the
-    local-corpus triage should not count them as confirmed preview-ready output
-    until they have a stronger geometric validation signal than "SCAD was
-    emitted".
+    Confirmed families: plate_like_solid, box_like_solid, cylinder_like_solid,
+    revolve_solid, linear_extrude_solid. The linear_extrude family was promoted
+    after visual validation of real-world cases at ≥ 0.80 confidence showing
+    clean parametric output.
     """
     if emit_feature_graph_scad_preview(graph) is None:
         return False

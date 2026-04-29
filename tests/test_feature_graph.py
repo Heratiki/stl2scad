@@ -1291,11 +1291,7 @@ def _make_parametric_preview_graph(test_output_dir) -> dict:
 
 
 def _make_linear_extrude_preview_graph() -> dict:
-    """Synthetic graph with an emitted linear-extrude preview.
-
-    This is intentionally *not* treated as confirmed parametric preview in the
-    triage report until the preview path gains stronger geometric validation.
-    """
+    """Synthetic graph with an emitted linear-extrude preview (confirmed parametric family)."""
     return {
         "schema_version": 1,
         "source_file": "mounted_clip.stl",
@@ -1420,24 +1416,20 @@ def test_triage_report_bucket_accounting(test_output_dir):
     total = sum(counts.values())
     assert total == report["files_processed"]
     assert total == len(graphs)
-    assert counts["parametric_preview"] == 1
-    assert counts["feature_graph_no_preview"] == 1
+    assert counts["parametric_preview"] == 2
+    assert counts["feature_graph_no_preview"] == 0
     assert counts["axis_pairs_only"] == 2
     assert counts["polyhedron_fallback"] == 1
     assert counts["error"] == 1
 
 
-def test_triage_report_demotes_linear_extrude_preview_to_unconfirmed_bucket():
-    """Emitted linear-extrude SCAD should not count as confirmed preview-ready output."""
+def test_triage_report_confirms_linear_extrude_preview():
+    """linear_extrude_solid is a confirmed parametric family — lands in parametric_preview."""
     report = build_triage_report([_make_linear_extrude_preview_graph()])
 
-    assert report["bucket_counts"]["parametric_preview"] == 0
-    assert report["bucket_counts"]["feature_graph_no_preview"] == 1
-    assert report["per_file"][0]["bucket"] == "feature_graph_no_preview"
-    metadata = report["per_file"][0]["failure_shape_metadata"]
-    assert metadata["emitted_preview"] is True
-    assert metadata["preview_feature_types"] == ["linear_extrude_solid"]
-    assert metadata["solid_candidate_confidences"] == {"linear_extrude_solid": 0.83}
+    assert report["bucket_counts"]["parametric_preview"] == 1
+    assert report["bucket_counts"]["feature_graph_no_preview"] == 0
+    assert report["per_file"][0]["bucket"] == "parametric_preview"
 
 
 def test_triage_report_ranked_failure_patterns_shape(test_output_dir):

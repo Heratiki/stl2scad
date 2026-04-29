@@ -2081,7 +2081,6 @@ class MainWindow(QMainWindow):
     def refresh_acceleration_report(self):
         report = get_acceleration_report()
         self.acceleration_report_view.setPlainText(_format_acceleration_report(report))
-        self._set_workflow_output(_format_json_payload(report))
         self._set_status("Acceleration report refreshed.")
         self._set_badge("INFO", PALETTE["accent"])
 
@@ -2668,6 +2667,17 @@ class MainWindow(QMainWindow):
                 f"{len(vertices):,} vertices  ·  {len(faces):,} faces  ·  "
                 f"size {size:.2f}"
             )
+            dims = max_vals - min_vals
+            mesh_summary = (
+                f"File:     {file_path}\n"
+                f"Vertices: {len(vertices):,}\n"
+                f"Faces:    {len(faces):,}\n"
+                f"Bounds X: {dims[0]:.3f}\n"
+                f"Bounds Y: {dims[1]:.3f}\n"
+                f"Bounds Z: {dims[2]:.3f}\n"
+                f"Max dim:  {size:.3f}"
+            )
+            self._set_workflow_output(mesh_summary)
             self._set_status(f"Loaded: {os.path.basename(file_path)}")
             self._set_badge("READY", PALETTE["success"])
         except Exception as exc:

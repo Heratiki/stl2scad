@@ -23,6 +23,9 @@ STL_SUFFIXES = {".stl"}
 PREVIEW_SOLID_CONFIDENCE_THRESHOLD = 0.70
 # Allow tiny numeric drift around the preview threshold while staying conservative.
 PREVIEW_SOLID_CONFIDENCE_EPSILON = 0.002
+COMPOSITE_COMPONENT_MIN_COUNT = 2
+COMPOSITE_COMPONENT_MAX_COUNT = 6
+COMPOSITE_CONTAINMENT_THRESHOLD = 0.50
 
 
 from stl2scad.tuning.config import DetectorConfig
@@ -189,6 +192,77 @@ def _build_ir_tree(graph: dict[str, Any]) -> list[dict[str, Any]]:
             "confidence": float(revolve["confidence"]),
             "root": root,
         }]
+
+    composite_primitives = [
+        f
+        for f in features
+        if f.get("type") in _SOLID_TO_IR_TYPE and bool(f.get("composite_component"))
+    ]
+    if len(composite_primitives) >= COMPOSITE_COMPONENT_MIN_COUNT:
+        children: list[dict[str, Any]] = []
+        confidences: list[float] = []
+        for prim in sorted(
+            composite_primitives,
+            key=lambda f: int(f.get("source_component_index", 1_000_000)),
+        ):
+            prim_type = prim["type"]
+            if prim_type == "linear_extrude_solid":
+                profile_pts = prim.get("profile", [])
+                sketch: dict[str, Any] = {
+                    "type": "Sketch2D",
+                    "kind": "polygon",
+                    "points": [[float(p[0]), float(p[1])] for p in profile_pts],
+                }
+                ir_prim = {
+                    "type": "ExtrudeLinear",
+                    "height": float(prim.get("height", 0.0)),
+                    "confidence": float(prim.get("confidence", 0.0)),
+                    "profile": sketch,
+                }
+                axis = prim.get("axis", [0.0, 0.0, 1.0])
+                angles = _axis_to_world_z_euler_xyz(axis)
+                if any(abs(a) > 0.01 for a in angles):
+                    ir_prim = {
+                        "type": "TransformRotate",
+                        "angles_deg": angles,
+                        "child": ir_prim,
+                    }
+            else:
+                ir_prim = {
+                    "type": _SOLID_TO_IR_TYPE[prim_type],
+                    "confidence": float(prim.get("confidence", 0.0)),
+                }
+                for key in ("origin", "size", "axis", "radius", "height"):
+                    if key in prim:
+                        ir_prim[key] = prim[key]
+                for key in (
+                    "detected_via",
+                    "local_u_axis",
+                    "local_v_axis",
+                    "dominant_axis",
+                    "local_n_axis",
+                ):
+                    if key in prim:
+                        ir_prim[key] = prim[key]
+                if prim.get("detected_via") in {"rotated_plate", "rotated_box"}:
+                    angles = prim.get("rotation_euler_deg", [0.0, 0.0, 0.0])
+                    ir_prim = {
+                        "type": "TransformRotate",
+                        "angles_deg": angles,
+                        "child": ir_prim,
+                    }
+            children.append(ir_prim)
+            confidences.append(float(prim.get("confidence", 0.0)))
+
+        return [
+            {
+                "type": "Interpretation",
+                "rank": 1,
+                # Conservative composition confidence: weakest-link component.
+                "confidence": min(confidences) if confidences else 0.0,
+                "root": {"type": "BooleanUnion", "children": children},
+            }
+        ]
 
     primitives = sorted(
         [f for f in features if f.get("type") in _SOLID_TO_IR_TYPE],
@@ -448,32 +522,48 @@ def build_feature_graph_for_stl(
         )
         if linear_extrude_feats:
             features = [f for f in features if f.get("type") not in _SOLID_TO_IR_TYPE] + linear_extrude_feats
+
     if not revolve_features:
-        features.extend(
-            _extract_axis_aligned_through_holes(
-                vectors,
-                normals,
-                face_areas,
-                bbox,
-                features,
-                config=resolved,
+        composite_solids = _extract_composite_planar_prismatic_solids(
+            vectors,
+            normals,
+            face_areas,
+            config=resolved,
+        )
+        if composite_solids:
+            plane_pairs = [
+                f for f in features if f.get("type") == "axis_boundary_plane_pair"
+            ]
+            features = plane_pairs + composite_solids
+
+    has_composite_components = any(bool(f.get("composite_component")) for f in features)
+    if not revolve_features:
+        if not has_composite_components:
+            features.extend(
+                _extract_axis_aligned_through_holes(
+                    vectors,
+                    normals,
+                    face_areas,
+                    bbox,
+                    features,
+                    config=resolved,
+                )
             )
-        )
-        features.extend(
-            _extract_rotated_plate_through_holes(
-                vectors,
-                normals,
-                face_areas,
-                features,
-                config=resolved,
+            features.extend(
+                _extract_rotated_plate_through_holes(
+                    vectors,
+                    normals,
+                    face_areas,
+                    features,
+                    config=resolved,
+                )
             )
-        )
-        rotated_box_holes = _extract_rotated_box_through_holes(
-            vectors, normals, face_areas, features, config=resolved
-        )
-        if rotated_box_holes:
-            features = features + rotated_box_holes
-        features.extend(_extract_repeated_hole_patterns(features, config=resolved))
+            rotated_box_holes = _extract_rotated_box_through_holes(
+                vectors, normals, face_areas, features, config=resolved
+            )
+            if rotated_box_holes:
+                features = features + rotated_box_holes
+            features.extend(_extract_repeated_hole_patterns(features, config=resolved))
 
     graph: dict[str, Any] = {
         "schema_version": 1,
@@ -1804,6 +1894,148 @@ def _find_dominant_normal_axis(
             break
 
     return dominant, float(eigenvalues[-1])
+
+
+def _component_bbox_overlap_metrics(
+    bboxes: list[tuple[np.ndarray, np.ndarray]],
+    epsilon: float = 1e-9,
+) -> dict[str, Any]:
+    """Return overlap diagnostics for component AABBs."""
+    max_containment = 0.0
+    has_overlap = False
+    for i in range(len(bboxes)):
+        min_a, max_a = bboxes[i]
+        vol_a = float(np.prod(np.maximum(max_a - min_a, 0.0)))
+        for j in range(i + 1, len(bboxes)):
+            min_b, max_b = bboxes[j]
+            vol_b = float(np.prod(np.maximum(max_b - min_b, 0.0)))
+            overlap_dims = np.minimum(max_a, max_b) - np.maximum(min_a, min_b)
+            if not np.all(overlap_dims > epsilon):
+                continue
+            has_overlap = True
+            overlap_vol = float(np.prod(overlap_dims))
+            min_vol = min(vol_a, vol_b)
+            containment = overlap_vol / min_vol if min_vol > epsilon else 0.0
+            max_containment = max(max_containment, containment)
+    return {
+        "has_overlap": has_overlap,
+        "max_containment": float(max_containment),
+    }
+
+
+def _select_component_prismatic_solid(
+    vectors: np.ndarray,
+    normals: np.ndarray,
+    face_areas: np.ndarray,
+    config: DetectorConfig,
+) -> Optional[dict[str, Any]]:
+    """Pick the best single planar/prismatic solid for one connected component."""
+    points = vectors.reshape(-1, 3)
+    bbox = _bbox(points)
+    box_features = _extract_axis_aligned_box_features(
+        vectors,
+        normals,
+        face_areas,
+        bbox,
+        config=config,
+    )
+    candidates: list[dict[str, Any]] = [
+        f for f in box_features if f.get("type") in _SOLID_TO_IR_TYPE
+    ]
+
+    if not candidates:
+        candidates.extend(
+            _extract_cylinder_like_solid(
+                normals,
+                face_areas,
+                bbox,
+                vertices=vectors,
+                config=config,
+            )
+        )
+    if not candidates:
+        candidates.extend(
+            _extract_rotated_plate_solid(
+                normals,
+                face_areas,
+                bbox,
+                vectors,
+                config,
+            )
+        )
+    if not candidates:
+        candidates.extend(
+            _extract_rotated_box_solid(
+                normals,
+                face_areas,
+                bbox,
+                vectors,
+                config,
+            )
+        )
+    if not candidates:
+        rounded = np.round(points, decimals=6)
+        unique_verts, inv_idx = np.unique(rounded, axis=0, return_inverse=True)
+        triangles_indices = inv_idx.reshape(-1, 3).astype(np.int64)
+        candidates.extend(
+            detect_linear_extrude_solid(unique_verts, triangles_indices, config=config)
+        )
+
+    if not candidates:
+        return None
+
+    best = max(candidates, key=lambda f: float(f.get("confidence", 0.0)))
+    return best if _passes_preview_solid_confidence(best.get("confidence")) else None
+
+
+def _extract_composite_planar_prismatic_solids(
+    vectors: np.ndarray,
+    normals: np.ndarray,
+    face_areas: np.ndarray,
+    config: DetectorConfig,
+) -> list[dict[str, Any]]:
+    """Detect disconnected planar/prismatic assemblies conservatively.
+
+    This path is intentionally narrow:
+    - requires at least two connected components,
+    - rejects high-containment overlaps (subtraction-shell-like ambiguity),
+    - requires each accepted component to pass the same preview confidence gate.
+    """
+    face_indices = np.arange(len(vectors), dtype=np.int64)
+    components = _connected_face_components(vectors, face_indices)
+    if not (COMPOSITE_COMPONENT_MIN_COUNT <= len(components) <= COMPOSITE_COMPONENT_MAX_COUNT):
+        return []
+
+    component_bboxes: list[tuple[np.ndarray, np.ndarray]] = []
+    solids: list[dict[str, Any]] = []
+    for component_index, comp_faces in enumerate(components):
+        comp_vectors = vectors[comp_faces]
+        comp_normals = normals[comp_faces]
+        comp_areas = face_areas[comp_faces]
+        comp_points = comp_vectors.reshape(-1, 3)
+        component_bboxes.append((np.min(comp_points, axis=0), np.max(comp_points, axis=0)))
+
+        best = _select_component_prismatic_solid(
+            comp_vectors,
+            comp_normals,
+            comp_areas,
+            config=config,
+        )
+        if best is None:
+            continue
+        tagged = dict(best)
+        tagged["composite_component"] = True
+        tagged["source_component_index"] = int(component_index)
+        solids.append(tagged)
+
+    if len(solids) < COMPOSITE_COMPONENT_MIN_COUNT:
+        return []
+
+    overlap = _component_bbox_overlap_metrics(component_bboxes)
+    if overlap["max_containment"] > COMPOSITE_CONTAINMENT_THRESHOLD:
+        return []
+
+    return solids
 
 
 def _matrix_to_euler_xyz(R: np.ndarray) -> list[float]:

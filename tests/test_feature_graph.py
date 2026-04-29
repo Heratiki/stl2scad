@@ -683,17 +683,43 @@ def test_feature_graph_extracts_slot_with_light_mesh_noise(test_output_dir):
     assert 8.0 < slots[0]["length"] < 12.0
 
 
-def test_feature_graph_scad_preview_declines_without_plate(test_data_dir):
-    # primitive_sphere.stl is now detected as revolve_solid (axisymmetric recovery
-    # correctly identifies it as a solid of revolution), so it produces a preview.
-    # Use composite_cylinder_beside_box.stl — a composite that passes no single-solid
-    # detector — as the canonical "no preview" fixture.
+def test_feature_graph_scad_preview_emits_composite_prismatic_union(test_data_dir):
+    # Composite planar/prismatic assemblies should emit a conservative union
+    # when each connected component is a high-confidence prismatic solid.
     fixtures_dir = test_data_dir / "benchmark_fixtures"
     ensure_benchmark_fixtures(fixtures_dir)
 
     graph = build_feature_graph_for_stl(fixtures_dir / "composite_cylinder_beside_box.stl")
+    solids = [
+        feature
+        for feature in graph["features"]
+        if feature.get("type") in {"box_like_solid", "cylinder_like_solid"}
+        and feature.get("composite_component")
+    ]
+    assert len(solids) >= 2
+    assert graph["ir_tree"][0]["root"]["type"] == "BooleanUnion"
 
-    assert emit_feature_graph_scad_preview(graph) is None
+    scad = emit_feature_graph_scad_preview(graph)
+    assert scad is not None
+    assert "union()" in scad
+    assert "cube(" in scad
+    assert "cylinder(" in scad
+
+
+def test_feature_graph_composite_path_declines_subtraction_shell(test_data_dir):
+    # Nested/containment-heavy composites remain ambiguous for ownership;
+    # ensure the new composite-component union path does not claim them.
+    fixtures_dir = test_data_dir / "benchmark_fixtures"
+    ensure_benchmark_fixtures(fixtures_dir)
+
+    graph = build_feature_graph_for_stl(fixtures_dir / "composite_subtraction_shell.stl")
+    composite_solids = [
+        feature
+        for feature in graph["features"]
+        if feature.get("type") in {"box_like_solid", "plate_like_solid", "cylinder_like_solid"}
+        and feature.get("composite_component")
+    ]
+    assert composite_solids == []
 
 
 def _create_plate_with_holes(

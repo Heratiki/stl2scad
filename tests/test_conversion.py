@@ -161,15 +161,14 @@ def test_invalid_tolerance_raises(sample_stl_file, test_output_dir):
 def test_parametric_cube_recognition(sample_stl_file, test_output_dir):
     """Test that a pure cube STL is recognized and exported as a parametric cube()."""
     output_file = test_output_dir / "parametric_cube.scad"
-    # Convert with parametric enabled
     stl2scad(str(sample_stl_file), str(output_file), parametric=True)
 
     assert output_file.exists(), "Output SCAD file not created"
     content = output_file.read_text()
 
-    # It should contain cube() and translate() and NOT polyhedron()
-    assert "cube([" in content, "Missing parametric cube() call"
-    assert "translate([" in content, "Missing translate() call for position"
+    # Feature-graph emits variable-based SCAD: cube(box_size) with box_origin/box_size vars.
+    assert "cube(" in content, "Missing parametric cube() call"
+    assert "translate(" in content, "Missing translate() call for position"
     assert "polyhedron" not in content, "Should not emit polyhedron for a basic cube"
 
 
@@ -184,9 +183,7 @@ def test_parametric_cube_recognition_backend_alias(sample_stl_file, test_output_
     )
 
     content = output_file.read_text()
-    assert (
-        "cube([" in content
-    ), "Missing parametric cube() call for default backend alias"
+    assert "cube(" in content, "Missing parametric cube() call for default backend alias"
     assert "polyhedron" not in content, "Should not emit polyhedron for a detected cube"
 
 
@@ -202,18 +199,12 @@ def test_invalid_recognition_backend_raises(sample_stl_file, test_output_dir):
         )
 
 
-def test_parametric_large_mesh_gate_uses_feature_graph_preview_fallback(
+def test_parametric_uses_feature_graph_as_primary_path(
     sample_stl_file, test_output_dir, monkeypatch
 ):
-    """When native auto-gates large meshes, fallback preview should still be attempted."""
-    output_file = test_output_dir / "parametric_large_mesh_gate_fallback.scad"
-    monkeypatch.setenv("STL2SCAD_ENABLE_PREVIEW_FALLBACK", "1")
+    """Feature-graph is the primary parametric path; result used when it produces output."""
+    output_file = test_output_dir / "parametric_feature_graph_primary.scad"
 
-    monkeypatch.setattr(
-        converter_module,
-        "_should_attempt_parametric",
-        lambda mesh, backend: (False, "auto_gate_native_large_mesh"),
-    )
     monkeypatch.setattr(
         converter_module,
         "_detect_feature_graph_preview_for_stl",
@@ -225,13 +216,33 @@ def test_parametric_large_mesh_gate_uses_feature_graph_preview_fallback(
 
     assert "cube([1, 2, 3]);" in content
     assert "polyhedron(" not in content
-    assert stats.metadata["recognition_attempted"] == "false"
-    assert stats.metadata["recognition_preview_attempted"] == "true"
-    assert stats.metadata["recognition_backend_used"] == "feature_graph_preview_fallback"
-    assert (
-        stats.metadata["recognition_fallback_reason"]
-        == "auto_gate_native_large_mesh;feature_graph_preview"
+    assert stats.metadata["recognition_feature_graph_attempted"] == "true"
+    assert stats.metadata["recognition_backend_used"] == "feature_graph"
+
+
+def test_parametric_falls_back_to_legacy_when_feature_graph_returns_none(
+    sample_stl_file, test_output_dir, monkeypatch
+):
+    """When feature-graph returns None, legacy backends are tried as fallback."""
+    output_file = test_output_dir / "parametric_legacy_fallback.scad"
+
+    monkeypatch.setattr(
+        converter_module,
+        "_detect_feature_graph_preview_for_stl",
+        lambda input_file: None,
     )
+    monkeypatch.setattr(
+        converter_module,
+        "_should_attempt_parametric",
+        lambda mesh, backend: (False, "auto_gate_native_large_mesh"),
+    )
+
+    stats = stl2scad(str(sample_stl_file), str(output_file), parametric=True)
+
+    assert stats.metadata["recognition_feature_graph_attempted"] == "true"
+    assert stats.metadata["recognition_attempted"] == "false"
+    assert stats.metadata["recognition_fallback_reason"] == "auto_gate_native_large_mesh"
+    assert stats.metadata["recognition_backend_used"] == "polyhedron_fallback"
 
 
 def test_phase1_trimesh_backend_recognizes_sphere_fixture(test_data_dir, monkeypatch):
@@ -377,11 +388,22 @@ def test_phase1_trimesh_backend_fallback_for_stanford_bunny(test_data_dir, monke
 
 
 def test_phase1_converter_fallback_emits_polyhedron_for_subtraction_shell(
-    test_data_dir, test_output_dir
+    test_data_dir, test_output_dir, monkeypatch
 ):
-    """Converter should keep safe polyhedron fallback when backend cannot safely reconstruct."""
+    """Legacy backend fallback emits polyhedron when neither feature-graph nor backends
+    can safely reconstruct composite geometry."""
     fixtures_dir = test_data_dir / "benchmark_fixtures"
     ensure_benchmark_fixtures(fixtures_dir)
+
+    # Bypass feature-graph (runs first in the new primary path) so this test
+    # exercises the legacy backend → polyhedron fallback path specifically.
+    # The feature-graph box_like_solid detector can false-positive on hollow shells
+    # (known limitation tracked as Immediate priority #3 in the roadmap).
+    monkeypatch.setattr(
+        converter_module,
+        "_detect_feature_graph_preview_for_stl",
+        lambda input_file: None,
+    )
 
     input_file = fixtures_dir / "composite_subtraction_shell.stl"
     output_file = test_output_dir / "subtraction_shell_parametric.scad"

@@ -13,6 +13,7 @@ import stl
 
 from stl2scad.core import cgal_backend
 from stl2scad.core import recognition as recognition_module
+from stl2scad.core import converter as converter_module
 from stl2scad.core.verification import verification as verification_module
 from stl2scad.core.converter import stl2scad
 from stl2scad.core.benchmark_fixtures import ensure_benchmark_fixtures
@@ -698,6 +699,14 @@ def test_converter_cgal_backend_uses_helper_and_emits_metadata(
         Path(__file__).resolve().parents[1] / "scripts" / "stl2scad_cgal_helper.py"
     ).resolve()
     monkeypatch.setenv(cgal_backend.CGAL_HELPER_ENV_VAR, str(helper_path))
+
+    # Bypass feature-graph (the primary path) so this test exercises the CGAL
+    # backend path specifically. Feature-graph runs first in the new dispatch order.
+    monkeypatch.setattr(
+        converter_module,
+        "_detect_feature_graph_preview_for_stl",
+        lambda input_file: None,
+    )
 
     output_scad = test_output_dir / "cgal_helper_output.scad"
     stl2scad(

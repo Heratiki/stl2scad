@@ -629,66 +629,64 @@ def stl2scad(
     backend_used: Optional[str] = None
     fallback_reason = ""
     if parametric:
-        should_attempt, gate_reason = _should_attempt_parametric(
-            stl_mesh, selected_backend
-        )
-        metadata["recognition_attempted"] = "true" if should_attempt else "false"
-        if not should_attempt:
-            fallback_reason = gate_reason
-            preview_scad = None
-            preview_fallback_enabled = (
-                os.getenv("STL2SCAD_ENABLE_PREVIEW_FALLBACK", "0") == "1"
+        # Feature-graph runs first: handles plates, holes, revolve, linear-extrude,
+        # and composite features. Old backends handle pure primitives as fallback.
+        metadata["recognition_feature_graph_attempted"] = "true"
+        fg_preview = _detect_feature_graph_preview_for_stl(input_file)
+        if fg_preview:
+            primitive_scad = fg_preview.strip() + "\n"
+            backend_used = "feature_graph"
+            primitive_type = "feature_graph_preview"
+            metadata["recognition_backend_used"] = backend_used
+        else:
+            # Feature-graph produced no high-confidence output; try legacy
+            # primitive-recognition backends (sphere/cylinder/cube/cone fitting).
+            should_attempt, gate_reason = _should_attempt_parametric(
+                stl_mesh, selected_backend
             )
-            if gate_reason == "auto_gate_native_large_mesh" and preview_fallback_enabled:
-                metadata["recognition_preview_attempted"] = "true"
-                preview_scad = _detect_feature_graph_preview_for_stl(input_file)
-            if preview_scad:
-                primitive_scad = preview_scad.strip() + "\n"
-                backend_used = "feature_graph_preview_fallback"
-                primitive_type = "feature_graph_preview"
-                metadata["recognition_backend_used"] = backend_used
-                metadata["recognition_fallback_reason"] = (
-                    f"{fallback_reason};feature_graph_preview"
-                )
-            else:
+            metadata["recognition_attempted"] = "true" if should_attempt else "false"
+            if not should_attempt:
+                fallback_reason = gate_reason
                 metadata["recognition_fallback_reason"] = fallback_reason
                 metadata["recognition_backend_used"] = "polyhedron_fallback"
-        elif selected_backend == "cgal":
-            cgal_result = detect_primitive_with_cgal(stl_mesh, tolerance=tolerance)
-            if cgal_result and cgal_result.detected and cgal_result.scad:
-                primitive_scad = cgal_result.scad.strip() + "\n"
-                backend_used = "cgal"
-                primitive_type = cgal_result.primitive_type
-                if cgal_result.confidence is not None:
-                    metadata["recognition_confidence"] = f"{cgal_result.confidence:.6f}"
-                if cgal_result.diagnostics is not None:
-                    metadata["recognition_diagnostics"] = json.dumps(
-                        cgal_result.diagnostics
+            elif selected_backend == "cgal":
+                cgal_result = detect_primitive_with_cgal(stl_mesh, tolerance=tolerance)
+                if cgal_result and cgal_result.detected and cgal_result.scad:
+                    primitive_scad = cgal_result.scad.strip() + "\n"
+                    backend_used = "cgal"
+                    primitive_type = cgal_result.primitive_type
+                    if cgal_result.confidence is not None:
+                        metadata["recognition_confidence"] = (
+                            f"{cgal_result.confidence:.6f}"
+                        )
+                    if cgal_result.diagnostics is not None:
+                        metadata["recognition_diagnostics"] = json.dumps(
+                            cgal_result.diagnostics
+                        )
+                else:
+                    primitive_scad, fallback_reason = detect_primitive_with_diagnostics(
+                        stl_mesh, backend="trimesh_manifold"
                     )
+                    if primitive_scad:
+                        backend_used = "trimesh_manifold_fallback"
+                        primitive_type = _infer_primitive_type_from_scad(primitive_scad)
+                    else:
+                        metadata["recognition_backend_used"] = "polyhedron_fallback"
+                        metadata["recognition_fallback_reason"] = (
+                            fallback_reason or "cgal_declined_detection"
+                        )
             else:
                 primitive_scad, fallback_reason = detect_primitive_with_diagnostics(
-                    stl_mesh, backend="trimesh_manifold"
+                    stl_mesh, backend=selected_backend
                 )
                 if primitive_scad:
-                    backend_used = "trimesh_manifold_fallback"
+                    backend_used = selected_backend
                     primitive_type = _infer_primitive_type_from_scad(primitive_scad)
                 else:
                     metadata["recognition_backend_used"] = "polyhedron_fallback"
                     metadata["recognition_fallback_reason"] = (
-                        fallback_reason or "cgal_declined_detection"
+                        fallback_reason or "no_primitive_match"
                     )
-        else:
-            primitive_scad, fallback_reason = detect_primitive_with_diagnostics(
-                stl_mesh, backend=selected_backend
-            )
-            if primitive_scad:
-                backend_used = selected_backend
-                primitive_type = _infer_primitive_type_from_scad(primitive_scad)
-            else:
-                metadata["recognition_backend_used"] = "polyhedron_fallback"
-                metadata["recognition_fallback_reason"] = (
-                    fallback_reason or "no_primitive_match"
-                )
 
     if primitive_scad:
         if backend_used:

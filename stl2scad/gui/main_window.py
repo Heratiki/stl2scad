@@ -52,6 +52,7 @@ from stl2scad.core.feature_graph import (
 )
 from stl2scad.core.feature_inventory import (
     InventoryConfig,
+    InventorySelectionConfig,
     analyze_stl_folder,
     analyze_stl_folder_for_feature_graphs,
     build_feature_graphs_from_inventory,
@@ -65,6 +66,16 @@ from stl2scad.core.verification import (
     generate_verification_report_html,
     verify_conversion,
 )
+from stl2scad.tuning.local_corpus import (
+    compare_local_corpus_score_to_baseline,
+    score_local_corpus,
+)
+from stl2scad.tuning.real_world_corpus import (
+    compare_real_world_score_to_baseline,
+    score_real_world_corpus,
+    serialize_real_world_corpus_score,
+)
+from stl2scad.tuning.html_report import generate_html_report
 
 # ---------------------------------------------------------------------------
 # Color palette
@@ -649,6 +660,12 @@ class FeatureGraphWorker(QThread):
                 inventory_output = self.kwargs.get("inventory_output")
 
                 if inventory_prefilter:
+                    sel_cfg_kwargs = self.kwargs.get("selection_config_kwargs") or {}
+                    selection_config = InventorySelectionConfig(
+                        min_mechanical_score=sel_cfg_kwargs.get("min_mechanical_score"),
+                        max_organic_score=sel_cfg_kwargs.get("max_organic_score"),
+                        allowed_families=tuple(sel_cfg_kwargs.get("allowed_families", [])),
+                    )
                     report = analyze_stl_folder_for_feature_graphs(
                         input_dir=input_path,
                         output_json=output_json,
@@ -658,6 +675,7 @@ class FeatureGraphWorker(QThread):
                             workers=workers,
                         ),
                         graph_workers=workers,
+                        selection_config=selection_config,
                         inventory_output_json=inventory_output,
                         inventory_progress_callback=lambda done, total, path: self.progress.emit(
                             f"[inventory {done}/{total}] {Path(path).name}"
@@ -725,9 +743,136 @@ class FeatureGraphWorker(QThread):
             self.error.emit(str(exc))
 
 
-# ---------------------------------------------------------------------------
-# Helper widgets
-# ---------------------------------------------------------------------------
+class LocalCorpusScoringWorker(QThread):
+    progress = pyqtSignal(str)
+    finished = pyqtSignal(object)
+    error = pyqtSignal(str)
+
+    def __init__(
+        self,
+        manifest_path: str,
+        output_json: str,
+        corpus_root: Optional[str],
+        baseline_json: Optional[str],
+        html_output: Optional[str],
+        triage_top_n: int,
+    ):
+        super().__init__()
+        self.manifest_path = manifest_path
+        self.output_json = output_json
+        self.corpus_root = corpus_root
+        self.baseline_json = baseline_json
+        self.html_output = html_output
+        self.triage_top_n = triage_top_n
+
+    def run(self):
+        try:
+            self.progress.emit("Running local corpus scoring…")
+            score = score_local_corpus(
+                self.manifest_path,
+                corpus_root=self.corpus_root or None,
+                triage_top_n=self.triage_top_n,
+                progress_fn=lambda msg: self.progress.emit(msg),
+            )
+            out = Path(self.output_json)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            with out.open("w", encoding="utf-8") as fh:
+                import json as _json
+                _json.dump(score, fh, indent=2)
+
+            delta: Optional[Dict[str, Any]] = None
+            if self.baseline_json and Path(self.baseline_json).exists():
+                self.progress.emit("Comparing to baseline…")
+                with Path(self.baseline_json).open(encoding="utf-8") as fh:
+                    baseline = _json.load(fh)
+                delta = compare_local_corpus_score_to_baseline(score, baseline)
+
+            html_file: Optional[str] = None
+            if self.html_output:
+                self.progress.emit("Generating HTML report…")
+                thumb_cache = out.parent / "thumbs"
+                generate_html_report(
+                    score_path=out,
+                    output_path=self.html_output,
+                    thumb_cache_dir=thumb_cache,
+                    show_progress=False,
+                )
+                html_file = str(self.html_output)
+
+            self.finished.emit(
+                {
+                    "score": score,
+                    "output_json": str(out),
+                    "delta": delta,
+                    "html_file": html_file,
+                }
+            )
+        except Exception as exc:
+            self.error.emit(str(exc))
+
+
+class RealWorldCorpusScoringWorker(QThread):
+    progress = pyqtSignal(str)
+    finished = pyqtSignal(object)
+    error = pyqtSignal(str)
+
+    def __init__(
+        self,
+        manifest_path: str,
+        output_json: str,
+        corpus_root: Optional[str],
+        baseline_json: Optional[str],
+        merge_gate: bool,
+    ):
+        super().__init__()
+        self.manifest_path = manifest_path
+        self.output_json = output_json
+        self.corpus_root = corpus_root
+        self.baseline_json = baseline_json
+        self.merge_gate = merge_gate
+
+    def run(self):
+        try:
+            from stl2scad.tuning.config import DetectorConfig
+
+            self.progress.emit("Running real-world corpus scoring…")
+            config = DetectorConfig()
+            corpus_score = score_real_world_corpus(
+                config,
+                self.manifest_path,
+                corpus_root=self.corpus_root or None,
+            )
+            payload = serialize_real_world_corpus_score(corpus_score)
+
+            out = Path(self.output_json)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            import json as _json
+            with out.open("w", encoding="utf-8") as fh:
+                _json.dump(payload, fh, indent=2)
+
+            delta: Optional[Dict[str, Any]] = None
+            merge_gate_passed: Optional[bool] = None
+            if self.baseline_json and Path(self.baseline_json).exists():
+                self.progress.emit("Comparing to baseline…")
+                with Path(self.baseline_json).open(encoding="utf-8") as fh:
+                    baseline = _json.load(fh)
+                delta = compare_real_world_score_to_baseline(corpus_score, baseline)
+                if self.merge_gate and delta is not None:
+                    regressions = delta.get("regressions", [])
+                    merge_gate_passed = len(regressions) == 0
+
+            self.finished.emit(
+                {
+                    "score": payload,
+                    "output_json": str(out),
+                    "delta": delta,
+                    "merge_gate_passed": merge_gate_passed,
+                }
+            )
+        except Exception as exc:
+            self.error.emit(str(exc))
+
+
 
 
 def _hsep():
@@ -907,9 +1052,12 @@ def _format_recognition_diagnostics(metadata: Optional[Dict[str, Any]]) -> str:
     confidence = metadata.get("recognition_confidence")
     fallback_reason = metadata.get("recognition_fallback_reason")
     attempted = metadata.get("recognition_attempted")
+    fg_attempted = metadata.get("recognition_feature_graph_attempted")
 
     if requested:
         lines.append(f"Requested backend: {requested}")
+    if fg_attempted is not None:
+        lines.append(f"Feature-graph attempted: {fg_attempted}")
     if used:
         lines.append(f"Used backend: {used}")
     if attempted is not None:
@@ -954,6 +1102,17 @@ class MainWindow(QMainWindow):
         self.graph_output_json: Optional[str] = None
         self.graph_inventory_output_json: Optional[str] = None
         self.graph_preview_target: Optional[str] = None
+        # Local corpus scoring state
+        self.local_corpus_manifest: Optional[str] = None
+        self.local_corpus_root: Optional[str] = None
+        self.local_corpus_output_json: Optional[str] = None
+        self.local_corpus_baseline_json: Optional[str] = None
+        self.local_corpus_html_output: Optional[str] = None
+        # Real-world corpus scoring state
+        self.rw_corpus_manifest: Optional[str] = None
+        self.rw_corpus_root: Optional[str] = None
+        self.rw_corpus_output_json: Optional[str] = None
+        self.rw_corpus_baseline_json: Optional[str] = None
         self.debug_mode = False
         self.current_color = (0.8, 0.8, 0.8, 1.0)
         self.mesh_data: Optional[gl.MeshData] = None
@@ -1444,6 +1603,29 @@ class MainWindow(QMainWindow):
         self.graph_inventory_prefilter_check.toggled.connect(
             self._update_graph_mode_controls
         )
+
+        # InventorySelectionConfig controls (enabled only when prefilter is on)
+        inv_sel_row = QHBoxLayout()
+        inv_sel_row.addWidget(_label("Min mech score:", "metric"))
+        self.graph_min_mechanical_spin = _spinbox(0.0, decimals=2, lo=0.0, hi=1.0, step=0.05, width=72)
+        self.graph_min_mechanical_spin.setToolTip("Minimum inventory mechanical score for prefilter (0 = disabled)")
+        inv_sel_row.addWidget(self.graph_min_mechanical_spin)
+        inv_sel_row.addStretch(1)
+        inv_sel_row.addWidget(_label("Max organic:", "metric"))
+        self.graph_max_organic_spin = _spinbox(1.0, decimals=2, lo=0.0, hi=1.0, step=0.05, width=72)
+        self.graph_max_organic_spin.setToolTip("Maximum inventory organic score for prefilter (1 = disabled)")
+        inv_sel_row.addWidget(self.graph_max_organic_spin)
+
+        families_row = QHBoxLayout()
+        families_row.addWidget(_label("Families:", "metric"))
+        self.graph_family_plate_check = QCheckBox("plate")
+        self.graph_family_box_check = QCheckBox("box")
+        self.graph_family_cylinder_check = QCheckBox("cylinder")
+        for chk in (self.graph_family_plate_check, self.graph_family_box_check, self.graph_family_cylinder_check):
+            chk.setToolTip("Restrict prefilter to this inventory family (none checked = all)")
+            families_row.addWidget(chk)
+        families_row.addStretch(1)
+
         self._graph_btn = _btn("Run Feature Graph", "primary")
         self._graph_btn.clicked.connect(self.run_feature_graph)
 
@@ -1467,6 +1649,8 @@ class MainWindow(QMainWindow):
         g5.addLayout(graph_options_row)
         g5.addWidget(self.graph_recursive_check)
         g5.addWidget(self.graph_inventory_prefilter_check)
+        g5.addLayout(inv_sel_row)
+        g5.addLayout(families_row)
         g5.addWidget(self._graph_btn)
         grp5.setLayout(g5)
         layout.addWidget(grp5)
@@ -1535,6 +1719,151 @@ class MainWindow(QMainWindow):
         g8.addWidget(self.acceleration_report_view)
         grp8.setLayout(g8)
         layout.addWidget(grp8)
+
+        # ── STEP 9: LOCAL CORPUS ───────────────────────────────────
+        grp9 = self._section_group("09  LOCAL CORPUS")
+        g9 = QVBoxLayout()
+        g9.setSpacing(6)
+
+        lc_manifest_row = QHBoxLayout()
+        self._lc_manifest_label = QLabel("No manifest selected")
+        self._lc_manifest_label.setObjectName("file_display")
+        self._lc_manifest_label.setWordWrap(True)
+        self._lc_manifest_btn = _btn("…", "secondary", tooltip="Select local corpus manifest JSON")
+        self._lc_manifest_btn.setFixedWidth(28)
+        self._lc_manifest_btn.clicked.connect(self.select_local_corpus_manifest)
+        lc_manifest_row.addWidget(self._lc_manifest_label, 1)
+        lc_manifest_row.addWidget(self._lc_manifest_btn)
+
+        lc_root_row = QHBoxLayout()
+        self._lc_root_label = QLabel("Auto (manifest directory)")
+        self._lc_root_label.setObjectName("file_display")
+        self._lc_root_label.setWordWrap(True)
+        self._lc_root_btn = _btn("…", "secondary", tooltip="Select corpus root directory (optional)")
+        self._lc_root_btn.setFixedWidth(28)
+        self._lc_root_btn.clicked.connect(self.select_local_corpus_root)
+        lc_root_row.addWidget(self._lc_root_label, 1)
+        lc_root_row.addWidget(self._lc_root_btn)
+
+        lc_out_row = QHBoxLayout()
+        self._lc_output_label = QLabel("Auto: artifacts/local_corpus_score.json")
+        self._lc_output_label.setObjectName("file_display")
+        self._lc_output_label.setWordWrap(True)
+        self._lc_output_btn = _btn("…", "secondary", tooltip="Select score output JSON")
+        self._lc_output_btn.setFixedWidth(28)
+        self._lc_output_btn.clicked.connect(self.select_local_corpus_output)
+        lc_out_row.addWidget(self._lc_output_label, 1)
+        lc_out_row.addWidget(self._lc_output_btn)
+
+        lc_baseline_row = QHBoxLayout()
+        self._lc_baseline_label = QLabel("No baseline (skip comparison)")
+        self._lc_baseline_label.setObjectName("file_display")
+        self._lc_baseline_label.setWordWrap(True)
+        self._lc_baseline_btn = _btn("…", "secondary", tooltip="Select baseline JSON (optional)")
+        self._lc_baseline_btn.setFixedWidth(28)
+        self._lc_baseline_btn.clicked.connect(self.select_local_corpus_baseline)
+        lc_baseline_row.addWidget(self._lc_baseline_label, 1)
+        lc_baseline_row.addWidget(self._lc_baseline_btn)
+
+        lc_html_row = QHBoxLayout()
+        self._lc_html_label = QLabel("No HTML report (optional)")
+        self._lc_html_label.setObjectName("file_display")
+        self._lc_html_label.setWordWrap(True)
+        self._lc_html_btn = _btn("…", "secondary", tooltip="Select HTML report output (optional)")
+        self._lc_html_btn.setFixedWidth(28)
+        self._lc_html_btn.clicked.connect(self.select_local_corpus_html_output)
+        lc_html_row.addWidget(self._lc_html_label, 1)
+        lc_html_row.addWidget(self._lc_html_btn)
+
+        lc_triage_row = QHBoxLayout()
+        lc_triage_row.addWidget(_label("Triage top-N:", "metric"))
+        lc_triage_row.addStretch(1)
+        self.lc_triage_spin = _int_spinbox(5, lo=1, hi=50, width=72)
+        lc_triage_row.addWidget(self.lc_triage_spin)
+
+        self._lc_run_btn = _btn("Run Local Corpus Scoring", "primary")
+        self._lc_run_btn.clicked.connect(self.run_local_corpus_scoring)
+
+        g9.addWidget(_label("Manifest JSON:", "metric"))
+        g9.addLayout(lc_manifest_row)
+        g9.addWidget(_label("Corpus root:", "metric"))
+        g9.addLayout(lc_root_row)
+        g9.addWidget(_label("Output JSON:", "metric"))
+        g9.addLayout(lc_out_row)
+        g9.addWidget(_label("Baseline JSON:", "metric"))
+        g9.addLayout(lc_baseline_row)
+        g9.addWidget(_label("HTML report:", "metric"))
+        g9.addLayout(lc_html_row)
+        g9.addLayout(lc_triage_row)
+        g9.addWidget(self._lc_run_btn)
+        grp9.setLayout(g9)
+        layout.addWidget(grp9)
+
+        # ── STEP 10: REAL-WORLD CORPUS ─────────────────────────────
+        grp10 = self._section_group("10  REAL-WORLD CORPUS")
+        g10 = QVBoxLayout()
+        g10.setSpacing(6)
+
+        rw_manifest_row = QHBoxLayout()
+        self._rw_manifest_label = QLabel("No manifest selected")
+        self._rw_manifest_label.setObjectName("file_display")
+        self._rw_manifest_label.setWordWrap(True)
+        self._rw_manifest_btn = _btn("…", "secondary", tooltip="Select real-world corpus manifest JSON")
+        self._rw_manifest_btn.setFixedWidth(28)
+        self._rw_manifest_btn.clicked.connect(self.select_rw_corpus_manifest)
+        rw_manifest_row.addWidget(self._rw_manifest_label, 1)
+        rw_manifest_row.addWidget(self._rw_manifest_btn)
+
+        rw_root_row = QHBoxLayout()
+        self._rw_root_label = QLabel("Auto (manifest directory)")
+        self._rw_root_label.setObjectName("file_display")
+        self._rw_root_label.setWordWrap(True)
+        self._rw_root_btn = _btn("…", "secondary", tooltip="Select corpus root directory (optional)")
+        self._rw_root_btn.setFixedWidth(28)
+        self._rw_root_btn.clicked.connect(self.select_rw_corpus_root)
+        rw_root_row.addWidget(self._rw_root_label, 1)
+        rw_root_row.addWidget(self._rw_root_btn)
+
+        rw_out_row = QHBoxLayout()
+        self._rw_output_label = QLabel("Auto: artifacts/real_world_recall_maintainer.json")
+        self._rw_output_label.setObjectName("file_display")
+        self._rw_output_label.setWordWrap(True)
+        self._rw_output_btn = _btn("…", "secondary", tooltip="Select score output JSON")
+        self._rw_output_btn.setFixedWidth(28)
+        self._rw_output_btn.clicked.connect(self.select_rw_corpus_output)
+        rw_out_row.addWidget(self._rw_output_label, 1)
+        rw_out_row.addWidget(self._rw_output_btn)
+
+        rw_baseline_row = QHBoxLayout()
+        self._rw_baseline_label = QLabel("No baseline (skip comparison)")
+        self._rw_baseline_label.setObjectName("file_display")
+        self._rw_baseline_label.setWordWrap(True)
+        self._rw_baseline_btn = _btn("…", "secondary", tooltip="Select baseline JSON (optional)")
+        self._rw_baseline_btn.setFixedWidth(28)
+        self._rw_baseline_btn.clicked.connect(self.select_rw_corpus_baseline)
+        rw_baseline_row.addWidget(self._rw_baseline_label, 1)
+        rw_baseline_row.addWidget(self._rw_baseline_btn)
+
+        self.rw_merge_gate_check = QCheckBox("Merge gate (fail on regressions)")
+        self.rw_merge_gate_check.setToolTip(
+            "When a baseline is provided, fail if any detection regressions are found"
+        )
+
+        self._rw_run_btn = _btn("Run Real-World Corpus Scoring", "primary")
+        self._rw_run_btn.clicked.connect(self.run_rw_corpus_scoring)
+
+        g10.addWidget(_label("Manifest JSON:", "metric"))
+        g10.addLayout(rw_manifest_row)
+        g10.addWidget(_label("Corpus root:", "metric"))
+        g10.addLayout(rw_root_row)
+        g10.addWidget(_label("Output JSON:", "metric"))
+        g10.addLayout(rw_out_row)
+        g10.addWidget(_label("Baseline JSON:", "metric"))
+        g10.addLayout(rw_baseline_row)
+        g10.addWidget(self.rw_merge_gate_check)
+        g10.addWidget(self._rw_run_btn)
+        grp10.setLayout(g10)
+        layout.addWidget(grp10)
 
         layout.addStretch(1)
 
@@ -1623,6 +1952,8 @@ class MainWindow(QMainWindow):
             self._inventory_btn,
             self._graph_btn,
             self._acceleration_btn,
+            self._lc_run_btn,
+            self._rw_run_btn,
         )
 
     def _update_action_button_state(self):
@@ -1635,6 +1966,8 @@ class MainWindow(QMainWindow):
         self._inventory_btn.setEnabled(True)
         self._graph_btn.setEnabled(True)
         self._acceleration_btn.setEnabled(True)
+        self._lc_run_btn.setEnabled(True)
+        self._rw_run_btn.setEnabled(True)
 
     # ------------------------------------------------------------------
     # Actions
@@ -1702,6 +2035,13 @@ class MainWindow(QMainWindow):
         self.graph_inventory_prefilter_check.setEnabled(is_folder_mode)
         self._graph_inventory_output_btn.setEnabled(is_folder_mode)
         self._graph_preview_btn.setEnabled(is_inventory_mode or is_single_file_mode)
+
+        prefilter_active = is_folder_mode and self.graph_inventory_prefilter_check.isChecked()
+        self.graph_min_mechanical_spin.setEnabled(prefilter_active)
+        self.graph_max_organic_spin.setEnabled(prefilter_active)
+        self.graph_family_plate_check.setEnabled(prefilter_active)
+        self.graph_family_box_check.setEnabled(prefilter_active)
+        self.graph_family_cylinder_check.setEnabled(prefilter_active)
 
         if mode == "Loaded STL":
             if self.current_stl_file:
@@ -1897,6 +2237,198 @@ class MainWindow(QMainWindow):
             self._graph_preview_label, path, "Optional preview target"
         )
 
+    # ------------------------------------------------------------------
+    # Local corpus file dialogs
+    # ------------------------------------------------------------------
+
+    def select_local_corpus_manifest(self):
+        initial = self.local_corpus_manifest or str(
+            Path.cwd() / "tests" / "data" / "local_corpus_manifest.json"
+        )
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Select Local Corpus Manifest", initial, "JSON Files (*.json)"
+        )
+        if not path:
+            return
+        self.local_corpus_manifest = path
+        self._set_path_label(self._lc_manifest_label, path, "No manifest selected")
+        if self.local_corpus_output_json is None:
+            default_out = str(Path(path).parent / "local_corpus_score.json")
+            self.local_corpus_output_json = default_out
+            self._set_path_label(
+                self._lc_output_label, default_out, "Auto: artifacts/local_corpus_score.json"
+            )
+
+    def select_local_corpus_root(self):
+        path = QtWidgets.QFileDialog.getExistingDirectory(
+            self, "Select Corpus Root Directory (optional)", ""
+        )
+        if not path:
+            return
+        self.local_corpus_root = path
+        self._set_path_label(self._lc_root_label, path, "Auto (manifest directory)")
+
+    def select_local_corpus_output(self):
+        initial = self.local_corpus_output_json or str(
+            Path.cwd() / "artifacts" / "local_corpus_score.json"
+        )
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Select Score Output JSON", initial, "JSON Files (*.json)"
+        )
+        if not path:
+            return
+        self.local_corpus_output_json = path
+        self._set_path_label(
+            self._lc_output_label, path, "Auto: artifacts/local_corpus_score.json"
+        )
+
+    def select_local_corpus_baseline(self):
+        initial = self.local_corpus_baseline_json or str(
+            Path.cwd() / "artifacts" / "local_corpus_score.json"
+        )
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Select Baseline JSON (optional)", initial, "JSON Files (*.json)"
+        )
+        if not path:
+            return
+        self.local_corpus_baseline_json = path
+        self._set_path_label(
+            self._lc_baseline_label, path, "No baseline (skip comparison)"
+        )
+
+    def select_local_corpus_html_output(self):
+        initial = self.local_corpus_html_output or str(
+            Path.cwd() / "artifacts" / "local_corpus_report.html"
+        )
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Select HTML Report Output (optional)", initial, "HTML Files (*.html)"
+        )
+        if not path:
+            return
+        self.local_corpus_html_output = path
+        self._set_path_label(self._lc_html_label, path, "No HTML report (optional)")
+
+    def run_local_corpus_scoring(self):
+        if not self.local_corpus_manifest:
+            self.select_local_corpus_manifest()
+        if not self.local_corpus_manifest:
+            return
+        output_json = self.local_corpus_output_json or str(
+            Path.cwd() / "artifacts" / "local_corpus_score.json"
+        )
+        if self.local_corpus_output_json is None:
+            self.local_corpus_output_json = output_json
+            self._set_path_label(
+                self._lc_output_label, output_json, "Auto: artifacts/local_corpus_score.json"
+            )
+        worker = LocalCorpusScoringWorker(
+            manifest_path=self.local_corpus_manifest,
+            output_json=output_json,
+            corpus_root=self.local_corpus_root,
+            baseline_json=self.local_corpus_baseline_json,
+            html_output=self.local_corpus_html_output,
+            triage_top_n=int(self.lc_triage_spin.value()),
+        )
+        self._connect_worker(
+            worker, self.local_corpus_finished, self.local_corpus_error
+        )
+        self._start_busy("Running local corpus scoring…")
+        worker.start()
+
+    # ------------------------------------------------------------------
+    # Real-world corpus file dialogs
+    # ------------------------------------------------------------------
+
+    def select_rw_corpus_manifest(self):
+        initial = self.rw_corpus_manifest or str(
+            Path.cwd() / "tests" / "data" / "real_world_corpus_manifest.json"
+        )
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Select Real-World Corpus Manifest", initial, "JSON Files (*.json)"
+        )
+        if not path:
+            return
+        self.rw_corpus_manifest = path
+        self._set_path_label(self._rw_manifest_label, path, "No manifest selected")
+        if self.rw_corpus_output_json is None:
+            default_out = str(Path(path).parent / "real_world_recall_maintainer.json")
+            self.rw_corpus_output_json = default_out
+            self._set_path_label(
+                self._rw_output_label,
+                default_out,
+                "Auto: artifacts/real_world_recall_maintainer.json",
+            )
+
+    def select_rw_corpus_root(self):
+        path = QtWidgets.QFileDialog.getExistingDirectory(
+            self, "Select Corpus Root Directory (optional)", ""
+        )
+        if not path:
+            return
+        self.rw_corpus_root = path
+        self._set_path_label(self._rw_root_label, path, "Auto (manifest directory)")
+
+    def select_rw_corpus_output(self):
+        initial = self.rw_corpus_output_json or str(
+            Path.cwd() / "artifacts" / "real_world_recall_maintainer.json"
+        )
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Select Score Output JSON",
+            initial,
+            "JSON Files (*.json)",
+        )
+        if not path:
+            return
+        self.rw_corpus_output_json = path
+        self._set_path_label(
+            self._rw_output_label,
+            path,
+            "Auto: artifacts/real_world_recall_maintainer.json",
+        )
+
+    def select_rw_corpus_baseline(self):
+        initial = self.rw_corpus_baseline_json or str(
+            Path.cwd() / "artifacts" / "real_world_recall_baseline.json"
+        )
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Select Baseline JSON (optional)", initial, "JSON Files (*.json)"
+        )
+        if not path:
+            return
+        self.rw_corpus_baseline_json = path
+        self._set_path_label(
+            self._rw_baseline_label, path, "No baseline (skip comparison)"
+        )
+
+    def run_rw_corpus_scoring(self):
+        if not self.rw_corpus_manifest:
+            self.select_rw_corpus_manifest()
+        if not self.rw_corpus_manifest:
+            return
+        output_json = self.rw_corpus_output_json or str(
+            Path.cwd() / "artifacts" / "real_world_recall_maintainer.json"
+        )
+        if self.rw_corpus_output_json is None:
+            self.rw_corpus_output_json = output_json
+            self._set_path_label(
+                self._rw_output_label,
+                output_json,
+                "Auto: artifacts/real_world_recall_maintainer.json",
+            )
+        worker = RealWorldCorpusScoringWorker(
+            manifest_path=self.rw_corpus_manifest,
+            output_json=output_json,
+            corpus_root=self.rw_corpus_root,
+            baseline_json=self.rw_corpus_baseline_json,
+            merge_gate=self.rw_merge_gate_check.isChecked(),
+        )
+        self._connect_worker(
+            worker, self.rw_corpus_finished, self.rw_corpus_error
+        )
+        self._start_busy("Running real-world corpus scoring…")
+        worker.start()
+
     def _connect_worker(self, worker: QThread, finished_slot, error_slot):
         self.worker = worker
         worker.progress.connect(self.update_status)
@@ -2028,6 +2560,23 @@ class MainWindow(QMainWindow):
                         inventory_output,
                         "Optional inventory JSON output",
                     )
+
+            # Build InventorySelectionConfig kwargs from GUI controls
+            sel_families: list[str] = []
+            if self.graph_family_plate_check.isChecked():
+                sel_families.append("plate")
+            if self.graph_family_box_check.isChecked():
+                sel_families.append("box")
+            if self.graph_family_cylinder_check.isChecked():
+                sel_families.append("cylinder")
+            min_mech = float(self.graph_min_mechanical_spin.value())
+            max_org = float(self.graph_max_organic_spin.value())
+            selection_config_kwargs: Dict[str, Any] = {
+                "allowed_families": sel_families,
+                "min_mechanical_score": min_mech if min_mech > 0.0 else None,
+                "max_organic_score": max_org if max_org < 1.0 else None,
+            }
+
             worker = FeatureGraphWorker(
                 "folder",
                 input_path=self.graph_source_path,
@@ -2037,6 +2586,7 @@ class MainWindow(QMainWindow):
                 workers=workers,
                 inventory_prefilter=self.graph_inventory_prefilter_check.isChecked(),
                 inventory_output=inventory_output,
+                selection_config_kwargs=selection_config_kwargs,
             )
         else:
             if not self.graph_source_path:
@@ -2417,6 +2967,78 @@ class MainWindow(QMainWindow):
         self._set_status(f"Feature graph failed: {error_message}", PALETTE["error"])
         self._set_badge("FAIL", PALETTE["error"])
         QtWidgets.QMessageBox.critical(self, "Feature Graph Error", error_message)
+
+    def local_corpus_finished(self, payload: Dict[str, Any]):
+        self._stop_busy()
+        score = payload["score"]
+        output_json = payload["output_json"]
+        delta = payload.get("delta")
+        html_file = payload.get("html_file")
+
+        summary = score.get("summary", {})
+        parametric = summary.get("parametric_preview", 0)
+        total = summary.get("total", 0)
+        rate = f"{parametric}/{total}" if total else "—"
+
+        details = [f"Local corpus scored  ·  preview rate {rate}  ·  {output_json}"]
+        if delta is not None:
+            improved = delta.get("improved", 0)
+            regressed = delta.get("regressed", 0)
+            details.append(f"Δ +{improved} / -{regressed} vs baseline")
+        if html_file:
+            details.append(f"HTML: {html_file}")
+
+        self._set_workflow_output(_format_json_payload(score))
+        color = PALETTE["success"]
+        badge = "OK"
+        if delta and delta.get("regressed", 0) > 0:
+            color = PALETTE["warning"]
+            badge = "WARN"
+        self._set_status("  ·  ".join(details), color)
+        self._set_badge(badge, color)
+        QtWidgets.QMessageBox.information(self, "Local Corpus Scoring", "\n".join(details))
+
+    def local_corpus_error(self, error_message: str):
+        self._stop_busy()
+        self._set_status(f"Local corpus scoring failed: {error_message}", PALETTE["error"])
+        self._set_badge("FAIL", PALETTE["error"])
+        QtWidgets.QMessageBox.critical(self, "Local Corpus Scoring Error", error_message)
+
+    def rw_corpus_finished(self, payload: Dict[str, Any]):
+        self._stop_busy()
+        score = payload["score"]
+        output_json = payload["output_json"]
+        delta = payload.get("delta")
+        merge_gate_passed = payload.get("merge_gate_passed")
+
+        total = score.get("total_cases", 0)
+        detected = score.get("detected_cases", 0)
+        details = [
+            f"Real-world corpus scored  ·  {detected}/{total} detected  ·  {output_json}"
+        ]
+        if delta is not None:
+            regressions = delta.get("regressions", [])
+            improvements = delta.get("improvements", [])
+            details.append(f"Δ +{len(improvements)} / -{len(regressions)} vs baseline")
+        if merge_gate_passed is not None:
+            gate_txt = "PASS" if merge_gate_passed else "FAIL (regressions found)"
+            details.append(f"Merge gate: {gate_txt}")
+
+        self._set_workflow_output(_format_json_payload(score))
+        failed = merge_gate_passed is False or (
+            delta is not None and len(delta.get("regressions", [])) > 0
+        )
+        color = PALETTE["error"] if failed else PALETTE["success"]
+        badge = "FAIL" if failed else "OK"
+        self._set_status("  ·  ".join(details), color)
+        self._set_badge(badge, color)
+        QtWidgets.QMessageBox.information(self, "Real-World Corpus Scoring", "\n".join(details))
+
+    def rw_corpus_error(self, error_message: str):
+        self._stop_busy()
+        self._set_status(f"Real-world corpus scoring failed: {error_message}", PALETTE["error"])
+        self._set_badge("FAIL", PALETTE["error"])
+        QtWidgets.QMessageBox.critical(self, "Real-World Corpus Scoring Error", error_message)
 
     # ------------------------------------------------------------------
     # 3-D view controls

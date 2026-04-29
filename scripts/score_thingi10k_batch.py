@@ -150,6 +150,26 @@ def _print_score_summary(score: dict) -> None:
         print("  Bucket counts:")
         for bucket, count in sorted(buckets.items(), key=lambda x: -x[1]):
             print(f"    {bucket}: {count}")
+    triage = score.get("triage_summary") or {}
+    triage_counts = triage.get("bucket_counts") or {}
+    if triage_counts:
+        print("  Triage counts:")
+        for bucket in (
+            "parametric_preview",
+            "feature_graph_no_preview",
+            "axis_pairs_only",
+            "polyhedron_fallback",
+            "error",
+        ):
+            print(f"    {bucket}: {triage_counts.get(bucket, 0)}")
+        unconfirmed_emitted = sum(
+            1
+            for row in triage.get("per_file") or []
+            if row.get("bucket") == "feature_graph_no_preview"
+            and (row.get("failure_shape_metadata") or {}).get("emitted_preview")
+        )
+        if unconfirmed_emitted:
+            print(f"    unconfirmed_emitted_preview: {unconfirmed_emitted}")
 
 
 def _print_delta_summary(delta: dict) -> None:

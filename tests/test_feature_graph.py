@@ -1434,6 +1434,10 @@ def test_triage_report_demotes_linear_extrude_preview_to_unconfirmed_bucket():
     assert report["bucket_counts"]["parametric_preview"] == 0
     assert report["bucket_counts"]["feature_graph_no_preview"] == 1
     assert report["per_file"][0]["bucket"] == "feature_graph_no_preview"
+    metadata = report["per_file"][0]["failure_shape_metadata"]
+    assert metadata["emitted_preview"] is True
+    assert metadata["preview_feature_types"] == ["linear_extrude_solid"]
+    assert metadata["solid_candidate_confidences"] == {"linear_extrude_solid": 0.83}
 
 
 def test_triage_report_ranked_failure_patterns_shape(test_output_dir):
@@ -1486,6 +1490,9 @@ def test_triage_report_failure_shape_metadata_present_for_non_preview(test_outpu
     assert "planar_support_fraction" in metadata
     assert "plate_candidate_confidence" in metadata
     assert "box_candidate_confidence" in metadata
+    assert "solid_candidate_confidences" in metadata
+    assert "emitted_preview" in metadata
+    assert "preview_feature_types" in metadata
     assert "dominant_axis_pair_confidence" not in metadata
 
 

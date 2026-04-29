@@ -4114,6 +4114,10 @@ _CONFIRMED_PREVIEW_FEATURE_TYPES = frozenset(
     }
 )
 
+_SCAD_PREVIEW_FEATURE_TYPES = _CONFIRMED_PREVIEW_FEATURE_TYPES | frozenset(
+    {"linear_extrude_solid"}
+)
+
 
 def _has_confirmed_parametric_preview(graph: dict[str, Any]) -> bool:
     """Return whether the graph has a preview in a trusted parametric family.
@@ -4128,6 +4132,18 @@ def _has_confirmed_parametric_preview(graph: dict[str, Any]) -> bool:
 
     feature_types = {str(f.get("type", "")) for f in graph.get("features", [])}
     return bool(feature_types & _CONFIRMED_PREVIEW_FEATURE_TYPES)
+
+
+def _solid_candidate_confidences(graph: dict[str, Any]) -> dict[str, float]:
+    """Return best confidence by supported solid feature family."""
+    confidences: dict[str, float] = {}
+    for feature in graph.get("features", []):
+        feature_type = str(feature.get("type", ""))
+        if feature_type not in _SCAD_PREVIEW_FEATURE_TYPES:
+            continue
+        confidence = float(feature.get("confidence", 0.0))
+        confidences[feature_type] = max(confidence, confidences.get(feature_type, 0.0))
+    return {key: round(value, 4) for key, value in sorted(confidences.items())}
 
 
 def _classify_graph_bucket(
@@ -4180,10 +4196,15 @@ def _failure_shape_metadata(graph: dict[str, Any]) -> dict[str, Any]:
                                     mesh is mostly curved/complex (e.g. 3DBenchy).
     - ``plate_candidate_confidence``  confidence of best plate_like_solid, or null
     - ``box_candidate_confidence``    confidence of best box_like_solid, or null
+    - ``solid_candidate_confidences`` best confidence by supported solid family
+    - ``emitted_preview``             whether SCAD was emitted despite the triage bucket
+    - ``preview_feature_types``        solid families responsible for emitted SCAD
     """
     features = graph.get("features", [])
     bbox = graph.get("mesh", {}).get("bounding_box", {})
     surface_area = float(graph.get("mesh", {}).get("surface_area", 0.0))
+    scad_preview = emit_feature_graph_scad_preview(graph)
+    emitted_preview = scad_preview is not None
 
     axis_pairs = [f for f in features if f.get("type") == "axis_boundary_plane_pair"]
     paired_axes = [f for f in axis_pairs if f.get("paired", False)]
@@ -4213,6 +4234,7 @@ def _failure_shape_metadata(graph: dict[str, Any]) -> dict[str, Any]:
     box = _best_feature(graph, "box_like_solid")
     plate_confidence = round(float(plate["confidence"]), 4) if plate else None
     box_confidence = round(float(box["confidence"]), 4) if box else None
+    solid_confidences = _solid_candidate_confidences(graph)
 
     return {
         "axis_pair_count": len(axis_pairs),
@@ -4222,6 +4244,9 @@ def _failure_shape_metadata(graph: dict[str, Any]) -> dict[str, Any]:
         "planar_support_fraction": planar_support_fraction,
         "plate_candidate_confidence": plate_confidence,
         "box_candidate_confidence": box_confidence,
+        "solid_candidate_confidences": solid_confidences,
+        "emitted_preview": emitted_preview,
+        "preview_feature_types": sorted(solid_confidences) if emitted_preview else [],
     }
 
 

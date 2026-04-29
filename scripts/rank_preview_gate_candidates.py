@@ -26,6 +26,13 @@ def _best_confidence(metadata: dict[str, Any]) -> tuple[str, float | None]:
         return "plate_like_solid", float(plate)
     if box is not None:
         return "box_like_solid", float(box)
+    solid_confidences = metadata.get("solid_candidate_confidences") or {}
+    if solid_confidences:
+        best_type, best_confidence = max(
+            solid_confidences.items(),
+            key=lambda item: float(item[1]),
+        )
+        return str(best_type), float(best_confidence)
     return "none", None
 
 

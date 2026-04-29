@@ -105,7 +105,7 @@ Batch-analyzes STL folders and produces JSON reports with geometry signals (boun
 
 ### Feature Graph (`stl2scad/core/feature_graph.py`) — High value
 
-Detects plates, boxes, cylinders, rotated plates/boxes, through-holes, slots, repeated hole patterns (linear + grid), axisymmetric revolves, and linear extrudes from raw STL geometry, then emits a SCAD preview when confidence is high enough.
+Detects plates, boxes, cylinders, rotated plates/boxes, through-holes, slots, repeated hole patterns (linear + grid), axisymmetric revolves, linear extrudes, and conservative disconnected planar/prismatic composite unions from raw STL geometry, then emits a SCAD preview when confidence is high enough.
 
 **Strengths:**
 
@@ -113,6 +113,7 @@ Detects plates, boxes, cylinders, rotated plates/boxes, through-holes, slots, re
 - Pattern detection (linear arrays, grids) is genuinely useful for mechanical parts
 - Rotated plate/box recovery now gives the detector a path beyond world-axis-aligned fixtures
 - `rotate_extrude()` and `linear_extrude()` recovery cover single-profile solids that are not well represented as simple boxes/plates/cylinders
+- Conservative disconnected-component composition now emits `BooleanUnion` previews for multi-part planar/prismatic assemblies when every component independently clears confidence gates
 - SCAD preview emission with parameterized variables produces editable output
 
 **Limitations:**
@@ -121,7 +122,7 @@ Detects plates, boxes, cylinders, rotated plates/boxes, through-holes, slots, re
 - Current preview emission is still not the same thing as a production IR-to-SCAD emitter wired into the normal `convert` / `batch` / GUI workflows.
 - Cutout support is strongest for through-holes and slots; blind holes, counterbores from mesh, countersinks, pockets, and notches remain open.
 - Tolerant chamfer/fillet recognition preserves a base primitive, but edge kind and exact radius/distance recovery are not complete.
-- Composition detection is limited: many real CAD parts are assemblies of multiple extrudes/revolves/primitives and still require a higher-level partitioning strategy.
+- Composition detection is still limited to conservative disconnected assemblies. Nested/containment-heavy subtraction shells, overlap ownership, and full mixed-feature composition with explicit positive/negative polarity still require a higher-level partitioning strategy.
 
 ## Real-World Feedback Loop (2026-04-22)
 
@@ -209,6 +210,12 @@ The [ABC Dataset](https://deep-geometry.github.io/abc-dataset/) (~1M CAD models 
 
 ## Next Milestones
 
+### Recently completed (2026-04-29)
+
+- **Composite planar/prismatic union pass (disconnected components)** — `feature_graph.py` now attempts a conservative composition pass after single-solid detectors. It splits meshes into connected components, selects per-component high-confidence planar/prismatic solids (`plate_like_solid`, `box_like_solid`, `cylinder_like_solid`, `linear_extrude_solid`), tags them as `composite_component`, and emits a top-level `BooleanUnion` interpretation in `ir_tree` when at least two components are valid.
+- **Containment guard for ambiguous subtraction-like composites** — the composition pass rejects high-containment component layouts (`max_containment > 0.50`) so nested shell-like cases are not incorrectly promoted as unions.
+- **Composite-path regression coverage** — `tests/test_feature_graph.py` now includes `test_feature_graph_scad_preview_emits_composite_prismatic_union` and `test_feature_graph_composite_path_declines_subtraction_shell`; focused detector tests and fixture invariants pass (`tests/test_feature_graph.py`, `tests/test_feature_fixtures.py`).
+
 ### Recently completed (2026-04-27)
 
 - **Phase 3 — `linear_extrude` recovery** (`stl2scad/core/linear_extrude_recovery.py` wired into `feature_graph.py`). `detect_linear_extrude_solid` runs after all native primitive detectors fail (revolve → cylinder → plate → box → rotated-plate → rotated-box → linear-extrude dispatch order). Cross-section consistency gate + axis-quality gate + confidence threshold prevent false positives on spheres and tori. IR tree produces `ExtrudeLinear { Sketch2D(polygon) }` wrapped in `TransformRotate` when off-axis. SCAD preview emitter produces `linear_extrude(height=...) polygon([...])` calls. Fixtures updated: `negative_hex_prism` (hex prisms are correctly identified as linear extrusions), `l_bracket_plain` (L-shaped cross-section extruded along Y). All 259 tests pass.
@@ -252,7 +259,7 @@ The 2026-04-27 active items have landed in current `main`: revolve profile class
 4. **Promote tolerant edge recognition into editable edge treatment.** Today chamfered/filleted plates and boxes are recognized tolerantly and represented by a coarse `ChamferOrFilletEdge` annotation. Distinguish chamfer vs fillet, recover radius/distance, and emit editable SCAD modules or approximations.
 5. **Add structural feature families.** Shells/enclosure halves, bosses, ribs/webs, tabs/flanges, and brackets are the next major class of CAD intent that single primitive/extrude/revolve detectors do not capture.
 6. **Expand pattern recovery.** Linear and grid hole patterns exist. Add radial patterns, mirror patterns, and repeated non-hole feature patterns so emitted SCAD uses loops/modules rather than duplicated literals.
-7. **Add composition detection.** Many real parts are not a single plate, box, revolve, or linear extrusion; they are boolean compositions of multiple such features. Add a composition strategy that can partition a mesh into multiple high-confidence primitives/extrudes/revolves, combine them into one coherent editable SCAD model, and preserve enough parametric relationships that changing dimensions keeps the part functional.
+7. **Expand composition detection beyond disconnected unions.** A conservative disconnected planar/prismatic union pass is now shipped. Remaining work is ownership and polarity recovery for overlapping/nested components (especially subtraction shells), mixed connected-feature partitioning, and cross-feature parametric relationship preservation in one editable model.
 8. **Make interpretation ranking detector-native.** Schema-v2 fixtures and harness-side ranking exist, and `ir_tree` carries an `Interpretation` wrapper. The detector should emit ranked alternative interpretations directly so ambiguity can be evaluated without relying only on flat feature-count matches.
 9. **Document fixture and corpus schemas.** `schema_version` is enforced, but third-party fixture authors and future corpus contributors need stable schema documentation for synthetic fixtures, local corpus manifests, Thingi10K batch manifests, and sanitized reports.
 10. **Defer ABC/STEP supervision until the real-world floor is higher.** ABC remains valuable for later B-rep/STEP supervision, but it should follow the local/Thingi10K loop and common-feature detector expansion.
@@ -334,7 +341,7 @@ The detector output now includes a tree-shaped `ir_tree`, so the next step is no
 - **Phase 1:** axisymmetry test + radial slice + profile polygon + `rotate_extrude()` emission. Every axisymmetric solid emits as a polygon revolve. ✓ Complete (2026-04-24).
 - **Phase 2:** profile classifier upgrades recognizable polygons to `cylinder()` / `cone()` / `sphere()` / frustum. ✓ Complete in current `main` (verified 2026-04-28).
 - **Phase 3:** linear-extrude detector (translational symmetry instead of rotational). ✓ Complete (2026-04-27).
-- **Phase 4:** composition detector for meshes that are neither single-revolve nor single-extrude but compositions of such. Explicitly speculative until Phases 1-3 are in main.
+- **Phase 4:** composition detector for meshes that are neither single-revolve nor single-extrude but compositions of such. Initial disconnected planar/prismatic union support is now in `main`; remaining scope is overlap/subtraction ownership and connected mixed-feature partitioning.
 
 **Acceptance criteria for Phase 1:**
 1. Every Phase 1 `revolve_*` fixture round-trips with its expected profile within tolerance. ✓
@@ -348,7 +355,7 @@ The detector output now includes a tree-shaped `ir_tree`, so the next step is no
 
 **What's landed:** `detect_linear_extrude_solid` runs after all native primitive detectors fail (revolve → cylinder → plate → box → rotated-plate → rotated-box → linear-extrude dispatch order). Cross-section consistency gate + axis-quality gate + confidence threshold prevent false positives on spheres and tori. IR tree produces `ExtrudeLinear { Sketch2D(polygon) }` wrapped in `TransformRotate` when off-axis. SCAD preview emitter produces `linear_extrude(height=...) polygon([...])` calls. Fixtures: `negative_hex_prism` (hex prisms are correctly identified as linear extrusions), `l_bracket_plain` (L-shaped cross-section extruded along Y). All 259 tests pass.
 
-**What remains:** none for Phase 3. Phase 2 profile classification is also complete in current `main`; the next extrude-related work is Phase 4 composition detection for meshes that are not a single revolve or single linear extrusion.
+**What remains:** none for Phase 3. Phase 2 profile classification is also complete in current `main`; Phase 4 has started with disconnected planar/prismatic unions, and the next work is overlap/subtraction ownership plus connected mixed-feature composition.
 
 ---
 

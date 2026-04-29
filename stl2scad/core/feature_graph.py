@@ -29,12 +29,15 @@ from stl2scad.tuning.config import DetectorConfig
 from stl2scad.core.linear_extrude_recovery import detect_linear_extrude_solid
 
 
-def _passes_preview_solid_confidence(confidence: Any) -> bool:
+def _passes_preview_solid_confidence(
+    confidence: Any,
+    threshold: float = PREVIEW_SOLID_CONFIDENCE_THRESHOLD,
+) -> bool:
     try:
         value = float(confidence)
     except (TypeError, ValueError):
         return False
-    return value + PREVIEW_SOLID_CONFIDENCE_EPSILON >= PREVIEW_SOLID_CONFIDENCE_THRESHOLD
+    return value + PREVIEW_SOLID_CONFIDENCE_EPSILON >= threshold
 
 
 # ---------------------------------------------------------------------------
@@ -203,13 +206,17 @@ def _build_ir_tree(graph: dict[str, Any]) -> list[dict[str, Any]]:
             }
         ]
 
+    _preview_thresh = float(
+        graph.get("_preview_confidence_min", PREVIEW_SOLID_CONFIDENCE_THRESHOLD)
+    )
+
     # Collect hole centers that are claimed by any pattern so they are not
     # also emitted as standalone HoleThrough cuts.
     pattern_features = [
         f
         for f in features
         if f.get("type") in _PATTERN_TO_IR_TYPE
-        and float(f.get("confidence", 0.0)) >= PREVIEW_SOLID_CONFIDENCE_THRESHOLD
+        and float(f.get("confidence", 0.0)) >= _preview_thresh
     ]
     pattern_center_keys: set[tuple[float, float, float]] = set()
     for pat in pattern_features:
@@ -273,7 +280,7 @@ def _build_ir_tree(graph: dict[str, Any]) -> list[dict[str, Any]]:
             f
             for f in features
             if f.get("type") in _CUTOUT_TO_IR_TYPE
-            and float(f.get("confidence", 0.0)) >= PREVIEW_SOLID_CONFIDENCE_THRESHOLD
+            and float(f.get("confidence", 0.0)) >= _preview_thresh
             and f.get("source_parent_type", solid_type) == solid_type
         ]
 
@@ -478,6 +485,7 @@ def build_feature_graph_for_stl(
             "bounding_box": bbox,
         },
         "features": features,
+        "_preview_confidence_min": resolved.preview_confidence_min,
     }
     if inventory_context is not None:
         graph["inventory_context"] = {
@@ -1755,7 +1763,10 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         return None
     top = ir_tree[0]
     confidence = float(top.get("confidence", 0.0))
-    if not _passes_preview_solid_confidence(confidence):
+    threshold = float(
+        graph.get("_preview_confidence_min", PREVIEW_SOLID_CONFIDENCE_THRESHOLD)
+    )
+    if not _passes_preview_solid_confidence(confidence, threshold):
         return None
     root = top.get("root", {})
     return emit_node(root, graph)

@@ -113,3 +113,8 @@ class DetectorConfig:
     linear_extrude_cross_section_consistency_min: float = 0.60
     linear_extrude_max_profile_vertices: int = 64
     linear_extrude_confidence_min: float = 0.55
+
+    # --- Preview emission gate ---
+    # Minimum IR-tree confidence to emit SCAD. Aligns with plate_confidence_min
+    # so every detected plate/box feature gets a SCAD preview attempt.
+    preview_confidence_min: float = 0.55

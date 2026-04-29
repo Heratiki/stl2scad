@@ -43,4 +43,5 @@ def suggest_config(trial: Any) -> DetectorConfig:
         slot_error_ratio_max=trial.suggest_float("slot_error_ratio_max", 0.08, 0.25),
         rect_error_ratio_max=trial.suggest_float("rect_error_ratio_max", 0.02, 0.08),
         pattern_regularity_error_max=trial.suggest_float("pattern_regularity_error_max", 0.04, 0.15),
+        preview_confidence_min=trial.suggest_float("preview_confidence_min", 0.55, 0.72),
     )

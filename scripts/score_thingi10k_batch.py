@@ -153,10 +153,10 @@ def _print_score_summary(score: dict) -> None:
 
 
 def _print_delta_summary(delta: dict) -> None:
-    direction = "▲" if delta["delta_preview_ready_ratio"] >= 0 else "▼"
+    direction = "+" if delta["delta_preview_ready_ratio"] >= 0 else "-"
     print(
         f"\nBaseline delta: {direction}{abs(delta['delta_preview_ready_ratio']):.4f} "
-        f"(baseline={delta['baseline_preview_ready_ratio']:.4f} → "
+        f"(baseline={delta['baseline_preview_ready_ratio']:.4f} -> "
         f"current={delta['current_preview_ready_ratio']:.4f})"
     )
     bucket_deltas = delta.get("bucket_deltas", {})

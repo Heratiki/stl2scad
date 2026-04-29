@@ -147,6 +147,10 @@ def _ir_revolve_node(feature: dict[str, Any]) -> dict[str, Any]:
     points = [[float(r), float(z)] for r, z in feature["profile"]]
     sketch: dict[str, Any] = {"type": "Sketch2D", "kind": "polygon", "points": points}
     extrude: dict[str, Any] = {"type": "ExtrudeRevolve", "profile": sketch}
+    # Carry extra data needed by the emitter (primitive upgrades, annular, etc.).
+    for key in ("primitive_upgrade", "detected_via", "inner_r", "outer_r", "axis_origin"):
+        if key in feature:
+            extrude[key] = feature[key]
     angles = _axis_to_world_z_euler_xyz(feature["axis"])
     return {"type": "TransformRotate", "angles_deg": angles, "child": extrude}
 
@@ -246,6 +250,11 @@ def _build_ir_tree(graph: dict[str, Any]) -> list[dict[str, Any]]:
                 "confidence": float(prim.get("confidence", 0.0)),
             }
             for key in ("origin", "size", "axis", "radius", "height"):
+                if key in prim:
+                    ir_prim[key] = prim[key]
+
+            # Carry local-axis data so the emitter can produce multmatrix transforms.
+            for key in ("detected_via", "local_u_axis", "local_v_axis", "dominant_axis", "local_n_axis"):
                 if key in prim:
                     ir_prim[key] = prim[key]
 
@@ -931,421 +940,710 @@ def _emit_linear_extrude_scad_preview(graph: dict[str, Any], feature: dict[str, 
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# IR-driven SCAD emitter
+# ---------------------------------------------------------------------------
+
+
+class _IREmitter:
+    """Emit SCAD from an IR node tree produced by ``_build_ir_tree()``.
+
+    Usage::
+
+        emitter = _IREmitter(source_file="my.stl")
+        scad = emitter.emit_root(ir_node)
+    """
+
+    def __init__(self, source_file: str) -> None:
+        self.source_file = source_file
+        self._decls: list[str] = []
+        # Module name -> list of SCAD lines (ordered dict preserves insertion order).
+        self._module_decls: dict[str, list[str]] = {}
+        # Unique-name counters for emitted variables.
+        self._hole_idx = 0
+        self._slot_idx = 0
+        self._cbore_idx = 0
+        self._rect_cutout_idx = 0
+        self._rect_pocket_idx = 0
+        self._pattern_idx = 0
+        self._grid_idx = 0
+
+    # -----------------------------------------------------------------------
+    # Public API
+    # -----------------------------------------------------------------------
+
+    def emit_root(self, node: dict[str, Any]) -> Optional[str]:
+        """Walk *node* and return a complete SCAD file string, or None."""
+        if node.get("type") == "FallbackMesh":
+            return None
+        geom = self._emit_node(node)
+        if geom is None:
+            return None
+        header: list[str] = [
+            "// Feature graph SCAD preview",
+            f"// source_file: {self.source_file}",
+        ]
+        lines_out: list[str] = list(header)
+        if self._decls:
+            lines_out += [""] + self._decls
+        for mod_lines in self._module_decls.values():
+            lines_out += [""] + mod_lines
+        lines_out += [""] + geom + [""]
+        return "\n".join(lines_out)
+
+    # -----------------------------------------------------------------------
+    # Node dispatcher
+    # -----------------------------------------------------------------------
+
+    def _emit_node(self, node: dict[str, Any]) -> Optional[list[str]]:
+        ntype = node.get("type")
+        if ntype == "BooleanUnion":
+            return self._emit_boolean_union(node)
+        if ntype == "BooleanDifference":
+            return self._emit_boolean_difference(node)
+        if ntype == "TransformTranslate":
+            return self._emit_transform_translate_generic(node)
+        if ntype == "TransformRotate":
+            return self._emit_transform_rotate(node)
+        if ntype == "PrimitivePlate":
+            return self._emit_primitive_plate_standalone(node)
+        if ntype == "PrimitiveBox":
+            return self._emit_primitive_box_standalone(node)
+        if ntype == "PrimitiveCylinder":
+            return self._emit_primitive_cylinder(node)
+        if ntype == "ExtrudeLinear":
+            return self._emit_extrude_linear(node)
+        if ntype == "ExtrudeRevolve":
+            return self._emit_extrude_revolve(node)
+        return None
+
+    # -----------------------------------------------------------------------
+    # Boolean nodes
+    # -----------------------------------------------------------------------
+
+    def _emit_boolean_union(self, node: dict[str, Any]) -> Optional[list[str]]:
+        children = node.get("children", [])
+        if len(children) == 1:
+            return self._emit_node(children[0])
+        out: list[str] = ["union() {"]
+        for child in children:
+            clines = self._emit_node(child)
+            if clines:
+                out.extend(f"  {ln}" for ln in clines)
+        out.append("}")
+        return out
+
+    def _unwrap_transform_rotate(
+        self,
+        node: dict[str, Any],
+    ) -> tuple[dict[str, Any], Optional[list[float]]]:
+        """Return ``(inner_node, angles_deg_or_None)``."""
+        if node.get("type") == "TransformRotate":
+            return node.get("child", {}), node.get("angles_deg")
+        return node, None
+
+    def _emit_boolean_difference(self, node: dict[str, Any]) -> Optional[list[str]]:
+        base = node.get("base", {})
+        cuts = node.get("cuts", [])
+        base_inner, transform_angles = self._unwrap_transform_rotate(base)
+        base_type = base_inner.get("type") if base_inner else None
+
+        et_node = next(
+            (c for c in cuts if c.get("type") == "ChamferOrFilletEdge"), None
+        )
+        actual_cuts = [c for c in cuts if c.get("type") != "ChamferOrFilletEdge"]
+
+        if base_type == "PrimitivePlate":
+            return self._emit_plate_difference(
+                base_inner, transform_angles, et_node, actual_cuts
+            )
+        if base_type == "PrimitiveBox":
+            return self._emit_box_difference(
+                base_inner, transform_angles, et_node, actual_cuts
+            )
+        # Generic fallback difference.
+        base_lines = self._emit_node(base)
+        if base_lines is None:
+            return None
+        cut_lines: list[str] = []
+        for cut in actual_cuts:
+            clines = self._emit_node(cut)
+            if clines:
+                cut_lines.extend(clines)
+        if not cut_lines:
+            return base_lines
+        return (
+            ["difference() {"]
+            + [f"  {ln}" for ln in base_lines]
+            + [f"  {ln}" for ln in cut_lines]
+            + ["}"]
+        )
+
+    # -----------------------------------------------------------------------
+    # Plate-based difference emission
+    # -----------------------------------------------------------------------
+
+    def _emit_plate_difference(
+        self,
+        prim: dict[str, Any],
+        transform_angles: Optional[list[float]],
+        et_node: Optional[dict[str, Any]],
+        cuts: list[dict[str, Any]],
+    ) -> Optional[list[str]]:
+        origin = [float(v) for v in prim.get("origin", [0.0, 0.0, 0.0])]
+        size = [float(v) for v in prim.get("size", [1.0, 1.0, 1.0])]
+        thickness_axis_index = int(np.argmin(size))
+        thickness_axis = ("x", "y", "z")[thickness_axis_index]
+        depth = size[thickness_axis_index] + 0.2
+
+        self._decls += [
+            f"plate_origin = {_scad_vector(origin)};",
+            f"plate_size = {_scad_vector(size)};",
+        ]
+
+        if transform_angles is not None:
+            # Prefer multmatrix when local-axis data is available; fall back to Euler.
+            extra_decls, transform_prefix = _plate_transform_scad(prim)
+            if extra_decls:
+                self._decls += extra_decls
+            elif not prim.get("detected_via"):
+                # Explicit Euler from the TransformRotate wrapper (no feature dict).
+                ra, rb, rc = (float(a) for a in transform_angles)
+                transform_prefix = (
+                    f"translate(plate_origin) rotate([{ra:.6f}, {rb:.6f}, {rc:.6f}]) "
+                )
+        else:
+            transform_prefix = "translate(plate_origin) "
+
+        has_hole_mod = False
+        has_slot_mod = False
+        has_cbore_mod = False
+        has_rect_mod = False
+        cut_geom: list[str] = []
+
+        for cut in cuts:
+            ctype = cut.get("type")
+
+            if ctype == "PatternLinear":
+                pn = f"hole_pattern_{self._pattern_idx}"
+                self._pattern_idx += 1
+                pat_origin = [float(v) for v in (cut.get("origin") or [0.0, 0.0, 0.0])]
+                pat_step = [float(v) for v in (cut.get("step") or [0.0, 0.0, 0.0])]
+                pat_count = int(cut.get("count", 0))
+                pat_diam = float(cut.get("diameter", 0.0))
+                self._decls += [
+                    f"{pn}_count = {pat_count};",
+                    f"{pn}_origin = {_scad_vector(pat_origin)};",
+                    f"{pn}_step = {_scad_vector(pat_step)};",
+                    f"{pn}_diameter = {pat_diam:.6f};",
+                ]
+                has_hole_mod = True
+                cut_geom += [
+                    f"for (i = [0 : {pn}_count - 1]) {{",
+                    f"  hole_cutout({_scad_named_linear_point_expression(pn, 'i')}, {pn}_diameter);",
+                    "}",
+                ]
+
+            elif ctype == "PatternGrid":
+                gn = f"hole_grid_{self._grid_idx}"
+                self._grid_idx += 1
+                g_origin = [float(v) for v in (cut.get("origin") or [0.0, 0.0, 0.0])]
+                g_row_step = [float(v) for v in (cut.get("row_step") or [0.0, 0.0, 0.0])]
+                g_col_step = [float(v) for v in (cut.get("col_step") or [0.0, 0.0, 0.0])]
+                g_rows = int(cut.get("rows", 0))
+                g_cols = int(cut.get("cols", 0))
+                g_diam = float(cut.get("diameter", 0.0))
+                self._decls += [
+                    f"{gn}_rows = {g_rows};",
+                    f"{gn}_cols = {g_cols};",
+                    f"{gn}_origin = {_scad_vector(g_origin)};",
+                    f"{gn}_row_step = {_scad_vector(g_row_step)};",
+                    f"{gn}_col_step = {_scad_vector(g_col_step)};",
+                    f"{gn}_diameter = {g_diam:.6f};",
+                ]
+                has_hole_mod = True
+                cut_geom += [
+                    f"for (row = [0 : {gn}_rows - 1]) {{",
+                    f"  for (col = [0 : {gn}_cols - 1]) {{",
+                    f"    hole_cutout({_scad_named_grid_point_expression(gn)}, {gn}_diameter);",
+                    "  }",
+                    "}",
+                ]
+
+            elif ctype == "TransformTranslate":
+                offset = [float(v) for v in (cut.get("offset") or [0.0, 0.0, 0.0])]
+                child = cut.get("child", {})
+                child_type = child.get("type")
+
+                if child_type == "HoleThrough":
+                    diam = float(child.get("diameter", 0.0))
+                    hn = f"hole_{self._hole_idx}"
+                    self._hole_idx += 1
+                    self._decls += [
+                        f"{hn}_center = {_scad_vector(offset)};",
+                        f"{hn}_diameter = {diam:.6f};",
+                    ]
+                    has_hole_mod = True
+                    cut_geom.append(f"hole_cutout({hn}_center, {hn}_diameter);")
+
+                elif child_type == "HoleCounterbore":
+                    through_d = float(child.get("through_diameter", 0.0))
+                    bore_d = float(child.get("bore_diameter", 0.0))
+                    bore_dep = float(child.get("bore_depth", 0.0))
+                    cn = f"counterbore_{self._cbore_idx}"
+                    self._cbore_idx += 1
+                    self._decls += [
+                        f"{cn}_center = {_scad_vector(offset)};",
+                        f"{cn}_through_diameter = {through_d:.6f};",
+                        f"{cn}_bore_diameter = {bore_d:.6f};",
+                        f"{cn}_bore_depth = {bore_dep:.6f};",
+                    ]
+                    has_hole_mod = True
+                    has_cbore_mod = True
+                    cut_geom.append(
+                        f"counterbore_cutout({cn}_center, {cn}_through_diameter, "
+                        f"{cn}_bore_diameter, {cn}_bore_depth);"
+                    )
+
+                elif child_type == "Slot":
+                    start = [float(v) for v in (child.get("start") or [0.0, 0.0, 0.0])]
+                    end = [float(v) for v in (child.get("end") or [0.0, 0.0, 0.0])]
+                    width = float(child.get("width", 0.0))
+                    ax = str(child.get("axis", thickness_axis))
+                    if ax == thickness_axis:
+                        sn = f"slot_{self._slot_idx}"
+                        self._slot_idx += 1
+                        self._decls += [
+                            f"{sn}_start = {_scad_vector(start)};",
+                            f"{sn}_end = {_scad_vector(end)};",
+                            f"{sn}_width = {width:.6f};",
+                        ]
+                        has_hole_mod = True
+                        has_slot_mod = True
+                        cut_geom.append(f"slot_cutout({sn}_start, {sn}_end, {sn}_width);")
+
+                elif child_type == "RectangularCutout":
+                    csize = [float(v) for v in (child.get("size") or [0.0, 0.0, 0.0])]
+                    rn = f"rect_cutout_{self._rect_cutout_idx}"
+                    self._rect_cutout_idx += 1
+                    self._decls += [
+                        f"{rn}_center = {_scad_vector(offset)};",
+                        f"{rn}_size = {_scad_vector(csize)};",
+                    ]
+                    has_rect_mod = True
+                    cut_geom.append(f"rectangular_prism_cutout({rn}_center, {rn}_size);")
+
+                elif child_type == "RectangularPocket":
+                    psize = [float(v) for v in (child.get("size") or [0.0, 0.0, 0.0])]
+                    pn = f"rect_pocket_{self._rect_pocket_idx}"
+                    self._rect_pocket_idx += 1
+                    self._decls += [
+                        f"{pn}_center = {_scad_vector(offset)};",
+                        f"{pn}_size = {_scad_vector(psize)};",
+                    ]
+                    has_rect_mod = True
+                    cut_geom.append(f"rectangular_prism_cutout({pn}_center, {pn}_size);")
+
+            elif ctype == "Slot":
+                # Slot without a center field - start/end are absolute world coords.
+                start = [float(v) for v in (cut.get("start") or [0.0, 0.0, 0.0])]
+                end = [float(v) for v in (cut.get("end") or [0.0, 0.0, 0.0])]
+                width = float(cut.get("width", 0.0))
+                ax = str(cut.get("axis", thickness_axis))
+                if ax == thickness_axis:
+                    sn = f"slot_{self._slot_idx}"
+                    self._slot_idx += 1
+                    self._decls += [
+                        f"{sn}_start = {_scad_vector(start)};",
+                        f"{sn}_end = {_scad_vector(end)};",
+                        f"{sn}_width = {width:.6f};",
+                    ]
+                    has_hole_mod = True
+                    has_slot_mod = True
+                    cut_geom.append(f"slot_cutout({sn}_start, {sn}_end, {sn}_width);")
+
+        # Register modules that were actually needed.
+        if has_hole_mod and "hole_cutout" not in self._module_decls:
+            self._module_decls["hole_cutout"] = [
+                "module hole_cutout(center, diameter) {",
+                *_hole_cutout_module_body(depth, thickness_axis),
+                "}",
+            ]
+        if has_slot_mod and "slot_cutout" not in self._module_decls:
+            self._module_decls["slot_cutout"] = [
+                "module slot_cutout(start, end, width) {",
+                "  hull() {",
+                "    hole_cutout(start, width);",
+                "    hole_cutout(end, width);",
+                "  }",
+                "}",
+            ]
+        if has_cbore_mod and "counterbore_cutout" not in self._module_decls:
+            self._module_decls["counterbore_cutout"] = [
+                "module counterbore_cutout(center, through_diameter, bore_diameter, bore_depth) {",
+                "  hole_cutout(center, through_diameter);",
+                *_counterbore_bore_module_body(depth, thickness_axis),
+                "}",
+            ]
+        if has_rect_mod and "rectangular_prism_cutout" not in self._module_decls:
+            self._module_decls["rectangular_prism_cutout"] = [
+                "module rectangular_prism_cutout(center, size) {",
+                "  translate([center[0] - size[0] / 2, center[1] - size[1] / 2, center[2] - size[2] / 2])",
+                "    cube(size);",
+                "}",
+            ]
+
+        # Assemble final geometry lines.
+        if et_node is not None:
+            et_kind = str(et_node.get("edge_kind", "unknown"))
+            et_sz = float(et_node.get("size", 0.0))
+            et_lines = _emit_box_edge_treatment_scad(
+                size, {"kind": et_kind, "size": et_sz}, "cube(plate_size)", transform_prefix
+            )
+            if cut_geom:
+                return (
+                    ["difference() {"]
+                    + [f"  {ln}" for ln in et_lines]
+                    + [f"  {ln}" for ln in cut_geom]
+                    + ["}"]
+                )
+            return et_lines
+
+        if not cut_geom:
+            return [f"{transform_prefix}cube(plate_size);"]
+
+        return (
+            ["difference() {", f"  {transform_prefix}cube(plate_size);"]
+            + [f"  {ln}" for ln in cut_geom]
+            + ["}"]
+        )
+
+    # -----------------------------------------------------------------------
+    # Box-based difference emission
+    # -----------------------------------------------------------------------
+
+    def _emit_box_difference(
+        self,
+        prim: dict[str, Any],
+        transform_angles: Optional[list[float]],
+        et_node: Optional[dict[str, Any]],
+        cuts: list[dict[str, Any]],
+    ) -> Optional[list[str]]:
+        origin = [float(v) for v in prim.get("origin", [0.0, 0.0, 0.0])]
+        size = [float(v) for v in prim.get("size", [1.0, 1.0, 1.0])]
+        is_rotated = transform_angles is not None
+
+        self._decls += [
+            f"box_origin = {_scad_vector(origin)};",
+            f"box_size = {_scad_vector(size)};",
+        ]
+
+        if is_rotated:
+            ra, rb, rc = (float(a) for a in transform_angles)  # type: ignore[union-attr]
+            box_transform_expr = (
+                f"translate(box_origin) rotate([{ra:.6f}, {rb:.6f}, {rc:.6f}]) "
+            )
+        else:
+            box_transform_expr = "translate(box_origin) "
+
+        axis_depth = {"x": size[0], "y": size[1], "z": size[2]}
+
+        # Collect through-hole cuts (the only box cutouts currently emitted).
+        hole_cuts: list[tuple[str, int]] = []  # (axis, hole_idx)
+        for cut in cuts:
+            if cut.get("type") == "TransformTranslate":
+                child = cut.get("child", {})
+                if child.get("type") == "HoleThrough":
+                    ax = str(child.get("axis", "z"))
+                    offset = [float(v) for v in (cut.get("offset") or [0.0, 0.0, 0.0])]
+                    hidx = self._hole_idx
+                    self._hole_idx += 1
+                    diam = float(child.get("diameter", 0.0))
+                    self._decls += [
+                        f"hole_{hidx}_center = {_scad_vector(offset)};",
+                        f"hole_{hidx}_diameter = {diam:.6f};",
+                    ]
+                    hole_cuts.append((ax, hidx))
+
+        # Create axis-specific hole_cutout modules.
+        axes_used = sorted({ax for ax, _ in hole_cuts})
+        for ax in axes_used:
+            mod_name = f"hole_cutout_{ax}"
+            if mod_name not in self._module_decls:
+                dep = axis_depth.get(ax, 1.0) + 0.2
+                self._module_decls[mod_name] = [
+                    f"module hole_cutout_{ax}(center, diameter) {{",
+                    *_hole_cutout_module_body(dep, ax),
+                    "}",
+                ]
+
+        # Determine whether to use edge treatment.
+        use_et = (
+            et_node is not None
+            and et_node.get("edge_kind") in ("chamfer", "fillet")
+            and not is_rotated
+        )
+
+        if use_et:
+            et_kind = str(et_node.get("edge_kind", "unknown"))  # type: ignore[union-attr]
+            et_sz = float(et_node.get("size", 0.0))  # type: ignore[union-attr]
+            et_lines = _emit_box_edge_treatment_scad(
+                size, {"kind": et_kind, "size": et_sz}, "cube(box_size)", box_transform_expr
+            )
+            if hole_cuts:
+                result: list[str] = ["difference() {"]
+                result.extend(f"  {ln}" for ln in et_lines)
+                for ax, hidx in hole_cuts:
+                    result.append(
+                        f"  hole_cutout_{ax}(hole_{hidx}_center, hole_{hidx}_diameter);"
+                    )
+                result.append("}")
+                return result
+            return et_lines
+
+        # Standard box difference (always emits difference() to match legacy behaviour).
+        result = [
+            "difference() {",
+            f"  {box_transform_expr}cube(box_size);",
+        ]
+        for ax, hidx in hole_cuts:
+            result.append(
+                f"  hole_cutout_{ax}(hole_{hidx}_center, hole_{hidx}_diameter);"
+            )
+        result.append("}")
+        return result
+
+    # -----------------------------------------------------------------------
+    # Standalone primitive emitters (no cuts)
+    # -----------------------------------------------------------------------
+
+    def _emit_primitive_plate_standalone(self, node: dict[str, Any]) -> list[str]:
+        origin = [float(v) for v in node.get("origin", [0.0, 0.0, 0.0])]
+        size = [float(v) for v in node.get("size", [1.0, 1.0, 1.0])]
+        self._decls += [
+            f"plate_origin = {_scad_vector(origin)};",
+            f"plate_size = {_scad_vector(size)};",
+        ]
+        extra_decls, transform_expr = _plate_transform_scad(node)
+        if extra_decls:
+            self._decls += extra_decls
+        return [f"{transform_expr}cube(plate_size);"]
+
+    def _emit_primitive_box_standalone(self, node: dict[str, Any]) -> list[str]:
+        origin = [float(v) for v in node.get("origin", [0.0, 0.0, 0.0])]
+        size = [float(v) for v in node.get("size", [1.0, 1.0, 1.0])]
+        self._decls += [
+            f"box_origin = {_scad_vector(origin)};",
+            f"box_size = {_scad_vector(size)};",
+        ]
+        extra_decls, transform_expr = _box_transform_scad(node)
+        if extra_decls:
+            self._decls += extra_decls
+        return [f"{transform_expr}cube(box_size);"]
+
+    def _emit_primitive_cylinder(self, node: dict[str, Any]) -> list[str]:
+        origin = [float(v) for v in (node.get("origin") or [0.0, 0.0, 0.0])]
+        height = float(node.get("height", 0.0))
+        if "diameter" in node:
+            diameter = float(node["diameter"])
+        elif "radius" in node:
+            diameter = float(node["radius"]) * 2.0
+        else:
+            diameter = 0.0
+        axis = str(node.get("axis", "z"))
+        self._decls += [
+            f"cylinder_origin = {_scad_vector(origin)};",
+            f"cylinder_height = {height:.6f};",
+            f"cylinder_diameter = {diameter:.6f};",
+        ]
+        rotate_expr = {
+            "z": "",
+            "x": "rotate([0, 90, 0]) ",
+            "y": "rotate([-90, 0, 0]) ",
+        }.get(axis, "")
+        return [
+            "translate(cylinder_origin)",
+            f"  {rotate_expr}cylinder(h=cylinder_height, d=cylinder_diameter, center=false);",
+        ]
+
+    def _emit_extrude_linear(self, node: dict[str, Any]) -> list[str]:
+        height = float(node.get("height", 0.0))
+        profile = node.get("profile", {})
+        pts = profile.get("points", []) if isinstance(profile, dict) else []
+        profile_str = ", ".join(
+            f"[{float(p[0]):.6f}, {float(p[1]):.6f}]" for p in pts
+        )
+        self._decls += [
+            f"extrude_height = {height:.6f};",
+            f"extrude_profile = [{profile_str}];",
+        ]
+        return [
+            "linear_extrude(height = extrude_height)",
+            "  polygon(points = extrude_profile);",
+        ]
+
+    def _emit_extrude_revolve(self, node: dict[str, Any]) -> list[str]:
+        axis_origin = node.get("axis_origin") or [0.0, 0.0, 0.0]
+        translate_expr = ""
+        if any(abs(float(c)) > 1e-6 for c in axis_origin):
+            o = [float(c) for c in axis_origin]
+            translate_expr = (
+                f"translate([{o[0]:.6f}, {o[1]:.6f}, {o[2]:.6f}]) "
+            )
+
+        # --- Phase 2: native primitive upgrade ---
+        upgrade = node.get("primitive_upgrade")
+        if upgrade is not None:
+            ptype = upgrade.get("type")
+            params = upgrade.get("params", {})
+
+            if ptype == "cylinder":
+                r = float(params.get("r", 1.0))
+                h = float(params.get("h", 1.0))
+                z_lo = float(params.get("z_lo", 0.0))
+                self._decls += [f"revolve_r = {r:.6f};", f"revolve_h = {h:.6f};"]
+                tz = f"translate([0, 0, {z_lo:.6f}]) " if abs(z_lo) > 1e-6 else ""
+                return [f"{translate_expr}{tz}cylinder(r=revolve_r, h=revolve_h, $fn=128);"]
+
+            if ptype == "cone":
+                r1 = float(params.get("r1", 0.0))
+                r2 = float(params.get("r2", 0.0))
+                h = float(params.get("h", 1.0))
+                z_lo = float(params.get("z_lo", 0.0))
+                self._decls += [
+                    f"revolve_r1 = {r1:.6f};",
+                    f"revolve_r2 = {r2:.6f};",
+                    f"revolve_h = {h:.6f};",
+                ]
+                tz = f"translate([0, 0, {z_lo:.6f}]) " if abs(z_lo) > 1e-6 else ""
+                return [
+                    f"{translate_expr}{tz}cylinder(r1=revolve_r1, r2=revolve_r2, h=revolve_h, $fn=128);"
+                ]
+
+            if ptype == "sphere":
+                r = float(params.get("r", 1.0))
+                z_center = float(params.get("z_center", 0.0))
+                self._decls += [f"revolve_r = {r:.6f};"]
+                tz = f"translate([0, 0, {z_center:.6f}]) " if abs(z_center) > 1e-6 else ""
+                return [f"{translate_expr}{tz}sphere(r=revolve_r, $fn=128);"]
+
+        # --- Annular revolve: difference of two cylinders ---
+        if node.get("detected_via") == "annular_revolve":
+            inner_r = float(node.get("inner_r", 0.0))
+            outer_r = float(node.get("outer_r", 1.0))
+            profile = node.get("profile", {})
+            pts = profile.get("points", []) if isinstance(profile, dict) else []
+            z_vals = [float(p[1]) for p in pts]
+            h = (max(z_vals) - min(z_vals)) if z_vals else 0.0
+            z_lo = min(z_vals) if z_vals else 0.0
+            self._decls += [
+                f"revolve_inner_r = {inner_r:.6f};",
+                f"revolve_outer_r = {outer_r:.6f};",
+                f"revolve_h = {h:.6f};",
+            ]
+            tz = f"translate([0, 0, {z_lo:.6f}]) " if abs(z_lo) > 1e-6 else ""
+            return [
+                f"{translate_expr}{tz}difference() {{",
+                "  cylinder(r=revolve_outer_r, h=revolve_h, $fn=128);",
+                "  cylinder(r=revolve_inner_r, h=revolve_h, $fn=128);",
+                "}",
+            ]
+
+        # --- Generic rotate_extrude fallback ---
+        profile = node.get("profile", {})
+        pts = profile.get("points", []) if isinstance(profile, dict) else []
+        points_scad = ",\n    ".join(
+            f"[{float(p[0]):.6f}, {float(p[1]):.6f}]" for p in pts
+        )
+        return [
+            "revolve_profile = [",
+            f"    {points_scad}",
+            "];",
+            "rotate_extrude($fn=128)",
+            "  polygon(points=revolve_profile);",
+        ]
+
+    # -----------------------------------------------------------------------
+    # Transform nodes (generic - used only when outside a solid difference)
+    # -----------------------------------------------------------------------
+
+    def _emit_transform_translate_generic(
+        self, node: dict[str, Any]
+    ) -> Optional[list[str]]:
+        offset = [float(v) for v in (node.get("offset") or [0.0, 0.0, 0.0])]
+        child = node.get("child", {})
+        child_lines = self._emit_node(child)
+        if child_lines is None:
+            return None
+        tr = f"translate({_scad_vector(offset)})"
+        if len(child_lines) == 1:
+            return [f"{tr} {child_lines[0]}"]
+        return [f"{tr} {{"] + [f"  {ln}" for ln in child_lines] + ["}"]
+
+    def _emit_transform_rotate(self, node: dict[str, Any]) -> Optional[list[str]]:
+        child = node.get("child", {})
+        child_type = child.get("type")
+
+        # For rotated plates/boxes with local-axis data, delegate to the
+        # multmatrix-capable emitters so the SCAD uses plate_local_u/v/n.
+        if child_type == "PrimitivePlate" and child.get("detected_via") == "rotated_plate":
+            return self._emit_primitive_plate_standalone(child)
+        if child_type == "PrimitiveBox" and child.get("detected_via") == "rotated_box":
+            return self._emit_primitive_box_standalone(child)
+
+        child_lines = self._emit_node(child)
+        if child_lines is None:
+            return None
+        angles = node.get("angles_deg", [0.0, 0.0, 0.0])
+        rot = (
+            f"rotate([{float(angles[0]):.6f}, "
+            f"{float(angles[1]):.6f}, {float(angles[2]):.6f}])"
+        )
+        if len(child_lines) == 1:
+            return [f"{rot} {child_lines[0]}"]
+        return [f"{rot} {{"] + [f"  {ln}" for ln in child_lines] + ["}"]
+
+
+def emit_node(
+    node: dict[str, Any],
+    graph: Optional[dict[str, Any]] = None,
+) -> Optional[str]:
+    """Walk an IR node tree and return a SCAD string, or None for FallbackMesh.
+
+    Parameters
+    ----------
+    node:
+        Root IR node, typically ``graph["ir_tree"][0]["root"]``.
+    graph:
+        Optional full feature graph dict; used only to extract ``source_file``
+        for the SCAD header comment.
+    """
+    if node.get("type") == "FallbackMesh":
+        return None
+    source_file = (graph or {}).get("source_file", "")
+    emitter = _IREmitter(source_file)
+    return emitter.emit_root(node)
+
+
 def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
     """
     Emit conservative SCAD preview for supported feature graph patterns.
 
-        Currently supported:
-        - one plate_like_solid
-        - optional hole_like_cutout, counterbore_hole, slot_like_cutout,
-          rectangular_cutout, and rectangular_pocket features along the plate
-          thickness axis
-        - one box_like_solid with optional through-holes along any axis
-        - one cylinder_like_solid
-        - one revolve_solid
-        - one linear_extrude_solid
+    Dispatches through the IR tree built by ``_build_ir_tree()``.  When the
+    graph has no pre-built IR tree (e.g. synthetic test graphs), one is
+    constructed on-the-fly.
     """
-    revolve = _best_feature(graph, "revolve_solid")
-    if revolve is not None and _passes_preview_solid_confidence(revolve.get("confidence")):
-        return _emit_revolve_scad_preview(graph, revolve)
-
-    plate = _best_feature(graph, "plate_like_solid")
-    if plate is None or not _passes_preview_solid_confidence(plate.get("confidence")):
-        box = _best_feature(graph, "box_like_solid")
-        if box is None or not _passes_preview_solid_confidence(box.get("confidence")):
-            cylinder = _best_feature(graph, "cylinder_like_solid")
-            if cylinder is None or not _passes_preview_solid_confidence(cylinder.get("confidence")):
-                linear_extrude = _best_feature(graph, "linear_extrude_solid")
-                if linear_extrude is not None and _passes_preview_solid_confidence(linear_extrude.get("confidence")):
-                    return _emit_linear_extrude_scad_preview(graph, linear_extrude)
-                return None
-            return _emit_cylinder_scad_preview(graph, cylinder)
-        return _emit_box_scad_preview(graph, box)
-
-    holes = [
-        feature
-        for feature in graph.get("features", [])
-        if feature.get("type") == "hole_like_cutout"
-        and float(feature.get("confidence", 0.0)) >= 0.70
-    ]
-    # Local-frame holes detected on rotated plates (detected_via == "rotated_plate_local_frame").
-    local_holes = [
-        h for h in holes if h.get("detected_via") == "rotated_plate_local_frame" and "local_center" in h
-    ]
-    slots = [
-        feature
-        for feature in graph.get("features", [])
-        if feature.get("type") == "slot_like_cutout"
-        and float(feature.get("confidence", 0.0)) >= 0.70
-    ]
-    counterbores = [
-        feature
-        for feature in graph.get("features", [])
-        if feature.get("type") == "counterbore_hole"
-        and float(feature.get("confidence", 0.0)) >= 0.70
-    ]
-    rectangular_cutouts = [
-        feature
-        for feature in graph.get("features", [])
-        if feature.get("type") == "rectangular_cutout"
-        and float(feature.get("confidence", 0.0)) >= 0.70
-    ]
-    rectangular_pockets = [
-        feature
-        for feature in graph.get("features", [])
-        if feature.get("type") == "rectangular_pocket"
-        and float(feature.get("confidence", 0.0)) >= 0.70
-    ]
-    origin = [float(value) for value in plate["origin"]]
-    size = [float(value) for value in plate["size"]]
-    thickness_axis_index = int(np.argmin(size))
-    thickness_axis = ("x", "y", "z")[thickness_axis_index]
-    supported_patterns = _supported_hole_patterns(graph, thickness_axis)
-    linear_pattern_names: dict[int, str] = {}
-    grid_pattern_names: dict[int, str] = {}
-    emitted_hole_keys: set[tuple[float, float, float]] = set()
-    standalone_holes: list[dict[str, Any]] = []
-
-    lines = [
-        "// Feature graph SCAD preview",
-        f"// source_file: {graph.get('source_file', '')}",
-        "// generated from conservative plate/hole feature candidates",
-        "",
-        f"plate_origin = {_scad_vector(origin)};",
-        f"plate_size = {_scad_vector(size)};",
-    ]
-    if plate is not None:
-        transform_decls, plate_transform_expr = _plate_transform_scad(plate)
-        lines.extend(transform_decls)
-    else:
-        plate_transform_expr = "translate(plate_origin) "
-    if holes or slots or counterbores or rectangular_cutouts or rectangular_pockets or local_holes:
-        for pattern_index, pattern in enumerate(supported_patterns):
-            if pattern.get(
-                "type"
-            ) == "linear_hole_pattern" and _has_linear_pattern_fields(pattern):
-                pattern_name = f"hole_pattern_{len(linear_pattern_names)}"
-                linear_pattern_names[pattern_index] = pattern_name
-                origin = [float(value) for value in pattern["pattern_origin"]]
-                step = [float(value) for value in pattern["pattern_step"]]
-                lines.extend(
-                    [
-                        f"{pattern_name}_count = {int(pattern['pattern_count'])};",
-                        f"{pattern_name}_origin = {_scad_vector(origin)};",
-                        f"{pattern_name}_step = {_scad_vector(step)};",
-                        f"{pattern_name}_diameter = {float(pattern['diameter']):.6f};",
-                    ]
-                )
-            elif pattern.get(
-                "type"
-            ) == "grid_hole_pattern" and _has_grid_pattern_fields(pattern):
-                pattern_name = f"hole_grid_{len(grid_pattern_names)}"
-                grid_pattern_names[pattern_index] = pattern_name
-                origin = [float(value) for value in pattern["grid_origin"]]
-                row_step = [float(value) for value in pattern["grid_row_step"]]
-                col_step = [float(value) for value in pattern["grid_col_step"]]
-                lines.extend(
-                    [
-                        f"{pattern_name}_rows = {int(pattern['grid_rows'])};",
-                        f"{pattern_name}_cols = {int(pattern['grid_cols'])};",
-                        f"{pattern_name}_origin = {_scad_vector(origin)};",
-                        f"{pattern_name}_row_step = {_scad_vector(row_step)};",
-                        f"{pattern_name}_col_step = {_scad_vector(col_step)};",
-                        f"{pattern_name}_diameter = {float(pattern['diameter']):.6f};",
-                    ]
-                )
-            emitted_hole_keys.update(
-                _hole_key([float(value) for value in center])
-                for center in pattern.get("centers", [])
-            )
-        for hole in holes:
-            # Local-frame holes on rotated plates are handled separately.
-            if hole.get("detected_via") == "rotated_plate_local_frame":
-                continue
-            if hole.get("axis") != thickness_axis:
-                continue
-            center = [float(value) for value in hole["center"]]
-            if _hole_key(center) in emitted_hole_keys:
-                continue
-            standalone_holes.append(hole)
-        for hole_index, hole in enumerate(standalone_holes):
-            lines.extend(
-                [
-                    f"hole_{hole_index}_center = {_scad_vector([float(value) for value in hole['center']])};",
-                    f"hole_{hole_index}_diameter = {float(hole['diameter']):.6f};",
-                ]
-            )
-        for slot_index, slot in enumerate(slots):
-            if slot.get("axis") != thickness_axis:
-                continue
-            lines.extend(
-                [
-                    f"slot_{slot_index}_start = {_scad_vector([float(value) for value in slot['start']])};",
-                    f"slot_{slot_index}_end = {_scad_vector([float(value) for value in slot['end']])};",
-                    f"slot_{slot_index}_width = {float(slot['width']):.6f};",
-                ]
-            )
-        for cbore_index, counterbore in enumerate(counterbores):
-            if counterbore.get("axis") != thickness_axis:
-                continue
-            lines.extend(
-                [
-                    f"counterbore_{cbore_index}_center = {_scad_vector([float(value) for value in counterbore['center']])};",
-                    f"counterbore_{cbore_index}_through_diameter = {float(counterbore['through_diameter']):.6f};",
-                    f"counterbore_{cbore_index}_bore_diameter = {float(counterbore['bore_diameter']):.6f};",
-                    f"counterbore_{cbore_index}_bore_depth = {float(counterbore['bore_depth']):.6f};",
-                ]
-            )
-        for cutout_index, cutout in enumerate(rectangular_cutouts):
-            if cutout.get("axis") != thickness_axis:
-                continue
-            lines.extend(
-                [
-                    f"rect_cutout_{cutout_index}_center = {_scad_vector([float(value) for value in cutout['center']])};",
-                    f"rect_cutout_{cutout_index}_size = {_scad_vector([float(value) for value in cutout['size']])};",
-                ]
-            )
-        for pocket_index, pocket in enumerate(rectangular_pockets):
-            if pocket.get("axis") != thickness_axis:
-                continue
-            lines.extend(
-                [
-                    f"rect_pocket_{pocket_index}_center = {_scad_vector([float(value) for value in pocket['center']])};",
-                    f"rect_pocket_{pocket_index}_size = {_scad_vector([float(value) for value in pocket['size']])};",
-                ]
-            )
-        lines.extend(
-            [
-                "",
-                "module hole_cutout(center, diameter) {",
-                *_hole_cutout_module_body(
-                    size[thickness_axis_index] + 0.2, thickness_axis
-                ),
-                "}",
-            ]
-        )
-        if counterbores:
-            lines.extend(
-                [
-                    "",
-                    "module counterbore_cutout(center, through_diameter, bore_diameter, bore_depth) {",
-                    "  hole_cutout(center, through_diameter);",
-                    *_counterbore_bore_module_body(
-                        size[thickness_axis_index] + 0.2,
-                        thickness_axis,
-                    ),
-                    "}",
-                ]
-            )
-        if slots:
-            lines.extend(
-                [
-                    "",
-                    "module slot_cutout(start, end, width) {",
-                    "  hull() {",
-                    "    hole_cutout(start, width);",
-                    "    hole_cutout(end, width);",
-                    "  }",
-                    "}",
-                ]
-            )
-        if rectangular_cutouts or rectangular_pockets:
-            lines.extend(
-                [
-                    "",
-                    "module rectangular_prism_cutout(center, size) {",
-                    "  translate([center[0] - size[0] / 2, center[1] - size[1] / 2, center[2] - size[2] / 2])",
-                    "    cube(size);",
-                    "}",
-                ]
-            )
-    # For a rotated plate with detected local-frame holes or slots, emit a
-    # rotation-wrapped difference block so cutouts are bored along the plate
-    # normal, not world Z.
-    local_slots = [
-        s
-        for s in slots
-        if s.get("detected_via") == "rotated_plate_local_frame"
-        and "local_start" in s
-        and "local_end" in s
-    ]
-    is_rotated_with_local_cutouts = (
-        plate is not None
-        and plate.get("detected_via") == "rotated_plate"
-        and (bool(local_holes) or bool(local_slots))
-    )
-
-    if is_rotated_with_local_cutouts:
-        depth = float(size[thickness_axis_index])
-        # Declare local-frame hole variables.
-        for hole_local_index, hole in enumerate(local_holes):
-            lc = [float(v) for v in hole["local_center"]]
-            lines.extend(
-                [
-                    f"hole_local_{hole_local_index}_center = {_scad_vector(lc)};",
-                    f"hole_local_{hole_local_index}_diameter = {float(hole['diameter']):.6f};",
-                ]
-            )
-        # Declare local-frame slot variables.
-        for slot_local_index, slot in enumerate(local_slots):
-            ls = [float(v) for v in slot["local_start"]]
-            le = [float(v) for v in slot["local_end"]]
-            lines.extend(
-                [
-                    f"slot_local_{slot_local_index}_start = {_scad_vector(ls)};",
-                    f"slot_local_{slot_local_index}_end = {_scad_vector(le)};",
-                    f"slot_local_{slot_local_index}_width = {float(slot['width']):.6f};",
-                ]
-            )
-        lines.extend(
-            [
-                "",
-                f"{plate_transform_expr}{{",
-                "  difference() {",
-                "    cube(plate_size);",
-            ]
-        )
-        for hole_local_index in range(len(local_holes)):
-            lines.extend(
-                [
-                    f"    translate([hole_local_{hole_local_index}_center[0],"
-                    f" hole_local_{hole_local_index}_center[1], -0.100000])",
-                    f"      cylinder(h={depth + 0.200000:.6f},"
-                    f" d=hole_local_{hole_local_index}_diameter, $fn=64);",
-                ]
-            )
-        for slot_local_index in range(len(local_slots)):
-            # Emit the slot hull directly so the cylinder starts at z=-0.1 and
-            # extends through the full plate thickness (same as the hole emission
-            # above).  The generic slot_cutout module centers the cylinder on
-            # center[2] which would only cut halfway through.
-            lines.extend(
-                [
-                    f"    hull() {{",
-                    f"      translate([slot_local_{slot_local_index}_start[0],"
-                    f" slot_local_{slot_local_index}_start[1], -0.100000])",
-                    f"        cylinder(h={depth + 0.200000:.6f},"
-                    f" d=slot_local_{slot_local_index}_width, $fn=64);",
-                    f"      translate([slot_local_{slot_local_index}_end[0],"
-                    f" slot_local_{slot_local_index}_end[1], -0.100000])",
-                    f"        cylinder(h={depth + 0.200000:.6f},"
-                    f" d=slot_local_{slot_local_index}_width, $fn=64);",
-                    f"    }}",
-                ]
-            )
-        lines.extend(["  }", "}", ""])
-        return "\n".join(lines)
-
-    plate_et = plate.get("edge_treatment", {})
-    plate_et_kind = str(plate_et.get("kind", "unknown"))
-    plate_et_size = float(plate_et.get("size", 0.0))
-    use_plate_edge_treatment = (
-        plate.get("detected_via") == "tolerant_chamfer_or_fillet"
-        and plate_et_kind in ("chamfer", "fillet")
-        and plate_et_size > 1e-9
-    )
-    has_cutouts = (
-        bool(supported_patterns)
-        or bool(standalone_holes)
-        or any(slot.get("axis") == thickness_axis for slot in slots)
-        or any(counterbore.get("axis") == thickness_axis for counterbore in counterbores)
-        or any(cutout.get("axis") == thickness_axis for cutout in rectangular_cutouts)
-        or any(pocket.get("axis") == thickness_axis for pocket in rectangular_pockets)
-    )
-
-    if use_plate_edge_treatment:
-        base_lines = _emit_box_edge_treatment_scad(
-            size,
-            plate_et,
-            "cube(plate_size)",
-            transform_prefix=plate_transform_expr,
-        )
-        lines.append("")
-        if has_cutouts:
-            lines.append("difference() {")
-            for base_line in base_lines:
-                lines.append(f"  {base_line}")
-        else:
-            lines.extend(base_lines)
-            lines.append("")
-            return "\n".join(lines)
-    else:
-        lines.extend(
-            [
-                "",
-                "difference() {",
-                f"  {plate_transform_expr}cube(plate_size);",
-            ]
-        )
-
-    for pattern_index, pattern in enumerate(supported_patterns):
-        diameter = float(pattern["diameter"])
-        centers = [[float(value) for value in center] for center in pattern["centers"]]
-        linear_name: Optional[str] = linear_pattern_names.get(pattern_index)
-        if linear_name is not None:
-            lines.append(f"  for (i = [0 : {linear_name}_count - 1]) {{")
-            lines.append(
-                f"    hole_cutout({_scad_named_linear_point_expression(linear_name, 'i')}, {linear_name}_diameter);"
-            )
-            lines.append("  }")
-        elif pattern_index in grid_pattern_names:
-            grid_name = grid_pattern_names[pattern_index]
-            lines.append(f"  for (row = [0 : {grid_name}_rows - 1]) {{")
-            lines.append(f"    for (col = [0 : {grid_name}_cols - 1]) {{")
-            lines.append(
-                f"      hole_cutout({_scad_named_grid_point_expression(grid_name)}, {grid_name}_diameter);"
-            )
-            lines.append("    }")
-            lines.append("  }")
-        else:
-            center_list = (
-                "[" + ", ".join(_scad_vector(center) for center in centers) + "]"
-            )
-            lines.append(f"  for (hole_center = {center_list}) {{")
-            lines.append(f"    hole_cutout(hole_center, {diameter:.6f});")
-            lines.append("  }")
-
-    for hole_index, hole in enumerate(standalone_holes):
-        lines.append(
-            f"  hole_cutout(hole_{hole_index}_center, hole_{hole_index}_diameter);"
-        )
-
-    for slot_index, slot in enumerate(slots):
-        if slot.get("axis") != thickness_axis:
-            continue
-        lines.append(
-            f"  slot_cutout(slot_{slot_index}_start, slot_{slot_index}_end, slot_{slot_index}_width);"
-        )
-
-    for cbore_index, counterbore in enumerate(counterbores):
-        if counterbore.get("axis") != thickness_axis:
-            continue
-        lines.append(
-            "  counterbore_cutout("
-            f"counterbore_{cbore_index}_center, "
-            f"counterbore_{cbore_index}_through_diameter, "
-            f"counterbore_{cbore_index}_bore_diameter, "
-            f"counterbore_{cbore_index}_bore_depth"
-            ");"
-        )
-
-    for cutout_index, cutout in enumerate(rectangular_cutouts):
-        if cutout.get("axis") != thickness_axis:
-            continue
-        lines.append(
-            f"  rectangular_prism_cutout(rect_cutout_{cutout_index}_center, rect_cutout_{cutout_index}_size);"
-        )
-
-    for pocket_index, pocket in enumerate(rectangular_pockets):
-        if pocket.get("axis") != thickness_axis:
-            continue
-        lines.append(
-            f"  rectangular_prism_cutout(rect_pocket_{pocket_index}_center, rect_pocket_{pocket_index}_size);"
-        )
-
-    lines.append("}")
-    lines.append("")
-    return "\n".join(lines)
+    ir_tree = graph.get("ir_tree")
+    if ir_tree is None:
+        ir_tree = _build_ir_tree(graph)
+    if not ir_tree:
+        return None
+    top = ir_tree[0]
+    confidence = float(top.get("confidence", 0.0))
+    if not _passes_preview_solid_confidence(confidence):
+        return None
+    root = top.get("root", {})
+    return emit_node(root, graph)
 
 
 def _find_dominant_normal_axis(

@@ -82,7 +82,9 @@ class DetectorConfig:
     # Cap fill ratio: area of one flat cap / (span_a * span_b of that cap's bounding rect).
     # A perfect circle fills π/4 ≈ 0.785; we allow generous slop for mesh approximation.
     cylinder_cap_fill_ratio_min: float = 0.68
-    cylinder_cap_fill_ratio_max: float = 0.93  # above this → likely a rectangle, not a circle
+    cylinder_cap_fill_ratio_max: float = (
+        0.93  # above this → likely a rectangle, not a circle
+    )
     # Cross-section squareness: min(perp_span) / max(perp_span). Ellipses score lower.
     cylinder_cross_section_squareness_min: float = 0.80
     # Minimum fraction of total surface area contributed by the two flat caps together.
@@ -112,7 +114,7 @@ class DetectorConfig:
     revolve_phase2_circle_fit_tolerance_ratio: float = 0.08
 
     # --- Linear extrude (Rule 2) thresholds ---
-    linear_extrude_axis_quality_min: float = 0.25
+    linear_extrude_axis_quality_min: float = 0.20
     linear_extrude_cross_section_consistency_min: float = 0.60
     linear_extrude_max_profile_vertices: int = 64
     linear_extrude_confidence_min: float = 0.55

@@ -74,6 +74,26 @@ def _make_sphere(r: float = 5.0, stacks: int = 8, slices: int = 8):
     return verts_arr, np.array(tris, dtype=np.int64)
 
 
+def _make_linear_extruded_polygon(points: list[tuple[float, float]], height: float):
+    """Return (vertices, triangles) for a z-extruded simple polygon."""
+    bottom = [[x, y, 0.0] for x, y in points]
+    top = [[x, y, height] for x, y in points]
+    vertices = np.array(bottom + top, dtype=np.float64)
+    n = len(points)
+    tris: list[list[int]] = []
+
+    for i in range(1, n - 1):
+        tris.append([0, i + 1, i])
+        tris.append([n, n + i, n + i + 1])
+
+    for i in range(n):
+        j = (i + 1) % n
+        tris.append([i, j, n + j])
+        tris.append([i, n + j, n + i])
+
+    return vertices, np.array(tris, dtype=np.int64)
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -91,9 +111,9 @@ def test_detect_linear_extrude_accepts_box():
 
     # Detected height should be within 20 % of the true extrude height (5.0)
     detected_height = feat["height"]
-    assert abs(detected_height - 5.0) / 5.0 < 0.20, (
-        f"Height {detected_height:.3f} too far from expected 5.0"
-    )
+    assert (
+        abs(detected_height - 5.0) / 5.0 < 0.20
+    ), f"Height {detected_height:.3f} too far from expected 5.0"
 
 
 def test_detect_linear_extrude_rejects_sphere():
@@ -123,9 +143,21 @@ def test_detect_linear_extrude_axis_aligned_with_box_z():
 
     axis = results[0]["axis"]
     # The z component should dominate (absolute value > 0.8)
-    assert abs(axis[2]) > 0.8, (
-        f"Expected z-dominant axis, got axis={axis}"
+    assert abs(axis[2]) > 0.8, f"Expected z-dominant axis, got axis={axis}"
+
+
+def test_detect_linear_extrude_checks_all_axes_before_selecting():
+    """Elongated caps should not cause early selection of an inconsistent side axis."""
+    v, t = _make_linear_extruded_polygon(
+        [(0.0, 0.0), (5.0, 0.0), (5.0, 0.5), (1.0, 0.5), (1.0, 1.25), (0.0, 1.25)],
+        10.0,
     )
+    results = detect_linear_extrude_solid(v, t)
+    assert len(results) > 0, "Expected a detection for elongated z extrusion"
+
+    axis = results[0]["axis"]
+    assert abs(axis[2]) > 0.8, f"Expected z-dominant axis, got axis={axis}"
+    assert results[0]["confidence_components"]["cross_section_consistency"] >= 0.60
 
 
 def test_detect_linear_extrude_profile_nonempty():

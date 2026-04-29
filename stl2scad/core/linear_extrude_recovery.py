@@ -122,6 +122,35 @@ def _candidate_extrude_axis(
     return best_axis, best_squareness
 
 
+def _canonical_extrude_axis_candidates(
+    vertices: np.ndarray,
+    triangles: np.ndarray,
+) -> list[tuple[np.ndarray, float]]:
+    """Return canonical extrusion axes with their cap-shape quality.
+
+    The legacy detector selected a single axis before checking slice
+    consistency.  Real prismatic parts often have elongated end caps, so a side
+    axis can look "more square" than the true extrusion axis.  Keep the same
+    cap-quality metric, but let the public detector run full gates on every
+    canonical axis before choosing the best interpretation.
+    """
+    if vertices is None or len(vertices) < 4 or triangles is None or len(triangles) < 4:
+        return []
+
+    candidates: list[tuple[np.ndarray, float]] = []
+    for axis in (
+        np.array([1.0, 0.0, 0.0]),
+        np.array([0.0, 1.0, 0.0]),
+        np.array([0.0, 0.0, 1.0]),
+    ):
+        quality = _cap_squareness(vertices, axis)
+        if quality > 1e-6:
+            candidates.append((axis, quality))
+
+    candidates.sort(key=lambda item: item[1], reverse=True)
+    return candidates
+
+
 def _slice_cross_section_2d(
     vertices: np.ndarray,
     triangles: np.ndarray,
@@ -280,7 +309,7 @@ def _build_profile_from_slices(
 
 
 def detect_linear_extrude_solid(
-    vertices: np.ndarray,   # (N, 3) unique vertices
+    vertices: np.ndarray,  # (N, 3) unique vertices
     triangles: np.ndarray,  # (M, 3) int64 triangle indices
     config: Optional[DetectorConfig] = None,
 ) -> list[dict[str, Any]]:
@@ -313,79 +342,80 @@ def detect_linear_extrude_solid(
     if mesh_scale < 1e-9:
         return []
 
-    # ------------------------------------------------------------------
-    # Gate 1 — cap axis
-    # ------------------------------------------------------------------
-    axis, axis_quality = _candidate_extrude_axis(vertices, triangles)
-    if axis is None:
-        return []
-    if axis_quality < config.linear_extrude_axis_quality_min:
-        return []
+    best: Optional[dict[str, Any]] = None
+    for axis, axis_quality in _canonical_extrude_axis_candidates(vertices, triangles):
+        # ------------------------------------------------------------------
+        # Gate 1 — cap axis
+        # ------------------------------------------------------------------
+        if axis_quality < config.linear_extrude_axis_quality_min:
+            continue
 
-    # ------------------------------------------------------------------
-    # Gate 2 — cross-section consistency
-    # ------------------------------------------------------------------
-    proj = vertices @ axis
-    h_min = float(proj.min())
-    h_max = float(proj.max())
-    height = h_max - h_min
-    if height < 1e-9:
-        return []
+        # ------------------------------------------------------------------
+        # Gate 2 — cross-section consistency
+        # ------------------------------------------------------------------
+        proj = vertices @ axis
+        h_min = float(proj.min())
+        h_max = float(proj.max())
+        height = h_max - h_min
+        if height < 1e-9:
+            continue
 
-    u, v = _perpendicular_axes(axis)
-    K = 6
-    sample_heights = np.linspace(h_min + height * 0.05, h_max - height * 0.05, K)
+        u, v = _perpendicular_axes(axis)
+        K = 6
+        sample_heights = np.linspace(
+            h_min + height * 0.05,
+            h_max - height * 0.05,
+            K,
+        )
 
-    slices_2d: list[np.ndarray] = []
-    for h in sample_heights:
-        pts = _slice_cross_section_2d(vertices, triangles, axis, float(h), u, v)
-        slices_2d.append(pts)
+        slices_2d: list[np.ndarray] = []
+        for h in sample_heights:
+            pts = _slice_cross_section_2d(vertices, triangles, axis, float(h), u, v)
+            slices_2d.append(pts)
 
-    consistency = _cross_section_consistency(slices_2d, mesh_scale)
-    if consistency < config.linear_extrude_cross_section_consistency_min:
-        return []
+        consistency = _cross_section_consistency(slices_2d, mesh_scale)
+        if consistency < config.linear_extrude_cross_section_consistency_min:
+            continue
 
-    # ------------------------------------------------------------------
-    # Gate 3 — profile extraction
-    # ------------------------------------------------------------------
-    profile_arr = _build_profile_from_slices(
-        slices_2d,
-        num_angles=32,
-        tolerance_ratio=0.005,
-        mesh_scale=mesh_scale,
-    )
-    n_profile = len(profile_arr)
-    if n_profile < 3 or n_profile > config.linear_extrude_max_profile_vertices:
-        return []
+        # ------------------------------------------------------------------
+        # Gate 3 — profile extraction
+        # ------------------------------------------------------------------
+        profile_arr = _build_profile_from_slices(
+            slices_2d,
+            num_angles=32,
+            tolerance_ratio=0.005,
+            mesh_scale=mesh_scale,
+        )
+        n_profile = len(profile_arr)
+        if n_profile < 3 or n_profile > config.linear_extrude_max_profile_vertices:
+            continue
 
-    profile_validity = 1.0
+        profile_validity = 1.0
 
-    # ------------------------------------------------------------------
-    # Gate 4 — confidence and emit
-    # ------------------------------------------------------------------
-    confidence = float(
-        0.4 * axis_quality
-        + 0.4 * consistency
-        + 0.2 * profile_validity
-    )
-    if confidence < config.linear_extrude_confidence_min:
-        return []
+        # ------------------------------------------------------------------
+        # Gate 4 — confidence and candidate selection
+        # ------------------------------------------------------------------
+        confidence = float(
+            0.4 * axis_quality + 0.4 * consistency + 0.2 * profile_validity
+        )
+        if confidence < config.linear_extrude_confidence_min:
+            continue
 
-    # Axis origin = projection of centroid onto the axis's min plane
-    centroid = vertices.mean(axis=0)
-    origin = centroid - float(centroid @ axis - h_min) * axis
+        # Axis origin = projection of centroid onto the axis's min plane
+        centroid = vertices.mean(axis=0)
+        origin = centroid - float(centroid @ axis - h_min) * axis
 
-    # Canonical sign: positive along the dominant axis component
-    dominant = int(np.argmax(np.abs(axis)))
-    if axis[dominant] < 0.0:
-        axis = -axis
+        # Canonical sign: positive along the dominant axis component
+        canonical_axis = axis.copy()
+        dominant = int(np.argmax(np.abs(canonical_axis)))
+        if canonical_axis[dominant] < 0.0:
+            canonical_axis = -canonical_axis
 
-    return [
-        {
+        candidate = {
             "type": "linear_extrude_solid",
             "confidence": confidence,
             "detected_via": "linear_extrude",
-            "axis": axis.tolist(),
+            "axis": canonical_axis.tolist(),
             "axis_origin": origin.tolist(),
             "height": float(height),
             "profile": profile_arr.tolist(),
@@ -395,4 +425,13 @@ def detect_linear_extrude_solid(
                 "profile_validity": profile_validity,
             },
         }
-    ]
+        if best is None or confidence > float(best["confidence"]) + 1e-9:
+            best = candidate
+        elif (
+            best is not None
+            and abs(confidence - float(best["confidence"])) <= 1e-9
+            and height < float(best["height"])
+        ):
+            best = candidate
+
+    return [best] if best is not None else []

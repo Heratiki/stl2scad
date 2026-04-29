@@ -734,6 +734,47 @@ def _emit_cylinder_scad_preview(graph: dict[str, Any], cylinder: dict[str, Any])
     return "\n".join(lines)
 
 
+def _emit_box_edge_treatment_scad(
+    size: list[float],
+    edge_treatment: dict[str, Any],
+    inner_cube_expr: str,
+    transform_prefix: str = "",
+) -> list[str]:
+    """Return SCAD lines that wrap a cube with chamfer or fillet treatment."""
+    kind = str(edge_treatment.get("kind", "unknown"))
+    et_size = float(edge_treatment.get("size", 0.0))
+
+    if kind not in ("chamfer", "fillet") or et_size <= 1e-9:
+        return [f"{transform_prefix}{inner_cube_expr};"]
+
+    w, h, d = float(size[0]), float(size[1]), float(size[2])
+    min_dim = min(w, h, d)
+    if min_dim <= 1e-9:
+        return [f"{transform_prefix}{inner_cube_expr};"]
+    et_size = min(et_size, min_dim * 0.45)
+
+    if kind == "chamfer":
+        c = et_size
+        return [
+            f"chamfer_c = {c:.6f};",
+            f"{transform_prefix}hull() {{",
+            f"  cube([{w:.6f}, {h - 2*c:.6f}, {d - 2*c:.6f}]);",
+            f"  cube([{w - 2*c:.6f}, {h:.6f}, {d - 2*c:.6f}]);",
+            f"  cube([{w - 2*c:.6f}, {h - 2*c:.6f}, {d:.6f}]);",
+            "}",
+        ]
+
+    r = et_size
+    return [
+        f"fillet_r = {r:.6f};",
+        f"{transform_prefix}translate([{r:.6f}, {r:.6f}, {r:.6f}])",
+        "minkowski() {",
+        f"  cube([{w - 2*r:.6f}, {h - 2*r:.6f}, {d - 2*r:.6f}]);",
+        "  sphere(r=fillet_r, $fn=32);",
+        "}",
+    ]
+
+
 def _emit_box_scad_preview(graph: dict[str, Any], box: dict[str, Any]) -> str:
     """Emit parametric SCAD for a box_like_solid with optional through-holes."""
     origin = [float(v) for v in box["origin"]]
@@ -750,6 +791,23 @@ def _emit_box_scad_preview(graph: dict[str, Any], box: dict[str, Any]) -> str:
             if f.get("type") == "hole_like_cutout"
             and float(f.get("confidence", 0.0)) >= 0.70
             and f.get("axis") in axis_depth
+        ]
+    )
+    unsupported_box_cutouts = (
+        []
+        if is_rotated
+        else [
+            f
+            for f in graph.get("features", [])
+            if f.get("type")
+            in {
+                "slot_like_cutout",
+                "counterbore_hole",
+                "rectangular_cutout",
+                "rectangular_pocket",
+            }
+            and f.get("source_parent_type", "box_like_solid") == "box_like_solid"
+            and float(f.get("confidence", 0.0)) >= 0.70
         ]
     )
 
@@ -786,21 +844,54 @@ def _emit_box_scad_preview(graph: dict[str, Any], box: dict[str, Any]) -> str:
             ]
         )
 
-    lines.extend(
-        [
-            "",
-            "difference() {",
-            f"  {box_transform_expr}cube(box_size);",
-        ]
+    et = box.get("edge_treatment", {})
+    et_kind = str(et.get("kind", "unknown"))
+    et_size = float(et.get("size", 0.0))
+    use_edge_treatment = (
+        box.get("detected_via") == "tolerant_chamfer_or_fillet"
+        and et_kind in ("chamfer", "fillet")
+        and et_size > 1e-9
+        and not is_rotated
+        and not unsupported_box_cutouts
     )
 
-    for hole_index, hole in enumerate(holes):
-        axis = hole["axis"]
-        lines.append(
-            f"  hole_cutout_{axis}(hole_{hole_index}_center, hole_{hole_index}_diameter);"
+    if use_edge_treatment:
+        base_lines = _emit_box_edge_treatment_scad(
+            size,
+            et,
+            "cube(box_size)",
+            transform_prefix=box_transform_expr,
+        )
+        lines.append("")
+        if holes:
+            lines.append("difference() {")
+            for base_line in base_lines:
+                lines.append(f"  {base_line}")
+            for hole_index, hole in enumerate(holes):
+                axis = hole["axis"]
+                lines.append(
+                    f"  hole_cutout_{axis}(hole_{hole_index}_center, hole_{hole_index}_diameter);"
+                )
+            lines.extend(["}", ""])
+        else:
+            lines.extend(base_lines)
+            lines.append("")
+    else:
+        lines.extend(
+            [
+                "",
+                "difference() {",
+                f"  {box_transform_expr}cube(box_size);",
+            ]
         )
 
-    lines.extend(["}", ""])
+        for hole_index, hole in enumerate(holes):
+            axis = hole["axis"]
+            lines.append(
+                f"  hole_cutout_{axis}(hole_{hole_index}_center, hole_{hole_index}_diameter);"
+            )
+
+        lines.extend(["}", ""])
     return "\n".join(lines)
 
 
@@ -1145,13 +1236,47 @@ def emit_feature_graph_scad_preview(graph: dict[str, Any]) -> Optional[str]:
         lines.extend(["  }", "}", ""])
         return "\n".join(lines)
 
-    lines.extend(
-        [
-            "",
-            "difference() {",
-            f"  {plate_transform_expr}cube(plate_size);",
-        ]
+    plate_et = plate.get("edge_treatment", {})
+    plate_et_kind = str(plate_et.get("kind", "unknown"))
+    plate_et_size = float(plate_et.get("size", 0.0))
+    use_plate_edge_treatment = (
+        plate.get("detected_via") == "tolerant_chamfer_or_fillet"
+        and plate_et_kind in ("chamfer", "fillet")
+        and plate_et_size > 1e-9
     )
+    has_cutouts = (
+        bool(supported_patterns)
+        or bool(standalone_holes)
+        or any(slot.get("axis") == thickness_axis for slot in slots)
+        or any(counterbore.get("axis") == thickness_axis for counterbore in counterbores)
+        or any(cutout.get("axis") == thickness_axis for cutout in rectangular_cutouts)
+        or any(pocket.get("axis") == thickness_axis for pocket in rectangular_pockets)
+    )
+
+    if use_plate_edge_treatment:
+        base_lines = _emit_box_edge_treatment_scad(
+            size,
+            plate_et,
+            "cube(plate_size)",
+            transform_prefix=plate_transform_expr,
+        )
+        lines.append("")
+        if has_cutouts:
+            lines.append("difference() {")
+            for base_line in base_lines:
+                lines.append(f"  {base_line}")
+        else:
+            lines.extend(base_lines)
+            lines.append("")
+            return "\n".join(lines)
+    else:
+        lines.extend(
+            [
+                "",
+                "difference() {",
+                f"  {plate_transform_expr}cube(plate_size);",
+            ]
+        )
 
     for pattern_index, pattern in enumerate(supported_patterns):
         diameter = float(pattern["diameter"])

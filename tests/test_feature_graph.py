@@ -413,6 +413,118 @@ def test_feature_graph_scad_preview_allows_tiny_near_threshold_plate_confidence(
     assert below_scad is None
 
 
+def _make_graph_with_edge_treatment(
+    kind: str,
+    size: float,
+    solid_type: str = "box_like_solid",
+) -> dict:
+    if solid_type == "box_like_solid":
+        return {
+            "schema_version": 1,
+            "source_file": "test_edge.stl",
+            "features": [
+                {
+                    "type": "box_like_solid",
+                    "confidence": 0.92,
+                    "detected_via": "tolerant_chamfer_or_fillet",
+                    "edge_treatment": {"kind": kind, "size": size},
+                    "origin": [0.0, 0.0, 0.0],
+                    "size": [20.0, 15.0, 10.0],
+                    "parameters": {"width": 20.0, "depth": 15.0, "height": 10.0},
+                }
+            ],
+        }
+    return {
+        "schema_version": 1,
+        "source_file": "test_edge.stl",
+        "features": [
+            {
+                "type": "plate_like_solid",
+                "confidence": 0.88,
+                "detected_via": "tolerant_chamfer_or_fillet",
+                "edge_treatment": {"kind": kind, "size": size},
+                "origin": [0.0, 0.0, 0.0],
+                "size": [20.0, 15.0, 2.0],
+                "parameters": {"width": 20.0, "depth": 15.0, "thickness": 2.0},
+            }
+        ],
+    }
+
+
+def test_box_chamfer_scad_uses_hull():
+    graph = _make_graph_with_edge_treatment("chamfer", 1.5)
+    scad = emit_feature_graph_scad_preview(graph)
+    assert scad is not None
+    assert "hull()" in scad
+    assert "chamfer_c" in scad
+    assert "1.500000" in scad
+    assert "minkowski" not in scad
+
+
+def test_box_fillet_scad_uses_minkowski_sphere():
+    graph = _make_graph_with_edge_treatment("fillet", 1.5)
+    scad = emit_feature_graph_scad_preview(graph)
+    assert scad is not None
+    assert "minkowski()" in scad
+    assert "sphere" in scad
+    assert "fillet_r" in scad
+    assert "hull()" not in scad
+
+
+def test_plate_chamfer_scad_uses_hull():
+    graph = _make_graph_with_edge_treatment(
+        "chamfer",
+        1.0,
+        solid_type="plate_like_solid",
+    )
+    scad = emit_feature_graph_scad_preview(graph)
+    assert scad is not None
+    assert "hull()" in scad
+    assert "chamfer_c" in scad
+
+
+def test_plate_fillet_scad_uses_minkowski_sphere():
+    graph = _make_graph_with_edge_treatment(
+        "fillet",
+        1.0,
+        solid_type="plate_like_solid",
+    )
+    scad = emit_feature_graph_scad_preview(graph)
+    assert scad is not None
+    assert "minkowski()" in scad
+    assert "sphere" in scad
+
+
+def test_box_no_edge_treatment_unchanged():
+    graph = {
+        "schema_version": 1,
+        "source_file": "strict_box.stl",
+        "features": [
+            {
+                "type": "box_like_solid",
+                "confidence": 0.92,
+                "detected_via": "strict",
+                "origin": [0.0, 0.0, 0.0],
+                "size": [20.0, 15.0, 10.0],
+                "parameters": {"width": 20.0, "depth": 15.0, "height": 10.0},
+            }
+        ],
+    }
+    scad = emit_feature_graph_scad_preview(graph)
+    assert scad is not None
+    assert "hull()" not in scad
+    assert "minkowski" not in scad
+    assert "cube(box_size)" in scad
+
+
+def test_box_unknown_edge_treatment_unchanged():
+    graph = _make_graph_with_edge_treatment("unknown", 0.0)
+    scad = emit_feature_graph_scad_preview(graph)
+    assert scad is not None
+    assert "hull()" not in scad
+    assert "minkowski" not in scad
+
+
 def test_feature_graph_extracts_counterbore_hole(test_output_dir):
     stl_file = test_output_dir / "plate_with_counterbore.stl"
     through_radius = 2.0

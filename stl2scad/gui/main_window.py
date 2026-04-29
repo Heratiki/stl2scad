@@ -2652,10 +2652,10 @@ class MainWindow(QMainWindow):
             self.mesh_item = gl.GLMeshItem(
                 meshdata=self.mesh_data,
                 color=self.current_color,
-                smooth=True,
-                shader="balloon",
+                smooth=False,
+                shader="shaded",
                 drawFaces=True,
-                drawEdges=False,
+                drawEdges=True,
                 glOptions="opaque",
             )
             self.gl_view.addItem(self.mesh_item)
@@ -3096,10 +3096,10 @@ class MainWindow(QMainWindow):
         self.mesh_item = gl.GLMeshItem(
             meshdata=self.mesh_data,
             color=self.current_color,
-            smooth=True,
-            shader="balloon",
+            smooth=False,
+            shader="shaded",
             drawFaces=True,
-            drawEdges=False,
+            drawEdges=True,
             glOptions="opaque",
         )
         self.gl_view.addItem(self.mesh_item)

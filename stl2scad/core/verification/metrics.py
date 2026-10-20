@@ -14,7 +14,7 @@ from typing import Dict, Optional, Tuple, Any, Union, List
 import stl
 from stl.mesh import Mesh
 
-from ..converter import run_openscad, get_openscad_path
+from ..openscad.runner import run_openscad, get_openscad_path
 from ..temp_paths import temporary_directory
 
 

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from stl2scad.core.benchmark_fixtures import ensure_benchmark_fixtures
-from stl2scad.tuning.local_corpus import (
+from stl2scad.legacy.tuning.local_corpus import (
     compare_local_corpus_score_to_baseline,
     create_local_corpus_manifest,
     list_missing_local_corpus_files,
@@ -207,11 +207,11 @@ def test_score_local_corpus_uses_geometric_preview_validation(
         }
 
     monkeypatch.setattr(
-        "stl2scad.tuning.local_corpus.build_feature_graph_for_stl",
+        "stl2scad.legacy.tuning.local_corpus.build_feature_graph_for_stl",
         _fake_build_graph,
     )
     monkeypatch.setattr(
-        "stl2scad.tuning.local_corpus._validate_preview_geometry",
+        "stl2scad.legacy.tuning.local_corpus._validate_preview_geometry",
         _fake_validate_preview,
     )
 

@@ -10,7 +10,7 @@ is promoted for review.
 
 Typical usage
 -------------
-from stl2scad.corpus.engine import CorpusEngine
+from stl2scad.legacy.corpus.engine import CorpusEngine
 
 engine = CorpusEngine.from_local_manifest(".local/local_corpus.json")
 baseline = engine.score()
@@ -31,9 +31,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Generator, Iterable, Optional
 
-from stl2scad.core.feature_graph import build_feature_graph_for_stl
+from stl2scad.legacy.feature_graph import build_feature_graph_for_stl
 from stl2scad.tuning.config import DetectorConfig
-from stl2scad.tuning.thingi10k import (
+from stl2scad.legacy.tuning.thingi10k import (
     _classify_graph_bucket,
     _top_confidence,
     resolve_thingi10k_cache,
@@ -217,7 +217,7 @@ class CorpusEngine:
         progress_fn: Optional[Callable] = None,
     ) -> "CorpusEngine":
         """Build an engine from a local corpus manifest."""
-        from stl2scad.tuning.local_corpus import (
+        from stl2scad.legacy.tuning.local_corpus import (
             load_local_corpus_manifest,
             resolve_local_corpus_root,
         )
@@ -240,7 +240,7 @@ class CorpusEngine:
         progress_fn: Optional[Callable] = None,
     ) -> "CorpusEngine":
         """Build an engine from a Thingi10K batch manifest."""
-        from stl2scad.tuning.thingi10k import load_thingi10k_batch_manifest
+        from stl2scad.legacy.tuning.thingi10k import load_thingi10k_batch_manifest
 
         manifest = load_thingi10k_batch_manifest(manifest_path)
         batch_cache = resolve_thingi10k_cache(manifest, cache_root)

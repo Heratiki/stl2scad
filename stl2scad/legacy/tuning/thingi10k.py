@@ -320,7 +320,7 @@ def score_thingi10k_batch(
 
     Returns a score dict that can be committed as a baseline artifact.
     """
-    from stl2scad.core.feature_graph import build_feature_graph_for_stl, build_triage_report, emit_feature_graph_scad_preview
+    from stl2scad.legacy.feature_graph import build_feature_graph_for_stl, build_triage_report, emit_feature_graph_scad_preview
     from stl2scad.tuning.config import DetectorConfig
 
     if config is None:
@@ -427,7 +427,7 @@ def _sha256_file(path: Path) -> str:
 
 def _classify_graph_bucket(graph: dict[str, Any]) -> str:
     """Map a feature graph to a triage bucket name."""
-    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+    from stl2scad.legacy.feature_graph import emit_feature_graph_scad_preview
     preview = emit_feature_graph_scad_preview(graph) or ""
     if preview and len(preview.strip()) > 20:
         return "parametric_preview"

@@ -12,7 +12,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from stl2scad.tuning.config import DetectorConfig
-from stl2scad.tuning.real_world_corpus import (
+from stl2scad.legacy.tuning.real_world_corpus import (
     compare_real_world_score_to_baseline,
     list_missing_real_world_corpus_files,
     load_real_world_corpus_manifest,

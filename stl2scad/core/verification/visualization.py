@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Union, List, Tuple
 import stl
 
-from ..converter import run_openscad, get_openscad_path
+from ..openscad.runner import run_openscad, get_openscad_path
 
 
 def _get_stl_z_bounds(stl_path: Path) -> Tuple[float, float]:

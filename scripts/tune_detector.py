@@ -29,14 +29,14 @@ if str(REPO_ROOT) not in sys.path:
 
 import optuna
 
-from stl2scad.core.converter import get_openscad_path, run_openscad
+from stl2scad.core.openscad.runner import get_openscad_path, run_openscad
 from stl2scad.core.feature_fixtures import (
     load_feature_fixture_manifest,
     write_feature_fixture_library,
 )
 from stl2scad.tuning.config import DetectorConfig
-from stl2scad.tuning.scoring import ManifestScore, score_manifest
-from stl2scad.tuning.real_world_corpus import (
+from stl2scad.legacy.tuning.scoring import ManifestScore, score_manifest
+from stl2scad.legacy.tuning.real_world_corpus import (
     compare_real_world_score_to_baseline,
     list_missing_real_world_corpus_files,
     load_real_world_corpus_manifest,

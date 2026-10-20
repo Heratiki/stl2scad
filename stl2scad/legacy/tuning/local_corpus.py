@@ -15,16 +15,16 @@ from pathlib import Path
 import tempfile
 from typing import Any, Iterable, Optional
 
-from stl2scad.core.feature_graph import build_feature_graph_for_stl, build_triage_report
-from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
-from stl2scad.core.feature_inventory import (
+from stl2scad.legacy.feature_graph import build_feature_graph_for_stl, build_triage_report
+from stl2scad.legacy.feature_graph import emit_feature_graph_scad_preview
+from stl2scad.legacy.feature_inventory import (
     STL_SUFFIXES,
     InventoryConfig,
     analyze_stl_file,
 )
 from stl2scad.core.verification import verify_existing_conversion
 from stl2scad.tuning.config import DetectorConfig
-from stl2scad.tuning.scoring import FixtureScore, score_fixture_against_graph
+from stl2scad.legacy.tuning.scoring import FixtureScore, score_fixture_against_graph
 
 
 LOCAL_CORPUS_SCHEMA_VERSION = 1

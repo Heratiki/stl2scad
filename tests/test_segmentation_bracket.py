@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 from stl.mesh import Mesh
 
-from stl2scad.core.converter import get_openscad_path, run_openscad
+from stl2scad.core.openscad.runner import get_openscad_path, run_openscad
 
 DATA_DIR = Path(__file__).parent / "data" / "segmentation"
 EXPECTED = json.loads((DATA_DIR / "composite_bracket_expected.json").read_text())

@@ -1,5 +1,7 @@
 # Feature-Level Parametric Reconstruction
 
+> **T-004 (2026-10-20):** the legacy whole-mesh pipeline described here is deprecated. Its modules moved to `stl2scad/legacy/` (`feature_graph`, `feature_inventory`, `recognition`, the legacy `converter`, and the tuning and corpus tools). The `feature-graph`, `feature-graph-from-inventory` and `feature-inventory` CLI commands now warn and exit 2, and scripts import the archived modules from `stl2scad.legacy`. Conversion uses segmentation; see [segmentation_composite_bracket.md](segmentation_composite_bracket.md). Usage lines below are historical.
+
 ## Purpose
 Move beyond primitive-only STL conversion toward editable OpenSCAD approximations for arbitrary user STL collections.
 

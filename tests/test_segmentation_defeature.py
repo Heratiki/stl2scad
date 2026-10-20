@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from stl.mesh import Mesh
 
-from stl2scad.core.converter import run_openscad
+from stl2scad.core.openscad.runner import run_openscad
 from stl2scad.core.segmentation import segment_mesh
 from stl2scad.core.segmentation.defeature import Defeatured, EdgeTreatment, defeature
 from tests.test_segmentation_bracket import _rotation, openscad_path

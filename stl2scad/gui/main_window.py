@@ -44,38 +44,24 @@ import pyqtgraph.opengl as gl
 from stl import mesh
 
 from stl2scad.core.acceleration import get_acceleration_report
-from stl2scad.core.converter import ConversionStats, stl2scad
-from stl2scad.core.feature_graph import (
-    build_feature_graph_for_folder,
-    build_feature_graph_for_stl,
-    emit_feature_graph_scad_preview,
-)
-from stl2scad.core.feature_inventory import (
-    InventoryConfig,
-    InventorySelectionConfig,
-    analyze_stl_folder,
-    analyze_stl_folder_for_feature_graphs,
-    build_feature_graphs_from_inventory,
-)
-from stl2scad.core.recognition import (
-    SUPPORTED_RECOGNITION_BACKENDS,
-    get_available_recognition_backends,
-)
+from stl2scad.core.conversion import ConversionStats, convert_stl_to_scad
 from stl2scad.core.verification import (
     generate_comparison_visualization,
     generate_verification_report_html,
     verify_conversion,
 )
-from stl2scad.tuning.local_corpus import (
-    compare_local_corpus_score_to_baseline,
-    score_local_corpus,
+
+# T-004: the legacy pipeline was removed. These recognizer ids stay in the
+# (disabled) backend selector so old settings still display; they do nothing.
+LEGACY_RECOGNITION_BACKENDS = ("native", "trimesh_manifold", "cgal")
+LEGACY_OPTION_TOOLTIP = (
+    "Deprecated (T-004): the legacy pipeline was removed; conversion uses "
+    "segmentation only and this option is ignored."
 )
-from stl2scad.tuning.real_world_corpus import (
-    compare_real_world_score_to_baseline,
-    score_real_world_corpus,
-    serialize_real_world_corpus_score,
+LEGACY_PANEL_MESSAGE = (
+    "Deprecated (T-004): this panel ran the legacy feature-graph detectors, "
+    "which were removed. The archived code is in stl2scad/legacy/."
 )
-from stl2scad.tuning.html_report import generate_html_report
 
 # ---------------------------------------------------------------------------
 # Color palette
@@ -347,15 +333,7 @@ class ConversionWorker(QThread):
     def run(self):
         try:
             self.progress.emit("Converting STL to SCAD…")
-            stats = stl2scad(
-                self.input_file,
-                self.output_file,
-                self.tolerance,
-                self.debug,
-                self.parametric,
-                recognition_backend=self.recognition_backend,
-                compute_backend=self.compute_backend,
-            )
+            stats = convert_stl_to_scad(self.input_file, self.output_file)
             self.finished.emit(stats)
         except Exception as exc:
             self.error.emit(str(exc))
@@ -397,14 +375,7 @@ class VerificationWorker(QThread):
         try:
             self.progress.emit("Preparing SCAD file for verification…")
             if self.regenerate_scad:
-                stl2scad(
-                    self.stl_file,
-                    self.scad_file,
-                    tolerance=self.conversion_tolerance,
-                    parametric=self.parametric,
-                    recognition_backend=self.recognition_backend,
-                    compute_backend=self.compute_backend,
-                )
+                convert_stl_to_scad(self.stl_file, self.scad_file)
             elif not os.path.exists(self.scad_file):
                 raise FileNotFoundError(f"SCAD file not found: {self.scad_file}")
 
@@ -504,13 +475,7 @@ class BatchWorker(QThread):
                 )
 
                 try:
-                    stl2scad(
-                        str(stl_file),
-                        str(scad_file),
-                        parametric=self.parametric,
-                        recognition_backend=self.recognition_backend,
-                        compute_backend=self.compute_backend,
-                    )
+                    convert_stl_to_scad(str(stl_file), str(scad_file))
                     result = verify_conversion(
                         stl_file,
                         scad_file,
@@ -590,27 +555,7 @@ class FeatureInventoryWorker(QThread):
         self.workers = workers
 
     def run(self):
-        try:
-            report = analyze_stl_folder(
-                input_dir=Path(self.input_dir),
-                output_json=Path(self.output_json),
-                config=InventoryConfig(
-                    recursive=self.recursive,
-                    max_files=self.max_files,
-                    workers=self.workers,
-                ),
-                progress_callback=lambda done, total, path: self.progress.emit(
-                    f"[inventory {done}/{total}] {Path(path).name}"
-                ),
-            )
-            self.finished.emit(
-                {
-                    "report": report,
-                    "output_json": self.output_json,
-                }
-            )
-        except Exception as exc:
-            self.error.emit(str(exc))
+        self.error.emit(LEGACY_PANEL_MESSAGE)
 
 
 class FeatureGraphWorker(QThread):
@@ -624,123 +569,7 @@ class FeatureGraphWorker(QThread):
         self.kwargs = kwargs
 
     def run(self):
-        try:
-            if self.mode == "single_file":
-                input_path = Path(self.kwargs["input_path"])
-                output_json = Path(self.kwargs["output_json"])
-                graph = build_feature_graph_for_stl(input_path)
-                output_json.parent.mkdir(parents=True, exist_ok=True)
-                with output_json.open("w", encoding="utf-8") as handle:
-                    json.dump(graph, handle, indent=2)
-
-                preview_path = self.kwargs.get("preview_path")
-                preview_written = None
-                if preview_path:
-                    scad = emit_feature_graph_scad_preview(graph)
-                    if scad is not None:
-                        preview_written = str(_write_text_file(preview_path, scad))
-
-                self.finished.emit(
-                    {
-                        "mode": self.mode,
-                        "report": graph,
-                        "output_json": str(output_json),
-                        "preview_path": preview_written,
-                    }
-                )
-                return
-
-            if self.mode == "folder":
-                input_path = Path(self.kwargs["input_path"])
-                output_json = Path(self.kwargs["output_json"])
-                recursive = bool(self.kwargs["recursive"])
-                max_files = self.kwargs["max_files"]
-                workers = int(self.kwargs["workers"])
-                inventory_prefilter = bool(self.kwargs["inventory_prefilter"])
-                inventory_output = self.kwargs.get("inventory_output")
-
-                if inventory_prefilter:
-                    sel_cfg_kwargs = self.kwargs.get("selection_config_kwargs") or {}
-                    selection_config = InventorySelectionConfig(
-                        min_mechanical_score=sel_cfg_kwargs.get("min_mechanical_score"),
-                        max_organic_score=sel_cfg_kwargs.get("max_organic_score"),
-                        allowed_families=tuple(sel_cfg_kwargs.get("allowed_families", [])),
-                    )
-                    report = analyze_stl_folder_for_feature_graphs(
-                        input_dir=input_path,
-                        output_json=output_json,
-                        inventory_config=InventoryConfig(
-                            recursive=recursive,
-                            max_files=max_files,
-                            workers=workers,
-                        ),
-                        graph_workers=workers,
-                        selection_config=selection_config,
-                        inventory_output_json=inventory_output,
-                        inventory_progress_callback=lambda done, total, path: self.progress.emit(
-                            f"[inventory {done}/{total}] {Path(path).name}"
-                        ),
-                        graph_progress_callback=lambda done, total, path: self.progress.emit(
-                            f"[graph {done}/{total}] {Path(path).name}"
-                        ),
-                    )
-                else:
-                    report = build_feature_graph_for_folder(
-                        input_path,
-                        output_json,
-                        recursive=recursive,
-                        max_files=max_files,
-                        workers=workers,
-                        progress_callback=lambda done, total, path: self.progress.emit(
-                            f"[graph {done}/{total}] {Path(path).name}"
-                        ),
-                    )
-
-                self.finished.emit(
-                    {
-                        "mode": self.mode,
-                        "report": report,
-                        "output_json": str(output_json),
-                        "inventory_output": (
-                            str(inventory_output) if inventory_output else None
-                        ),
-                    }
-                )
-                return
-
-            if self.mode == "from_inventory":
-                inventory_json = Path(self.kwargs["inventory_json"])
-                output_json = Path(self.kwargs["output_json"])
-                workers = int(self.kwargs["workers"])
-                preview_dir = self.kwargs.get("preview_dir")
-
-                report = build_feature_graphs_from_inventory(
-                    inventory=inventory_json,
-                    output_json=output_json,
-                    workers=workers,
-                    progress_callback=lambda done, total, path: self.progress.emit(
-                        f"[graph {done}/{total}] {Path(path).name}"
-                    ),
-                )
-
-                emitted_previews = []
-                if preview_dir:
-                    emitted_previews = _emit_graph_report_previews(report, preview_dir)
-
-                self.finished.emit(
-                    {
-                        "mode": self.mode,
-                        "report": report,
-                        "output_json": str(output_json),
-                        "preview_dir": str(preview_dir) if preview_dir else None,
-                        "emitted_previews": emitted_previews,
-                    }
-                )
-                return
-
-            raise ValueError(f"Unsupported feature graph mode: {self.mode}")
-        except Exception as exc:
-            self.error.emit(str(exc))
+        self.error.emit(LEGACY_PANEL_MESSAGE)
 
 
 class LocalCorpusScoringWorker(QThread):
@@ -766,49 +595,7 @@ class LocalCorpusScoringWorker(QThread):
         self.triage_top_n = triage_top_n
 
     def run(self):
-        try:
-            self.progress.emit("Running local corpus scoring…")
-            score = score_local_corpus(
-                self.manifest_path,
-                corpus_root=self.corpus_root or None,
-                triage_top_n=self.triage_top_n,
-                progress_fn=lambda msg: self.progress.emit(msg),
-            )
-            out = Path(self.output_json)
-            out.parent.mkdir(parents=True, exist_ok=True)
-            with out.open("w", encoding="utf-8") as fh:
-                import json as _json
-                _json.dump(score, fh, indent=2)
-
-            delta: Optional[Dict[str, Any]] = None
-            if self.baseline_json and Path(self.baseline_json).exists():
-                self.progress.emit("Comparing to baseline…")
-                with Path(self.baseline_json).open(encoding="utf-8") as fh:
-                    baseline = _json.load(fh)
-                delta = compare_local_corpus_score_to_baseline(score, baseline)
-
-            html_file: Optional[str] = None
-            if self.html_output:
-                self.progress.emit("Generating HTML report…")
-                thumb_cache = out.parent / "thumbs"
-                generate_html_report(
-                    score_path=out,
-                    output_path=self.html_output,
-                    thumb_cache_dir=thumb_cache,
-                    show_progress=False,
-                )
-                html_file = str(self.html_output)
-
-            self.finished.emit(
-                {
-                    "score": score,
-                    "output_json": str(out),
-                    "delta": delta,
-                    "html_file": html_file,
-                }
-            )
-        except Exception as exc:
-            self.error.emit(str(exc))
+        self.error.emit(LEGACY_PANEL_MESSAGE)
 
 
 class RealWorldCorpusScoringWorker(QThread):
@@ -832,47 +619,7 @@ class RealWorldCorpusScoringWorker(QThread):
         self.merge_gate = merge_gate
 
     def run(self):
-        try:
-            from stl2scad.tuning.config import DetectorConfig
-
-            self.progress.emit("Running real-world corpus scoring…")
-            config = DetectorConfig()
-            corpus_score = score_real_world_corpus(
-                config,
-                self.manifest_path,
-                corpus_root=self.corpus_root or None,
-            )
-            payload = serialize_real_world_corpus_score(corpus_score)
-
-            out = Path(self.output_json)
-            out.parent.mkdir(parents=True, exist_ok=True)
-            import json as _json
-            with out.open("w", encoding="utf-8") as fh:
-                _json.dump(payload, fh, indent=2)
-
-            delta: Optional[Dict[str, Any]] = None
-            merge_gate_passed: Optional[bool] = None
-            if self.baseline_json and Path(self.baseline_json).exists():
-                self.progress.emit("Comparing to baseline…")
-                with Path(self.baseline_json).open(encoding="utf-8") as fh:
-                    baseline = _json.load(fh)
-                delta = compare_real_world_score_to_baseline(corpus_score, baseline)
-                if self.merge_gate and delta is not None:
-                    regressions = delta.get("regressions", [])
-                    merge_gate_passed = len(regressions) == 0
-
-            self.finished.emit(
-                {
-                    "score": payload,
-                    "output_json": str(out),
-                    "delta": delta,
-                    "merge_gate_passed": merge_gate_passed,
-                }
-            )
-        except Exception as exc:
-            self.error.emit(str(exc))
-
-
+        self.error.emit(LEGACY_PANEL_MESSAGE)
 
 
 def _hsep():
@@ -926,6 +673,13 @@ def _combo(items, width=132):
     return combo
 
 
+def _disable_legacy_panel(group: QGroupBox) -> None:
+    """Grey out a panel that only ran the removed legacy detectors (T-004)."""
+    group.setTitle(f"{group.title()}  (deprecated)")
+    group.setToolTip(LEGACY_PANEL_MESSAGE)
+    group.setEnabled(False)
+
+
 def _resolve_gui_workers(value: int) -> int:
     if value < 0:
         raise ValueError("Workers must be non-negative")
@@ -939,26 +693,6 @@ def _write_text_file(path_like: Union[str, Path], contents: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(contents, encoding="utf-8")
     return path
-
-
-def _emit_graph_report_previews(
-    report: Dict[str, Any], preview_root_like: Union[str, Path]
-) -> list[str]:
-    preview_root = Path(preview_root_like)
-    preview_root.mkdir(parents=True, exist_ok=True)
-    emitted_paths: list[str] = []
-    for graph in report.get("graphs", []):
-        if graph.get("status") == "error":
-            continue
-        scad = emit_feature_graph_scad_preview(graph)
-        if scad is None:
-            continue
-        source_file = str(graph.get("source_file", "graph.stl"))
-        relative_source = Path(source_file)
-        output_path = preview_root / relative_source.with_suffix(".preview.scad")
-        _write_text_file(output_path, scad)
-        emitted_paths.append(str(output_path))
-    return emitted_paths
 
 
 def _format_acceleration_report(report: Dict[str, Any]) -> str:
@@ -1119,7 +853,7 @@ class MainWindow(QMainWindow):
         self.mesh_item: Optional[gl.GLMeshItem] = None
         self.worker: Optional[QThread] = None
         self._busy = False
-        self._available_recognition_backends = tuple(get_available_recognition_backends())
+        self._available_recognition_backends: tuple = ()
         self._last_recognition_metadata: Dict[str, Any] = {}
         self.setup_ui()
 
@@ -1349,7 +1083,7 @@ class MainWindow(QMainWindow):
         backend_row = QHBoxLayout()
         backend_row.addWidget(_label("Backend:", "metric"))
         backend_row.addStretch(1)
-        self.recognition_backend_combo = _combo(SUPPORTED_RECOGNITION_BACKENDS, width=150)
+        self.recognition_backend_combo = _combo(LEGACY_RECOGNITION_BACKENDS, width=150)
         self.recognition_backend_combo.setCurrentText("native")
         self.recognition_backend_combo.setEnabled(False)
         self._update_recognition_backend_tooltip()
@@ -1378,6 +1112,15 @@ class MainWindow(QMainWindow):
         g2.addWidget(self.debug_check)
         g2.addWidget(self._convert_btn)
         grp2.setLayout(g2)
+        # T-004: legacy-only conversion options stay visible but disabled.
+        for widget in (
+            self.convert_tol_spin,
+            self.parametric_check,
+            self.recognition_backend_combo,
+            self.compute_backend_combo,
+        ):
+            widget.setEnabled(False)
+            widget.setToolTip(LEGACY_OPTION_TOOLTIP)
         layout.addWidget(grp2)
 
         # ── STEP 3: VERIFY ─────────────────────────────────────────
@@ -1653,6 +1396,7 @@ class MainWindow(QMainWindow):
         g5.addLayout(families_row)
         g5.addWidget(self._graph_btn)
         grp5.setLayout(g5)
+        _disable_legacy_panel(grp5)
         layout.addWidget(grp5)
 
         grp6 = self._section_group("06  OUTPUT")
@@ -1797,6 +1541,7 @@ class MainWindow(QMainWindow):
         g9.addLayout(lc_triage_row)
         g9.addWidget(self._lc_run_btn)
         grp9.setLayout(g9)
+        _disable_legacy_panel(grp9)
         layout.addWidget(grp9)
 
         # ── STEP 10: REAL-WORLD CORPUS ─────────────────────────────
@@ -1863,6 +1608,7 @@ class MainWindow(QMainWindow):
         g10.addWidget(self.rw_merge_gate_check)
         g10.addWidget(self._rw_run_btn)
         grp10.setLayout(g10)
+        _disable_legacy_panel(grp10)
         layout.addWidget(grp10)
 
         layout.addStretch(1)
@@ -1995,11 +1741,7 @@ class MainWindow(QMainWindow):
             )
 
     def _update_recognition_backend_tooltip(self):
-        available = ", ".join(self._available_recognition_backends)
-        self.recognition_backend_combo.setToolTip(
-            "Recognition backend for parametric conversion. "
-            f"Available in this environment: {available}"
-        )
+        self.recognition_backend_combo.setToolTip(LEGACY_OPTION_TOOLTIP)
 
     def _toggle_use_existing(self, checked):
         self._select_verify_btn.setEnabled(checked)

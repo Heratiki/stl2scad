@@ -65,7 +65,7 @@ def _print_preview_gate_diagnostics(graph: dict[str, Any], features: list[Featur
     repo_root = Path(__file__).resolve().parents[1]
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
-    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+    from stl2scad.legacy.feature_graph import emit_feature_graph_scad_preview
 
     preview_emitted = emit_feature_graph_scad_preview(graph) is not None
     print(f"  preview_emitted={preview_emitted}")

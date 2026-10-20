@@ -3,8 +3,9 @@ Tests for CLI parsing and command dispatch.
 """
 
 import argparse
-import json
 from pathlib import Path
+
+import pytest
 
 from stl2scad import cli
 
@@ -140,37 +141,8 @@ def test_maintainer_parser_defaults():
 from unittest.mock import patch, MagicMock
 
 
-@patch("stl2scad.cli.stl2scad")
-def test_convert_command_execution(mock_stl2scad, test_output_dir):
-    """Test convert command successfully invokes core logic."""
-    # Setup mock return
-    mock_stats = MagicMock()
-    mock_stats.original_vertices = 100
-    mock_stats.deduplicated_vertices = 50
-    mock_stats.faces = 20
-    mock_stats.metadata = {"volume": "10"}
-    mock_stl2scad.return_value = mock_stats
-
-    out_file = str(test_output_dir / "out.scad")
-    # Execute via main
-    exit_code = cli.main(
-        ["convert", "dummy.stl", out_file, "--tolerance", "0.5", "--debug"]
-    )
-
-    assert exit_code == 0
-    mock_stl2scad.assert_called_once_with(
-        "dummy.stl",
-        out_file,
-        0.5,
-        True,
-        False,
-        recognition_backend="native",
-        compute_backend="auto",
-    )
-
-
 @patch("stl2scad.cli.verify_conversion")
-@patch("stl2scad.cli.stl2scad")
+@patch("stl2scad.cli.convert_stl_to_scad")
 def test_verify_command_execution(mock_stl2scad, mock_verify, test_output_dir):
     """Test verify command constructs parameters and handles output."""
     mock_result = MagicMock()
@@ -190,7 +162,7 @@ def test_verify_command_execution(mock_stl2scad, mock_verify, test_output_dir):
 
 
 @patch("stl2scad.cli.verify_conversion")
-@patch("stl2scad.cli.stl2scad")
+@patch("stl2scad.cli.convert_stl_to_scad")
 def test_batch_command_execution(
     mock_stl2scad, mock_verify, test_data_dir, test_output_dir
 ):
@@ -206,251 +178,6 @@ def test_batch_command_execution(
     # Should have executed for at least the sample stl in data dir
     assert mock_stl2scad.call_count > 0
     assert mock_verify.call_count > 0
-
-
-@patch("stl2scad.cli.analyze_stl_folder")
-def test_feature_inventory_command_execution(mock_analyze, test_output_dir):
-    """Feature inventory command should invoke analysis with resolved workers."""
-    mock_analyze.return_value = {
-        "summary": {
-            "file_count": 4,
-            "ok_count": 4,
-            "error_count": 0,
-            "classification_counts": {"mechanical_candidate": 4},
-            "candidate_feature_counts": {"mirror_symmetry": 3},
-            "detector_focus_counts": {"axis_aligned_box": 2},
-        }
-    }
-
-    output_file = str(test_output_dir / "feature_inventory.json")
-    exit_code = cli.main(
-        [
-            "feature-inventory",
-            "models",
-            "--output",
-            output_file,
-            "--max-files",
-            "4",
-            "--workers",
-            "2",
-        ]
-    )
-
-    assert exit_code == 0
-    mock_analyze.assert_called_once()
-    _args, kwargs = mock_analyze.call_args
-    assert kwargs["input_dir"] == Path("models")
-    assert kwargs["output_json"] == Path(output_file)
-    assert kwargs["config"].max_files == 4
-    assert kwargs["config"].workers == 2
-    assert kwargs["config"].recursive is True
-
-
-@patch("stl2scad.cli.build_feature_graph_for_folder")
-def test_feature_graph_directory_command_execution(mock_build_graph, test_output_dir):
-    """Feature graph directory mode should route to folder builder."""
-    mock_build_graph.return_value = {
-        "summary": {
-            "file_count": 3,
-            "error_count": 0,
-            "feature_counts": {"plate_like_solid": 2},
-        }
-    }
-
-    output_file = str(test_output_dir / "feature_graph.json")
-    exit_code = cli.main(
-        [
-            "feature-graph",
-            str(test_output_dir),
-            "--output",
-            output_file,
-            "--workers",
-            "2",
-            "--max-files",
-            "3",
-        ]
-    )
-
-    assert exit_code == 0
-    mock_build_graph.assert_called_once()
-    args, kwargs = mock_build_graph.call_args
-    assert args == (test_output_dir, Path(output_file))
-    assert kwargs["recursive"] is True
-    assert kwargs["max_files"] == 3
-    assert kwargs["workers"] == 2
-    assert callable(kwargs["progress_callback"])
-
-
-@patch("stl2scad.cli.analyze_stl_folder_for_feature_graphs")
-def test_feature_graph_directory_command_inventory_prefilter_execution(
-    mock_prefilter_graphs, test_output_dir
-):
-    """Feature graph directory mode should support inventory-prefilter routing."""
-    mock_prefilter_graphs.return_value = {
-        "inventory_summary": {"file_count": 4},
-        "summary": {
-            "error_count": 0,
-            "feature_counts": {"plate_like_solid": 2},
-        },
-        "selection": {
-            "filter_mode": "inventory_mechanical_candidates",
-            "inventory_file_count": 4,
-            "mechanical_candidate_count": 2,
-            "skipped_non_mechanical_count": 2,
-            "skipped_below_family_confidence_count": 0,
-            "skipped_error_count": 0,
-        },
-    }
-
-    output_file = str(test_output_dir / "feature_graph_prefilter.json")
-    inventory_file = str(test_output_dir / "feature_inventory_prefilter.json")
-    exit_code = cli.main(
-        [
-            "feature-graph",
-            str(test_output_dir),
-            "--output",
-            output_file,
-            "--workers",
-            "2",
-            "--inventory-prefilter",
-            "--inventory-output",
-            inventory_file,
-        ]
-    )
-
-    assert exit_code == 0
-    mock_prefilter_graphs.assert_called_once()
-    _args, kwargs = mock_prefilter_graphs.call_args
-    assert kwargs["input_dir"] == test_output_dir
-    assert kwargs["output_json"] == Path(output_file)
-    assert kwargs["inventory_output_json"] == Path(inventory_file)
-    assert kwargs["inventory_config"].workers == 2
-    assert kwargs["inventory_config"].recursive is True
-    assert kwargs["graph_workers"] == 2
-    assert kwargs["selection_config"].min_family_confidence is None
-    assert kwargs["selection_config"].allowed_families == ()
-    assert callable(kwargs["inventory_progress_callback"])
-    assert callable(kwargs["graph_progress_callback"])
-
-
-@patch("stl2scad.cli.build_feature_graphs_from_inventory")
-def test_feature_graph_from_inventory_passes_family_selection(
-    mock_build_graphs, test_output_dir
-):
-    """Inventory graph command should forward family-confidence selection options."""
-    mock_build_graphs.return_value = {
-        "summary": {"error_count": 0, "feature_counts": {"box_like_solid": 1}},
-        "selection": {
-            "mechanical_candidate_count": 1,
-            "skipped_below_family_confidence_count": 1,
-            "selected_non_mechanical_primary_count": 0,
-        },
-        "graphs": [],
-    }
-
-    output_file = test_output_dir / "graphs_from_inventory.json"
-    exit_code = cli.main(
-        [
-            "feature-graph-from-inventory",
-            "inventory.json",
-            "--output",
-            str(output_file),
-            "--workers",
-            "2",
-            "--inventory-min-family-confidence",
-            "0.85",
-            "--inventory-families",
-            "box",
-        ]
-    )
-
-    assert exit_code == 0
-    mock_build_graphs.assert_called_once()
-    kwargs = mock_build_graphs.call_args.kwargs
-    assert kwargs["selection_config"].min_family_confidence == 0.85
-    assert kwargs["selection_config"].allowed_families == ("box",)
-
-
-@patch("stl2scad.cli.emit_feature_graph_scad_preview")
-@patch("stl2scad.cli.build_feature_graph_for_stl")
-def test_feature_graph_file_command_writes_json_and_preview(
-    mock_build_graph, mock_emit_scad, test_output_dir
-):
-    """Feature graph single-file mode should write JSON and optional SCAD preview."""
-    input_file = test_output_dir / "input.stl"
-    input_file.write_text("solid test", encoding="utf-8")
-    output_file = test_output_dir / "feature_graph.json"
-    preview_file = test_output_dir / "preview.scad"
-
-    mock_build_graph.return_value = {
-        "source_file": str(input_file),
-        "features": [{"type": "plate_like_solid"}],
-    }
-    mock_emit_scad.return_value = "difference() {}"
-
-    exit_code = cli.main(
-        [
-            "feature-graph",
-            str(input_file),
-            "--output",
-            str(output_file),
-            "--scad-preview",
-            str(preview_file),
-        ]
-    )
-
-    assert exit_code == 0
-    mock_build_graph.assert_called_once_with(input_file)
-    mock_emit_scad.assert_called_once()
-    assert json.loads(output_file.read_text(encoding="utf-8"))["features"][0]["type"] == (
-        "plate_like_solid"
-    )
-    assert preview_file.read_text(encoding="utf-8") == "difference() {}"
-
-
-@patch("stl2scad.cli.emit_feature_graph_scad_preview")
-@patch("stl2scad.cli.build_feature_graphs_from_inventory")
-def test_feature_graph_from_inventory_writes_scad_previews(
-    mock_build_graphs, mock_emit_scad, test_output_dir
-):
-    """Inventory graph command should emit per-file SCAD previews when requested."""
-    output_file = test_output_dir / "graphs_from_inventory.json"
-    preview_dir = test_output_dir / "preview"
-
-    mock_build_graphs.return_value = {
-        "summary": {"error_count": 0, "feature_counts": {"plate_like_solid": 1}},
-        "selection": {
-            "inventory_file_count": 2,
-            "mechanical_candidate_count": 2,
-            "skipped_non_mechanical_count": 0,
-            "skipped_error_count": 0,
-        },
-        "graphs": [
-            {"source_file": "parts/plate_a.stl", "features": [{"type": "plate_like_solid"}]},
-            {"source_file": "parts/plate_b.stl", "features": [{"type": "plate_like_solid"}]},
-        ],
-    }
-    mock_emit_scad.side_effect = ["difference() {}", None]
-
-    exit_code = cli.main(
-        [
-            "feature-graph-from-inventory",
-            "inventory.json",
-            "--output",
-            str(output_file),
-            "--workers",
-            "2",
-            "--scad-preview-dir",
-            str(preview_dir),
-        ]
-    )
-
-    assert exit_code == 0
-    mock_build_graphs.assert_called_once()
-    assert (preview_dir / "parts" / "plate_a.preview.scad").read_text(
-        encoding="utf-8"
-    ) == "difference() {}"
-    assert not (preview_dir / "parts" / "plate_b.preview.scad").exists()
 
 
 @patch("stl2scad.cli.subprocess.run")
@@ -476,11 +203,6 @@ def test_maintainer_command_runs_expected_step_prefix(mock_run):
     assert "--merge-gate" in last_call_cmd
 
 
-def test_convert_pipeline_defaults_to_legacy():
-    args = cli.build_parser().parse_args(["convert", "in.stl", "out.scad"])
-    assert args.pipeline == "legacy"
-
-
 def test_segmentation_cli_writes_emitter_output_and_supports_shorthand(
     tmp_path, monkeypatch
 ):
@@ -500,3 +222,167 @@ def test_segmentation_cli_writes_emitter_output_and_supports_shorthand(
     assert cli.main([str(source), str(target), "--pipeline", "segmentation"]) == 0
     assert target.read_text() == "// gated segmentation output\ncube(2);\n"
     assert calls == [(None, 12, str(source))]
+
+
+# --- T-004: segmentation is the only conversion pipeline -------------------
+
+_EMITTED = "// gated segmentation output\ncube(2);\n"
+
+
+def _cube_stl(directory, name="input.stl"):
+    from tests.test_segmentation_geometry import cube, mesh_of
+
+    path = directory / name
+    mesh_of(cube()).save(str(path))
+    return path
+
+
+def _record_emit(monkeypatch):
+    from stl2scad.core import segmentation
+
+    calls = []
+
+    def emit(features, mesh, *, source_file):
+        calls.append((features, len(mesh.vectors), source_file))
+        return _EMITTED
+
+    monkeypatch.setattr(segmentation, "emit_scad", emit)
+    return calls
+
+
+def test_convert_defaults_to_segmentation_pipeline(tmp_path, monkeypatch, capsys):
+    args = cli.build_parser().parse_args(["convert", "in.stl", "out.scad"])
+    assert args.pipeline == "segmentation"
+    source = _cube_stl(tmp_path)
+    target = tmp_path / "output.scad"
+    calls = _record_emit(monkeypatch)
+
+    assert cli.main(["convert", str(source), str(target)]) == 0
+
+    assert calls == [(None, 12, str(source))]
+    assert target.read_text() == _EMITTED
+    captured = capsys.readouterr()
+    assert "Pipeline: segmentation" in captured.out
+    assert "DeprecationWarning" not in captured.err
+
+
+def test_convert_pipeline_legacy_warns_writes_nothing_exits_2(
+    tmp_path, monkeypatch, capsys
+):
+    source = _cube_stl(tmp_path)
+    target = tmp_path / "output.scad"
+    calls = _record_emit(monkeypatch)
+
+    exit_code = cli.main(["convert", "--pipeline", "legacy", str(source), str(target)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "DeprecationWarning" in captured.err
+    assert "--pipeline legacy is deprecated" in captured.err
+    assert "DeprecationWarning" not in captured.out
+    assert not target.exists()
+    assert calls == []
+
+
+def test_convert_legacy_flags_warn_and_are_ignored(tmp_path, monkeypatch, capsys):
+    source = _cube_stl(tmp_path)
+    target = tmp_path / "output.scad"
+    calls = _record_emit(monkeypatch)
+
+    exit_code = cli.main(
+        [
+            "convert",
+            str(source),
+            str(target),
+            "--parametric",
+            "--recognition-backend",
+            "cgal",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "DeprecationWarning: --parametric is deprecated and ignored" in captured.err
+    assert (
+        "DeprecationWarning: --recognition-backend is deprecated and ignored"
+        in captured.err
+    )
+    # Ignored: the conversion is the plain segmentation conversion.
+    assert calls == [(None, 12, str(source))]
+    assert target.read_text() == _EMITTED
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["feature-graph", "feature-graph-from-inventory", "feature-inventory"],
+)
+def test_legacy_detector_commands_warn_and_exit_2(
+    command, tmp_path, monkeypatch, capsys
+):
+    source = _cube_stl(tmp_path)
+    output_json = tmp_path / "report.json"
+    preview = tmp_path / "preview.scad"
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text("{}", encoding="utf-8")
+    calls = _record_emit(monkeypatch)
+    argv = {
+        "feature-graph": [
+            "feature-graph",
+            str(source),
+            "--output",
+            str(output_json),
+            "--scad-preview",
+            str(preview),
+        ],
+        "feature-graph-from-inventory": [
+            "feature-graph-from-inventory",
+            str(inventory),
+            "--output",
+            str(output_json),
+        ],
+        "feature-inventory": [
+            "feature-inventory",
+            str(tmp_path),
+            "--output",
+            str(output_json),
+        ],
+    }[command]
+
+    exit_code = cli.main(argv)
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "DeprecationWarning" in captured.err
+    assert f"'{command}' is deprecated and does nothing" in captured.err
+    assert not output_json.exists()
+    assert not preview.exists()
+    assert calls == []
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["input.stl", "inventory.json"]
+
+
+def test_verify_and_batch_convert_through_segmentation(tmp_path, monkeypatch):
+    stl_dir = tmp_path / "stls"
+    stl_dir.mkdir()
+    source = _cube_stl(stl_dir, "part.stl")
+    out_dir = tmp_path / "out"
+    calls = _record_emit(monkeypatch)
+    verified = []
+
+    def fake_verify(stl_file, scad_file, tolerance, **kwargs):
+        verified.append(Path(scad_file).read_text())
+        result = MagicMock()
+        result.passed = True
+        result.comparison = {}
+        result.tolerance = tolerance
+        return result
+
+    monkeypatch.setattr(cli, "verify_conversion", fake_verify)
+
+    assert cli.main(["verify", str(source)]) == 0
+    assert calls == [(None, 12, str(source))]
+    assert verified == [_EMITTED]
+
+    assert cli.main(["batch", str(stl_dir), str(out_dir)]) == 0
+    assert calls[1:] == [(None, 12, str(source))]
+    assert (out_dir / "part.scad").read_text() == _EMITTED
+    assert verified[1:] == [_EMITTED]

@@ -5,7 +5,7 @@ Tests for visualization and analysis features.
 import pytest
 import json
 from pathlib import Path
-from stl2scad.core.converter import get_openscad_path, run_openscad
+from stl2scad.core.openscad.runner import get_openscad_path, run_openscad
 from stl2scad.core.verification.visualization import _compute_cross_section_heights
 from .utils import setup_logging, verify_debug_files
 

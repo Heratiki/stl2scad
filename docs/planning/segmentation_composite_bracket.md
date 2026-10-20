@@ -70,7 +70,7 @@ When a target test passes, its strict xfail fails. Then remove the marker.
 | Provenance | Face IDs go in the IR nodes and in SCAD comments, for example `// face F7 base_top (plane)`. Triangle lists go in the JSON report only. |
 | Naming | `<kind>_<index>_<dim>`, for example `boss_1_height`. The index starts at 1. |
 | Profile | Rectangle, L, U and T profiles get named dimensions. Other profiles become a labeled point list. |
-| Rollout | CLI flag `--pipeline segmentation`. The old detectors stay the default until the new pipeline does better on the fixtures and on the real parts. |
+| Rollout | CLI flag `--pipeline segmentation`. The old detectors stayed the default until T-004 (2026-10-20); segmentation is now the default, and `--pipeline legacy` warns on stderr, writes nothing and exits 2. |
 | Next target | 2 or 3 of the simplest Hero Me parts from the local corpus, each with an expected JSON that is checked by hand. |
 
 ## Known limits

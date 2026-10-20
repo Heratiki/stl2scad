@@ -10,7 +10,7 @@ import pytest
 from stl.mesh import Mesh
 
 from stl2scad.core.benchmark_fixtures import ensure_benchmark_fixtures
-from stl2scad.core.feature_graph import (
+from stl2scad.legacy.feature_graph import (
     build_feature_graph_for_folder,
     build_feature_graph_for_stl,
     build_triage_report,
@@ -1673,7 +1673,7 @@ def test_ir_tree_fallback_mesh_when_no_solid(test_output_dir):
             {"type": "axis_boundary_plane_pair", "axis": "x", "confidence": 0.4},
         ],
     }
-    from stl2scad.core.feature_graph import _build_ir_tree
+    from stl2scad.legacy.feature_graph import _build_ir_tree
     tree = _build_ir_tree(graph)
     assert len(tree) == 1
     assert tree[0]["type"] == "Interpretation"
@@ -2202,7 +2202,7 @@ def test_rotated_plate_slot_bores_along_plate_normal():
 
 def test_cylinder_inward_lateral_threshold_is_configurable():
     """Cylinder inward-area rejection threshold must be read from DetectorConfig."""
-    from stl2scad.core.feature_graph import _extract_cylinder_like_solid
+    from stl2scad.legacy.feature_graph import _extract_cylinder_like_solid
     from stl2scad.tuning.config import DetectorConfig
 
     cap_normals = np.array([

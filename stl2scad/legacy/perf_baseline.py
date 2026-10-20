@@ -16,9 +16,9 @@ from typing import Any, Dict, List, Sequence, Union
 import psutil
 from stl.mesh import Mesh
 
-from .benchmark_fixtures import ensure_benchmark_fixtures
+from stl2scad.core.benchmark_fixtures import ensure_benchmark_fixtures
 from .converter import stl2scad
-from .temp_paths import temporary_directory
+from stl2scad.core.temp_paths import temporary_directory
 
 
 def run_conversion_perf_baseline(

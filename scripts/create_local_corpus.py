@@ -10,7 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from stl2scad.tuning.local_corpus import create_local_corpus_manifest
+from stl2scad.legacy.tuning.local_corpus import create_local_corpus_manifest
 from stl2scad.tuning.progress import corpus_progress
 
 

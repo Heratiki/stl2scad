@@ -23,7 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from stl2scad.tuning.thingi10k import (
+from stl2scad.legacy.tuning.thingi10k import (
     list_missing_thingi10k_files,
     load_thingi10k_batch_manifest,
     materialize_thingi10k_batch,

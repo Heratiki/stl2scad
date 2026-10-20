@@ -11,7 +11,7 @@ from stl2scad.core.feature_fixtures import (
     iter_expected_feature_counts,
     summarize_detected_feature_counts,
 )
-from stl2scad.core.feature_graph import build_feature_graph_for_stl
+from stl2scad.legacy.feature_graph import build_feature_graph_for_stl
 from stl2scad.tuning.config import DetectorConfig
 
 # Same tolerances the fixture tests use; keep in sync.

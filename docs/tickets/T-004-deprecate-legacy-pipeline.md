@@ -1,6 +1,7 @@
 # T-004: Deprecate the legacy pipeline; segmentation becomes the default
 
-Status: open. Route: Opus lane-dev (design inside).
+Status: landed (worktree-agent-acfebc41d1177b99d, 2026-10-20)
+Route: Opus lane-dev (design inside).
 Opened: 2026-10-20 by the ticket-writer, from the maintainer's rulings of the same date. Rewrites the original T-004 (large cylinder detected as a box).
 Depends on: T-003 (merged 730d6b4)
 
@@ -36,6 +37,7 @@ Note: the original T-004 subject, the false `box_like_solid` on `cylinder_large_
 - Archive to `stl2scad/legacy/`, as T-003 did: `feature_graph.py`, `recognition.py`, `linear_extrude_recovery.py`, `recognition_sweep.py`, the legacy `stl2scad()` conversion path, and anything else only they use. The lane lists the importers with `git grep` first (survey above is the starting point).
 - Tests: legacy-detector tests move to `tests/legacy/` (skipped unless `STL2SCAD_LEGACY_TESTS=1`; `tests/legacy/conftest.py` exists). In `tests/test_feature_fixtures.py` the byte-exact regeneration test and the roadmap-coverage test stay in place; the legacy detection round-trip tests move to `tests/legacy/`. The segmentation retarget of the round-trip is T-009, which runs after T-004.
 - Docs: CLAUDE.md belongs to the orchestrator; the lane does not edit it. README and docs usage lines that show legacy commands are updated by the lane.
+- Confirm-before-implementing, ruled by the maintainer 2026-10-20: (1) Import-line-only edits are allowed in `tests/test_segmentation_*.py` and `stl2scad/core/segmentation/**` (no other change there). No re-export shim in `converter.py`. (2) The OpenSCAD helpers go to the existing package `stl2scad/core/openscad/` as `stl2scad/core/openscad/runner.py` (`get_openscad_path`, `run_openscad`), keeping the Windows `"OpenSCAD (Nightly)"` substring check and the `.as_posix()` conventions from CLAUDE.md. Also allowed: `scripts/**` import fixes only.
 
 ## Settled design
 
@@ -75,16 +77,16 @@ Note: the original T-004 subject, the false `box_like_solid` on `cylinder_large_
 
 ## Acceptance
 
-- [ ] `stl2scad convert in.stl out.scad` uses segmentation (default pipeline).
-- [ ] `stl2scad convert --pipeline legacy in.stl out.scad`: deprecation warning on stderr, no output file, exit code 2. A CLI test asserts all three.
-- [ ] `--parametric` and `--recognition-backend` are accepted, warn, and are ignored (a CLI test asserts the warning and a successful segmentation convert).
-- [ ] `feature-graph`, feature-graph-inventory and inventory commands warn and exit 2 without work (CLI test).
-- [ ] `verify`, `batch` and the GUI convert path call segmentation; `verification/verification.py` no longer calls the legacy `stl2scad()`.
-- [ ] `get_openscad_path()` and `run_openscad()` live in their own module with the Nightly check intact; all importers updated.
-- [ ] `git grep -nE "stl2scad\.legacy|from \.+legacy" -- stl2scad ':!stl2scad/legacy'` prints nothing.
-- [ ] Legacy-detector tests moved to `tests/legacy/`; `tests/test_feature_fixtures.py` keeps the byte-exact regeneration and roadmap-coverage tests unchanged. No assertion weakened in any non-legacy test; tests whose subject is legacy behaviour move, they are not edited.
-- [ ] Scoped pytest for CLI, conversion, verification and visualization tests passes (lane may run scoped, with the flock prefix from `test_scoped`; never the full run).
-- [ ] Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
-- [ ] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` (0 across the full repo) and `node scripts/check-tickets.mjs`.
+- [x] `stl2scad convert in.stl out.scad` uses segmentation (default pipeline).
+- [x] `stl2scad convert --pipeline legacy in.stl out.scad`: deprecation warning on stderr, no output file, exit code 2. A CLI test asserts all three.
+- [x] `--parametric` and `--recognition-backend` are accepted, warn, and are ignored (a CLI test asserts the warning and a successful segmentation convert).
+- [x] `feature-graph`, feature-graph-inventory and inventory commands warn and exit 2 without work (CLI test).
+- [x] `verify`, `batch` and the GUI convert path call segmentation; `verification/verification.py` no longer calls the legacy `stl2scad()`.
+- [x] `get_openscad_path()` and `run_openscad()` live in their own module with the Nightly check intact; all importers updated.
+- [x] `git grep -nE "stl2scad\.legacy|from \.+legacy" -- stl2scad ':!stl2scad/legacy'` prints nothing.
+- [x] Legacy-detector tests moved to `tests/legacy/`; `tests/test_feature_fixtures.py` keeps the byte-exact regeneration and roadmap-coverage tests unchanged. No assertion weakened in any non-legacy test; tests whose subject is legacy behaviour move, they are not edited.
+- [x] Scoped pytest for CLI, conversion, verification and visualization tests passes (lane may run scoped, with the flock prefix from `test_scoped`; never the full run).
+- [x] Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
+- [x] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` (0 across the full repo) and `node scripts/check-tickets.mjs`.
 
 Do NOT run the test harness. Stage paths explicitly.

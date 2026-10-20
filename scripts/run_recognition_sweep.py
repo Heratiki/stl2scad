@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from stl2scad.core.recognition_sweep import (
+from stl2scad.legacy.recognition_sweep import (
     SweepGateConfig,
     discover_fixtures,
     evaluate_sweep_gates,

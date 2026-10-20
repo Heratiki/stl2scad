@@ -22,13 +22,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from stl2scad.core.recognition import (
+from stl2scad.legacy.recognition import (
     _components_have_overlapping_bboxes,
     _detect_component_primitive,
     _detect_primitive_native,
     _preprocess_components,
 )
-from stl2scad.core import cgal_backend
+from stl2scad.legacy import cgal_backend
 
 SUPPORTED_PRIMITIVES = ("box", "sphere", "cylinder", "cone", "composite_union")
 

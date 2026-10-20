@@ -77,6 +77,8 @@ tests/data/.generated/
 !tests/data/feature_fixtures_scad/
 !tests/data/feature_fixtures_scad/*.scad
 !artifacts/real_world_recall_baseline.json
+!artifacts/segmentation/composite_bracket_axis_aligned.scad
+!artifacts/segmentation/composite_bracket_rotated.scad
 
 # Ignore debug folder
 debug/

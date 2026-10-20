@@ -124,6 +124,12 @@ def build_parser() -> argparse.ArgumentParser:
     convert_parser.add_argument("input_file", help="Input STL file")
     convert_parser.add_argument("output_file", help="Output SCAD file")
     convert_parser.add_argument(
+        "--pipeline",
+        choices=["legacy", "segmentation"],
+        default="legacy",
+        help="Conversion pipeline (default: legacy)",
+    )
+    convert_parser.add_argument(
         "--tolerance",
         type=_positive_float,
         default=1e-6,
@@ -1222,6 +1228,15 @@ def convert_command(args: argparse.Namespace) -> int:
         print(f"Using tolerance: {args.tolerance}")
         if args.debug:
             print("Debug mode enabled")
+        if getattr(args, "pipeline", "legacy") == "segmentation":
+            from stl.mesh import Mesh
+            from stl2scad.core.segmentation import emit_scad
+
+            mesh = Mesh.from_file(args.input_file)
+            source = emit_scad(None, mesh, source_file=args.input_file)
+            Path(args.output_file).write_text(source)
+            print("Pipeline: segmentation")
+            return 0
         if args.parametric:
             print("Parametric primitive recognition enabled")
             print(f"Recognition backend: {args.recognition_backend}")
@@ -1489,6 +1504,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     """
     parser = build_parser()
     args_list = sys.argv[1:] if argv is None else argv
+
+    # Also accept `stl2scad input.stl output.scad --pipeline segmentation`.
+    if args_list and args_list[0].lower().endswith(".stl"):
+        args_list = ["convert", *args_list]
 
     if not args_list:
         parser.print_help()

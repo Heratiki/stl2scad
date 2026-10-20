@@ -1,6 +1,7 @@
 """Surface segmentation and feature recovery (pipeline steps 1–4)."""
 
 from .features import Feature, Profile, detect_features
+from .emit import emit_scad, gate_limit_mm
 from .models import Cylinder, Face, Plane, SegmentationResult
 from .pipeline import SegmentationConfig, segment_mesh
 from .solid import hausdorff_to_mesh
@@ -14,6 +15,8 @@ __all__ = [
     "SegmentationConfig",
     "SegmentationResult",
     "detect_features",
+    "emit_scad",
+    "gate_limit_mm",
     "hausdorff_to_mesh",
     "segment_mesh",
 ]

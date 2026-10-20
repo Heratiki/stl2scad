@@ -474,3 +474,29 @@ def test_maintainer_command_runs_expected_step_prefix(mock_run):
     last_call_cmd = mock_run.call_args_list[-1].args[0]
     assert last_call_cmd[1] == "scripts/score_real_world_corpus.py"
     assert "--merge-gate" in last_call_cmd
+
+
+def test_convert_pipeline_defaults_to_legacy():
+    args = cli.build_parser().parse_args(["convert", "in.stl", "out.scad"])
+    assert args.pipeline == "legacy"
+
+
+def test_segmentation_cli_writes_emitter_output_and_supports_shorthand(
+    tmp_path, monkeypatch
+):
+    from tests.test_segmentation_geometry import cube, mesh_of
+    from stl2scad.core import segmentation
+
+    source = tmp_path / "input.stl"
+    target = tmp_path / "output.scad"
+    mesh_of(cube()).save(str(source))
+    calls = []
+
+    def emit(features, mesh, *, source_file):
+        calls.append((features, len(mesh.vectors), source_file))
+        return "// gated segmentation output\ncube(2);\n"
+
+    monkeypatch.setattr(segmentation, "emit_scad", emit)
+    assert cli.main([str(source), str(target), "--pipeline", "segmentation"]) == 0
+    assert target.read_text() == "// gated segmentation output\ncube(2);\n"
+    assert calls == [(None, 12, str(source))]

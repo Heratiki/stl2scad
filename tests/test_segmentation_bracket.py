@@ -164,10 +164,6 @@ def _far_points(points, reference, threshold):
     return np.concatenate(far) if far else np.empty((0, 3))
 
 
-@pytest.mark.xfail(
-    raises=ImportError, strict=True,
-    reason="labeled SCAD emission (pipeline step 5) not built yet",
-)
 @pytest.mark.parametrize("variant_name", list(VARIANTS))
 def test_emitted_scad_is_labeled_and_adjustable(rendered, openscad_path, tmp_path, variant_name):
     import re
@@ -195,14 +191,23 @@ def test_emitted_scad_is_labeled_and_adjustable(rendered, openscad_path, tmp_pat
         return Mesh.from_file(str(stl_path))
 
     original = render(scad, "emitted")
+
+    params_path = tmp_path / "params.json"
+    assert run_openscad("customizer_params",
+                        ["-o", str(params_path), "--export-format=param", str(tmp_path / "emitted.scad")],
+                        str(tmp_path / "params.log"), openscad_path), "Customizer parameter export failed"
+    params = {p["name"]: p for p in json.loads(params_path.read_text())["parameters"]}
+    for name in ("boss_1_height", "blind_hole_1_depth", "fillet_1_radius"):
+        assert {"min", "max", "step"} <= params[name].keys(), f"Customizer did not parse the range of {name}"
+        assert params[name].get("caption"), f"Customizer has no caption for {name}"
     limit = gate_limit_mm(mesh)
     assert limit == pytest.approx(max(0.05, 0.001 * np.linalg.norm(np.ptp(mesh.points.reshape(-1, 3), axis=0))))
-    from stl2scad.core.verification.metrics import calculate_hausdorff_distance, sample_mesh_points
+    from stl2scad.core.segmentation.solid import mesh_hausdorff
 
-    rng = np.random.default_rng(0)
-    distance = calculate_hausdorff_distance(
-        sample_mesh_points(original, 20000, rng)[0], sample_mesh_points(mesh, 20000, rng)[0]
-    )
+    # Independent point clouds measure sampling gaps, not surface deviation,
+    # and the old 20000 x 20000 broadcast required tens of GB. Use the same
+    # seeded sampled-surface metric as the gate, at the unchanged limit.
+    distance = mesh_hausdorff(original, mesh)
     assert distance < limit, f"{variant_name}: emitted SCAD is {distance:.4f} mm from the input"
 
     edited = render(re.sub(r"^(boss_1_height\s*=\s*)[-\d.]+;", r"\g<1>9;", scad, count=1, flags=re.M), "edited")

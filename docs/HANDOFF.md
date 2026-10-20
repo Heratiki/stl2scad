@@ -1,16 +1,33 @@
 # Handoff
 
-**Last Updated:** 2026-10-20 18:10Z — wave 2 landed: T-001, T-002, T-003, T-004 (segmentation is the only pipeline), T-009 (fixture round-trip through segmentation), Plan 1 Task 3; tickets T-005..T-008, T-010..T-014 open with rulings; full run at 38aa5f9: 419 passed, 220 skipped, 30 xfailed, 0 failed; 4 commits not pushed (maintainer pushes with the panel); nothing deployed (no deploy step).
+**Last Updated:** 2026-10-20 20:45Z — wave 3 landed: T-007 (axis tie-break), T-005 (centroid-anchored numbering + UTF-8 temp SCAD writes), Plan 1 Task 4 (slabs); T-015 written; tickets T-006, T-008, T-010..T-015 open with rulings; full run at 9fb6f58: 441 passed, 220 skipped, 30 xfailed, 0 failed; the maintainer pushes main with the panel at close; nothing deployed (no deploy step).
 
 ## Next session, first three things
 
-1. Run `/session-start`. Codex was at 82 % of its 5h window at 18:06Z (reset 22:06Z); read the pools before a codex lane.
-2. Wave 3: Plan 1 Task 4 (slab levels and section profiles) as a codex lane (`resume` plan1-task3), from `docs/superpowers/plans/2026-10-20-defeature-slabs-hybrid.md`. In parallel, T-007 (`regularize.py`) and then T-005 (`defeature.py`) as codex lanes with disjoint owned files. Queue and order: `docs/agents/work-ledger.md`.
-3. Maintainer hand check: convert one real part with the new default (`stl2scad part.stl out.scad`) and open it in OpenSCAD. No SCAD output of this session was opened by hand.
+1. Run `/session-start`. The maintainer restarts to load lane-panel 0.7.2 (Claude estimates by role and pool share, session `lane-panel-estimates`); check that the panel shows Codex and Claude meters and sane Claude estimates.
+2. Wave 4: Plan 1 Task 5 (remainder regions and the new dispatch) as a codex lane (`resume` plan1-task4), from `docs/superpowers/plans/2026-10-20-defeature-slabs-hybrid.md`. In parallel, T-006 (`defeature.py`) as a Sonnet lane-dev; then T-008 and T-015, one at a time (same file). A third lane (T-014 or T-010) only after its files are checked against Task 5. Queue: `docs/agents/work-ledger.md`.
+3. Maintainer hand check (still open from session 2): convert one real part (`stl2scad part.stl out.scad`) and open it in OpenSCAD.
 
 ## What Is Currently In-Flight
 
 Nothing. No lane, worktree or background task runs; only the main tree exists.
+
+## 3. Session 2026-10-20 (fourth session of the day)
+
+Landed (main, `--no-ff`; each lane checked by lane-verifier and a scoped suite-verifier run before its merge):
+- T-007 (0fd713a): in an extrusion-axis tie, the axis that explains more kept treatments wins, then cap area; 1 % band unchanged. First commit broke `test_oblique_edge_is_not_a_treatment` (caught by the scoped run); one fix round counts only treatments that defeature keeps.
+- T-005 (0b81078): `_side_frame` sign from the mesh centroid; a dominant-face tie-break (support, area, id); `write_text(..., encoding="utf-8")` in `emit.py` and `solid.py`. Maintainer ruling: a side face with an equal-area opposite twin keeps the world-axis sign. lane-verifier showed that non-symmetric parts with equal opposite walls also reach that fallback, so numbering can still change with orientation for them: T-015 (8239599).
+- Plan 1 Task 4 (9fb6f58): `stl2scad/core/segmentation/slabs.py` (`Slab`, `slab_levels`, `slab_profiles`), 15 tests; not wired into dispatch yet (Task 5). Limits: a region with more than one section chain or a branched face graph raises `ValueError`; rule clarifications are in the plan and `.scratch/lanes/plan1-task4/REPORT.md` (this host only).
+- Full run at 9fb6f58: 441 passed, 220 skipped, 30 xfailed, 0 failed.
+
+Out of repo (this host and GitHub): lane-panel 0.7.1 (Codex usage reader skips rollouts with no reading; a Codex Desktop import of 23 sessions had hidden every reading) and 0.7.2 (Claude estimates); claude-config 4b541bc (`lane-usage.sh`, same fix). Source repos: `~/Source/lane-panel`, `~/Source/claude-config`; `~/.claude/plugins/marketplaces/heratiki-mods` is a pull-only copy.
+
+Open:
+- The handoff's earlier Codex reset time (22:06Z) was wrong; the 82 % window had reset at 18:06Z.
+- `.unlazy/` has 13 old scopes from waves 1–2, all met except `ticket-gaps` (one abandoned gate, known). None removed.
+- Codex still loads lane-panel 0.7.0 from its own plugin cache (`~/.codex/plugins/cache/heratiki-mods/lane-panel/0.7.0`) and warns that its `hooks.json` has an unknown field `modules`.
+- The register row `plan1-task3` (20:27Z, 362.9 min) holds the plan1-task4 resume merged into it; there is no separate plan1-task4 row.
+- Not verified by hand: no SCAD output of this session was opened in OpenSCAD.
 
 ## 2. Session 2026-10-20 (third session of the day)
 

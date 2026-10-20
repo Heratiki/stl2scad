@@ -115,11 +115,16 @@ def defeature(result: SegmentationResult) -> Defeatured
 
 Rules (relative to the extrusion axis): a **chamfer** is a plane whose normal is neither ∥ nor ⟂ to the axis, with exactly two plane neighbours across convex edges (one cap, one side) and the chamfer normal within 0.5° of their bisector; the width is the setback on the hosts. A plane with the same topology that is not on the bisector goes to `rejected` with reason `"asymmetric chamfer"`. An **edge round** is a convex cylinder with axis ⟂ to the extrusion axis, tangent to two planes (one cap, one side). A treatment whose edge direction is neither ∥ to a cap nor in a side plane goes to `rejected` with reason `"oblique edge"`. Cylinders with axis ∥ to the extrusion axis are profile arcs and stay in the graph.
 
-- [ ] **Step 1: Write tests.** `test_chamfers_and_rounds_are_removed` (each Task 1 part with treatments, each variant: ids, kinds and `size` within 2 % of the JSON; hosts match the JSON faces; the remaining faces equal the JSON faces minus the treatment faces). `test_asymmetric_chamfer_is_rejected_by_name` (`rejected == (("<face>", "asymmetric chamfer"),)`, no treatment). `test_profile_arcs_are_not_treatments` (rounded plate and stencil-like corner arcs stay faces). `test_oblique_edge_is_not_a_treatment` (a block whose chamfered edge is rotated 20° in the top plane: no treatment, one `"oblique edge"` rejection).
-- [ ] **Step 2: Run, expect FAIL.**
-- [ ] **Step 3: Implement `defeature`.**
-- [ ] **Step 4: Run** the new tests and `tests/test_segmentation_*.py`. Expected: PASS; no change elsewhere.
-- [ ] **Step 5: Commit** `feat: defeature symmetric chamfers and convex edge rounds`. Then start an Agy review lane on Tasks 2–3 (see Execution).
+Implementation clarifications for Task 3 (2026-10-20):
+
+- Count the two sharp-edge **hosts**, not transverse end planes bounding a finite strip. For a planar treatment the cap/side intersection line must lie in the treatment plane; for a round it must parallel the cylinder axis. The block fixtures also have left/right end-plane neighbours, so counting all neighbours would incorrectly reject their intended treatments.
+- "Oblique in the part frame" uses the extrusion direction and a cap-plane basis anchored to dominant side-plane support. A 20-degree diagonal inside the cap plane is rejected even though it is mathematically parallel to that cap. This makes the stated oblique-edge test precise without using world-axis directions; signs affect numbering only.
+
+- [x] **Step 1: Write tests.** `test_chamfers_and_rounds_are_removed` (each Task 1 part with treatments, each variant: ids, kinds and `size` within 2 % of the JSON; hosts match the JSON faces; the remaining faces equal the JSON faces minus the treatment faces). `test_asymmetric_chamfer_is_rejected_by_name` (`rejected == (("<face>", "asymmetric chamfer"),)`, no treatment). `test_profile_arcs_are_not_treatments` (rounded plate and stencil-like corner arcs stay faces). `test_oblique_edge_is_not_a_treatment` (a block whose chamfered edge is rotated 20° in the top plane: no treatment, one `"oblique edge"` rejection).
+- [x] **Step 2: Run, expect FAIL.**
+- [x] **Step 3: Implement `defeature`.**
+- [x] **Step 4: Run** the new tests and `tests/test_segmentation_*.py`. Expected: PASS; no change elsewhere.
+- [x] **Step 5: Commit** `feat: defeature symmetric chamfers and convex edge rounds`. The orchestrator starts the Agy review lane on Tasks 2–3 after this implementation lane stops (see Execution).
 
 ### Task 4: Slab levels and section profiles
 

@@ -1,4 +1,4 @@
-"""Unit tests for stl2scad.core.revolve_recovery."""
+"""Unit tests for stl2scad.legacy.revolve_recovery."""
 
 from __future__ import annotations
 
@@ -6,12 +6,12 @@ import pytest
 import numpy as np
 
 from stl2scad.tuning.config import DetectorConfig
-from stl2scad.core.revolve_recovery import candidate_revolution_axis
-from stl2scad.core.revolve_recovery import extract_radial_slice
-from stl2scad.core.revolve_recovery import cross_slice_consistency
-from stl2scad.core.revolve_recovery import aggregate_profile, douglas_peucker_2d
-from stl2scad.core.revolve_recovery import normal_field_agreement
-from stl2scad.core.revolve_recovery import detect_revolve_solid
+from stl2scad.legacy.revolve_recovery import candidate_revolution_axis
+from stl2scad.legacy.revolve_recovery import extract_radial_slice
+from stl2scad.legacy.revolve_recovery import cross_slice_consistency
+from stl2scad.legacy.revolve_recovery import aggregate_profile, douglas_peucker_2d
+from stl2scad.legacy.revolve_recovery import normal_field_agreement
+from stl2scad.legacy.revolve_recovery import detect_revolve_solid
 
 
 def test_detector_config_has_revolve_defaults():
@@ -322,7 +322,7 @@ def test_detect_revolve_solid_rejects_cube():
 # Phase 2: profile classification tests
 # ---------------------------------------------------------------------------
 
-from stl2scad.core.revolve_recovery import classify_revolve_profile
+from stl2scad.legacy.revolve_recovery import classify_revolve_profile
 
 
 def test_classify_revolve_profile_cylinder():

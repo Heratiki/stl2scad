@@ -458,17 +458,19 @@ def build_feature_graph_for_stl(
         config=resolved,
     )
     # --- Rule 1: revolve recovery runs first (Rule 3: one-owner). ---
-    from stl2scad.core.revolve_recovery import detect_revolve_solid
+    # The whole-mesh revolve detector is archived in stl2scad.legacy (T-003) and
+    # runs only when DetectorConfig.enable_revolve_detection is True.
     # Deduplicate the per-triangle vertex soup into a clean vertex + index table
-    # so that revolve_recovery's covariance and profile computations are not
-    # skewed by the repeated vertices present in the raw STL format.
+    # so that the covariance and profile computations are not skewed by the
+    # repeated vertices present in the raw STL format.
     _rounded = np.round(points, decimals=6)
-    _, _inv, _counts = np.unique(
-        _rounded, axis=0, return_inverse=True, return_counts=True
-    )
     unique_verts, _inv_idx = np.unique(_rounded, axis=0, return_inverse=True)
     triangles_indices = _inv_idx.reshape(-1, 3).astype(np.int64)
-    revolve_features = detect_revolve_solid(unique_verts, triangles_indices, config=resolved)
+    revolve_features: list[dict[str, Any]] = []
+    if resolved.enable_revolve_detection:
+        from stl2scad.legacy.revolve_recovery import detect_revolve_solid
+
+        revolve_features = detect_revolve_solid(unique_verts, triangles_indices, config=resolved)
     if revolve_features:
         plane_pairs = [f for f in box_features if f.get("type") == "axis_boundary_plane_pair"]
         features = plane_pairs + revolve_features

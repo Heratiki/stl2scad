@@ -99,6 +99,8 @@ class DetectorConfig:
     grid_pattern_min_holes: int = 4
 
     # --- Revolve (rotate_extrude) thresholds (Phase 1) ---
+    # Whole-mesh revolve detector is archived in stl2scad.legacy (T-003); off by default.
+    enable_revolve_detection: bool = False
     revolve_axis_quality_min: float = 0.85
     revolve_slice_count: int = 12
     revolve_cross_slice_tolerance_ratio: float = 0.04

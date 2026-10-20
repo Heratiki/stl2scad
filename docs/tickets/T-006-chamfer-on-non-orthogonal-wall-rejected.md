@@ -66,17 +66,14 @@ difference(){ rotate([0,0,30]) cylinder(r=20,h=10,$fn=6);
 }
 ```
 
-## Confirm before implementing
-
-Not a ruling. Suggested fix: test the edge direction against the intersection direction of the actual host cap and side planes, not against a single orthogonal frame. The maintainer must confirm, including whether the `_oblique` guard should stay for any case (it presumably exists to reject genuinely slanted edges).
-
 ## Rulings (2026-10-20)
 
-None yet. No fix ruling exists for this ticket.
+- Keep the oblique guard for truly slanted edges. Reason: it exists to reject genuinely slanted edges. Rejected: removing the guard.
+- Test the edge direction against the intersection line of its own two host faces (cap and side), not against one orthogonal frame for the whole part. Rejected: a single frame per part, which refuses regular chamfers on non-orthogonal walls.
 
 ## Settled design
 
-None until a ruling exists.
+`defeature.py`: `_oblique` and its use (about lines 152-154) compute, per chamfer candidate, the intersection direction of that candidate's host cap plane and host side plane, and compare the cap/side edge direction to it with the existing cosine threshold. The guard still returns `("F6", "oblique edge")` when the edge is not along that line. The per-part orthogonal `frame` is no longer used for this test.
 
 ## Owns
 
@@ -90,8 +87,8 @@ Any other detector change, new primitive kinds, and weakening any existing treat
 
 ## Acceptance
 
-- [ ] New test `test_chamfer_on_hexagonal_prism_wall_is_found`: the hex prism above, chamfered wall at 0 and 60 degrees, yields one `chamfer_1` of size 2.0 and no `oblique edge` rejection. Needs a new `treatments_expected.json` entry (or a test-local mesh if the maintainer prefers).
-- [ ] New test `test_genuinely_oblique_edge_still_rejected` (only if the maintainer keeps the guard): asserts the existing `oblique edge` rejection for a real slanted edge.
+- [ ] New test `test_chamfer_on_hexagonal_prism_wall_is_found`: the hexagonal-prism repro above (r=20, h=10, 2 mm chamfer), chamfered wall at 0 and 60 degrees, yields one `chamfer_1` of size 2.0 and no `oblique edge` rejection. Needs a new `treatments_expected.json` entry.
+- [ ] The existing 20 degree oblique test still rejects with `oblique edge`, unchanged. New test `test_genuinely_oblique_edge_still_rejected` asserts the same rejection for a real slanted edge if no existing test already names it.
 - [ ] Existing tests in `tests/test_segmentation_*.py` stay unchanged.
 - [ ] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
 - [ ] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.

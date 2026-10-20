@@ -63,17 +63,14 @@ rotate([0, 0, 0]) translate([-30,-20,-4]) difference(){ cube([60,40,8]);
 }
 ```
 
-## Confirm before implementing
-
-Not a ruling. Suggested fix: anchor the basis sign to the part, for example from the offset of the side face from the mesh centroid, instead of to world axes. The maintainer must confirm this, and whether numbering should follow a part-intrinsic order at all.
-
 ## Rulings (2026-10-20)
 
-None yet. No fix ruling exists for this ticket.
+- Numbering follows a part-intrinsic order. Reason: customer-visible parameter names must not change when the same part is re-exported in another orientation. Rejected: leaving the world-axis sign in `_side_frame`.
+- The basis sign is fixed from the part centroid (point minus mesh centroid), not from world axes. Rejected: world-axis sign (`u[np.argmax(abs(u))] < 0`).
 
 ## Settled design
 
-None until a ruling exists.
+`defeature.py`: `_side_frame` takes the sign of the side basis vector `u` from the offset of the side face (or edge point) from the mesh centroid, so the sign is the same for a part and its rigid rotations. `order()` sorts treatments by the dot products of the host side normal with that centroid-anchored frame. No change to any other detector.
 
 ## Owns
 
@@ -87,7 +84,7 @@ Any other detector change, new primitive kinds, and weakening any existing treat
 
 ## Acceptance
 
-- [ ] New test (in the treatment test file) `test_treatment_numbering_is_stable_under_180_rotation`: an unequal-width chamfered block (3 mm and 2 mm) at [0,0,0] and [0,0,180] yields the same `chamfer_N` id for the same physical chamfer. The block needs a new `treatments_expected.json` entry with unequal widths; the exact rule is whatever the maintainer rules.
+- [ ] New test (in the treatment test file) `test_treatment_numbering_is_stable_under_180_rotation`: an unequal-width chamfered block (3 mm and 2 mm, the `f1.py` block) at [0,0,0] and [0,0,180] yields the same `chamfer_N` id for the same physical edge (the 3 mm chamfer is `chamfer_1` in both). `treatments_expected.json` gets a 180 degree Z-rotation variant with unequal chamfer widths (3 mm and 2 mm) whose ids map to the same physical edges as the unrotated part.
 - [ ] Existing tests in `tests/test_segmentation_*.py` stay unchanged, including the existing `chamfered_block` entries.
 - [ ] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
 - [ ] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.

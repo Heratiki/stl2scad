@@ -13,15 +13,13 @@ The standing maintainer rule (2026-10-20) is to ticket every detector false posi
 
 ## Rulings (2026-10-20)
 
-None yet. No fix ruling exists for this ticket.
+- IN SCOPE, as negative primitives. The maintainer overrode the wontfix suggestion. Rejected: wontfix, and rejection-only with a named reason.
+- Open shells (open-top boxes) are pockets and belong to T-011, not this ticket.
+- Route stays codex.
 
 ## Settled design
 
-Nothing is settled. See "Confirm before implementing".
-
-## Confirm before implementing
-
-Not a ruling. Suggested approach, not a ruling: detect an inner closed shell (a second connected surface with inward-facing normals) and either emit it as a `difference()` of an inner solid, or reject with a named reason. The maintainer must confirm whether ambiguous cavities are in scope (the fixture name says the interpretation is ambiguous) and what the expected result for this fixture is.
+Split the mesh into connected shells. A shell with negative signed volume (inward normals) is a void: flip it and run it through the same segmentation pipeline as a solid, then emit `difference() { outer(); void(); }`. The Hausdorff gate applies to the whole result. This generalises to any void segmentation can model (box, cylinder, later revolve). A void that cannot be modelled makes the part fall back as today.
 
 ## Owns
 
@@ -29,12 +27,13 @@ Not a ruling. Suggested approach, not a ruling: detect an inner closed shell (a 
 
 ## Out of scope
 
-- Through-holes and pockets (T-011).
+- Through-holes and pockets, including open shells such as open-top boxes (T-011).
 - Legacy `feature_graph.py` box detection (T-004).
 
 ## Acceptance
 
-- [ ] New test `test_hollow_box_not_emitted_as_solid`: box_hollow_ambiguous either emits a model within the gate or records a named rejection before the gate.
+- [ ] New test `test_hollow_box_emits_negative_box`: box_hollow_ambiguous (24x16x12 with an enclosed 14x6x2 cavity) converts parametric within the gate, with the cavity as a labelled negative box inside `difference()`.
+- [ ] New test `test_unmodelable_void_falls_back`: a void that cannot be modelled falls back to polyhedron as today.
 - [ ] New test `test_solid_box_unchanged`: box_cubic stays parametric.
 - [ ] Existing tests in `tests/test_segmentation_*.py` stay unchanged.
 - [ ] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.

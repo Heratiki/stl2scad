@@ -13,15 +13,11 @@ The standing maintainer rule (2026-10-20) is to ticket every detector false posi
 
 ## Rulings (2026-10-20)
 
-None yet. No fix ruling exists for this ticket.
+- Model the keyway as an extruded profile (circle minus a rectangle) along the shaft axis. Reason: fits the slab method. Rejected: a cylinder body plus a subtractive box, and reuse of the T-011 rectangular cutout primitive.
 
 ## Settled design
 
-Nothing is settled. See "Confirm before implementing".
-
-## Confirm before implementing
-
-Not a ruling. Suggested approach, not a ruling: model the shaft as a cylinder body plus a rectangular groove (subtractive box on the cylinder side) with `keyway_<n>_width` and `keyway_<n>_depth` parameters, or as an extrusion whose section profile contains the notch (a slab with a single profile loop). The maintainer must confirm which representation, and whether T-011's rectangular cutout primitive should be reused.
+Treat the shaft as an extrusion along its axis whose section profile is a circle minus a rectangle (one profile loop with the notch), built through the slab method of plan 1. Keyway dimensions are profile parameters (for example `keyway_<n>_width`, `keyway_<n>_depth`).
 
 ## Owns
 

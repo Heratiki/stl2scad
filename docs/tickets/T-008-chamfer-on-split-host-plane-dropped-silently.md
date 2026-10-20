@@ -76,17 +76,14 @@ difference(){ cube([60,40,8]);
 }
 ```
 
-## Confirm before implementing
-
-Not a ruling. Suggested fix: merge coplanar host faces before pairing, and always append a `rejected` entry when a candidate is dropped (for the `len(pairs) != 1` case at minimum). The maintainer must confirm both parts, including what size/point the merged chamfer should report.
-
 ## Rulings (2026-10-20)
 
-None yet. No fix ruling exists for this ticket.
+- Merge coplanar host faces before pairing. Reason: a slot splits one wall into coplanar faces; they are one host. Rejected: dropping the candidate when `len(pairs) != 1`.
+- Every dropped candidate always gets a `rejected` entry with a reason. Reason: the diagnostic contract. Rejected: silent `continue`.
 
 ## Settled design
 
-None until a ruling exists.
+`defeature.py` (about lines 149-150): coplanar host faces are merged before `_host_pairs(...)` pairing, so the slot repro yields one (cap, side) pair and one chamfer of the same size as the no-slot block. Where `len(pairs) != 1` still holds after merging, or any other path drops a chamfer candidate, append a `rejected` entry with a named reason instead of `continue`.
 
 ## Owns
 
@@ -100,8 +97,8 @@ Any other detector change, new primitive kinds, and weakening any existing treat
 
 ## Acceptance
 
-- [ ] New test `test_chamfer_with_slotted_host_wall_is_found`: the slot block above yields one chamfer, the same size as the no-slot block.
-- [ ] New test `test_dropped_chamfer_candidate_records_a_reason`: any chamfer candidate not turned into a treatment appears in `rejected` (checked for a case the ruling keeps unsupported).
+- [ ] New test `test_chamfer_with_slotted_host_wall_is_found`: the slot repro (`f5b_slot.scad`) yields one chamfer, the same size as the no-slot block.
+- [ ] New test `test_dropped_chamfer_candidate_records_a_reason`: any chamfer candidate not turned into a treatment appears in `rejected` with a reason; asserts that no candidate is dropped without a reason (checked for a case that stays unsupported).
 - [ ] Existing tests in `tests/test_segmentation_*.py` stay unchanged.
 - [ ] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
 - [ ] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.

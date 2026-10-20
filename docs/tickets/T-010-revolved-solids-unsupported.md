@@ -33,15 +33,12 @@ The standing maintainer rule (2026-10-20) is to ticket every detector false posi
 
 ## Rulings (2026-10-20)
 
-None yet. No fix ruling exists for this ticket.
+- Scope is profile revolves for cylinders, cones and stepped shafts first. Reason: highest-value, simplest section profiles. Rejected: sphere and torus as primitives in this ticket.
+- Sphere and torus (negative_sphere, negative_torus) keep the polyhedron fallback for now. Reason: progress rule, hard regions may stay polyhedron.
 
 ## Settled design
 
-Nothing is settled. See "Confirm before implementing".
-
-## Confirm before implementing
-
-Not a ruling. Suggested approach, not a ruling: add a revolve feature to segmentation. Detect a dominant axis from cylinder/cone/sphere/torus fit axes, section the mesh in an axial half-plane to get a 2D profile, emit `rotate_extrude` with profile points as parameters. Open questions: which kinds are in scope (cone, sphere, torus as their own primitives or as profiles), the parameter naming, the fixture-by-fixture expected result, and whether negative_sphere and negative_torus should stay a polyhedron fallback.
+Add a revolve feature to segmentation: detect a dominant axis from cylinder/cone fit axes, section the mesh in an axial half-plane to get a 2D profile, emit `rotate_extrude` with profile points as parameters, dispatched from `features.py` and `to_ir.py`. In-scope fixtures: revolve_triangle_profile, revolve_vase, revolve_stepped_shaft, revolve_christmas_tree, revolve_frustum_trapezoid, revolve_inverted_cone, revolve_annular_tube, revolve_semicircle_profile, revolve_fat_disk, revolve_rectangle_profile, revolve_y_axis, plus cone_shallow, cone_steep and negative_cone. Out of this ticket: negative_sphere and negative_torus, which keep their fallback.
 
 ## Owns
 
@@ -58,7 +55,8 @@ Not a ruling. Suggested approach, not a ruling: add a revolve feature to segment
 
 - [ ] New test `test_revolve_fixtures_are_parametric`: each of the 11 manifest revolve fixtures (list in the test) produces output with no `Full mesh fallback` line and a Hausdorff below the gate.
 - [ ] New test `test_revolve_profile_parameters_edit`: changing one profile parameter in the emitted SCAD matches the ground-truth SCAD rendered with the same value.
-- [ ] New test `test_cone_fixtures_are_parametric`: cone_shallow, cone_steep and negative_cone follow the maintainer's confirmed outcome.
+- [ ] New test `test_cone_fixtures_are_parametric`: cone_shallow, cone_steep and negative_cone have no `Full mesh fallback` line and a Hausdorff below the gate.
+- [ ] New test `test_sphere_and_torus_keep_fallback`: negative_sphere and negative_torus still produce the polyhedron fallback.
 - [ ] Existing tests in `tests/test_segmentation_*.py` stay unchanged.
 - [ ] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
 - [ ] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.

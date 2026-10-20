@@ -26,15 +26,12 @@ The standing maintainer rule (2026-10-20) is to ticket every detector false posi
 
 ## Rulings (2026-10-20)
 
-None yet. No fix ruling exists for this ticket.
+- Target: every fixture converts in under 30 s, so the T-009 `slow` marker can be removed. Reason: maintainer target. Rejected: a 60 s target for the 4x4 grid only.
+- Profile first and report the hotspot before changing code. Reason: the render-per-snap cause is unconfirmed. Rejected: optimising on the measurer's reading.
 
 ## Settled design
 
-Nothing is settled. See "Confirm before implementing".
-
-## Confirm before implementing
-
-Not a ruling. Suggested approach, not a ruling: profile first (cProfile on plate_3x3_grid) to confirm where the time goes before changing anything. If it is the render-per-snap loop, candidates are snapping all parameters in one render, a cheaper in-process distance check, or a cap on the number of snaps. The maintainer must confirm an acceptable time target (for example under 60 s for a 4x4 grid) and that the Hausdorff gate semantics stay unchanged.
+Step 1: cProfile on plate_3x3_grid (and the other listed outliers); report the hotspot in the lane report before any code change. Step 2: change only the snap and gate path as the profile justifies; gate semantics and limit stay unchanged and the output stays byte-equal.
 
 ## Owns
 
@@ -50,8 +47,8 @@ Not a ruling. Suggested approach, not a ruling: profile first (cProfile on plate
 ## Acceptance
 
 - [ ] New test `test_hole_grid_output_unchanged`: plate_3x3_grid output is byte-equal (minus the `// Source:` line) to the output before the change.
-- [ ] New test `test_hole_grid_time_budget`: plate_3x3_grid converts within the maintainer-confirmed time target (marked slow if the repo has such a marker).
-- [ ] The lane's report states the profile result that justified the change.
+- [ ] New test `test_hole_grid_time_budget`: plate_3x3_grid converts in under 30 s, and every fixture in the 95-fixture set converts in under 30 s (the T-009 `slow` marker can then be removed).
+- [ ] The lane's report states the profile result (hotspot) that justified the change, and was written before the code change.
 - [ ] Existing tests in `tests/test_segmentation_*.py` stay unchanged.
 - [ ] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
 - [ ] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.

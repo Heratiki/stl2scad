@@ -61,17 +61,14 @@ difference(){ translate([-10.0,-10.0,0]) cube([20,20,100]);
 }
 ```
 
-## Confirm before implementing
-
-Not a ruling. Suggested fix: constrain planar treatment candidates (chamfer bisector plus convex edge perpendicular to the candidate axis) and/or break ties by the number of explained treatments before cap area. The maintainer must confirm which, and whether the 1 % tie band stays.
-
 ## Rulings (2026-10-20)
 
-None yet. No fix ruling exists for this ticket.
+- In an extrusion-axis tie, prefer the axis that explains more treatments, then the larger cap area. Reason: a chamfer must not be lost to an aspect-ratio accident. Rejected: cap area alone.
+- Keep the 1 % tie band. Reason: it keeps plain-part axes unchanged. Rejected: widening or removing the band.
 
 ## Settled design
 
-None until a ruling exists.
+`regularize.py`, `extrusion_axis` (about lines 295-307): among the candidates within 1 % of the total area of the minimum score, choose by (a) the number of planar treatments (chamfer bisector plus convex edge perpendicular to the candidate axis) the axis explains, then (b) the largest cap area. The 1 % band is unchanged. `defeature.py` changes only if the treatment count needs a helper there.
 
 ## Owns
 
@@ -86,8 +83,8 @@ Any other detector change, new primitive kinds, and weakening any existing treat
 
 ## Acceptance
 
-- [ ] New test `test_tall_post_chamfer_is_found`: the (20,20,100) and (20,20,30) blocks above each yield one chamfer of size 2.0.
-- [ ] New test `test_extrusion_axis_unchanged_for_plain_posts`: the plain (no chamfer) blocks keep the axis they get today, so only chamfered parts change.
+- [ ] New test `test_tall_post_chamfer_is_found`: the (20,20,100) and (20,20,30) repros above each yield one chamfer of size 2.0.
+- [ ] New test `test_extrusion_axis_unchanged_for_plain_posts`: the plain (no chamfer) blocks keep the axis they get today, so only chamfered parts change. Existing axis expectations stay unchanged.
 - [ ] Existing tests in `tests/test_segmentation_*.py` stay unchanged.
 - [ ] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
 - [ ] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.

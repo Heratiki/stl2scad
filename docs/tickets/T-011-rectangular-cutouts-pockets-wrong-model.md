@@ -23,15 +23,12 @@ The standing maintainer rule (2026-10-20) is to ticket every detector false posi
 
 ## Rulings (2026-10-20)
 
-None yet. No fix ruling exists for this ticket.
+- First step is early rejection with a named reason, so no wrong model reaches the gate. Reason: smallest safe step. Rejected: building cutout and pocket primitives in this ticket.
+- The cutout and pocket primitives come later, likely from plan 1 slab work (Task 4 onward, `docs/superpowers/plans/2026-10-20-defeature-slabs-hybrid.md`).
 
 ## Settled design
 
-Nothing is settled. See "Confirm before implementing".
-
-## Confirm before implementing
-
-Not a ruling. Suggested approach, not a ruling: (1) make the detector reject early with a named reason when a cap-to-cap or blind-pocket region is not a circle or stadium, instead of emitting a solid that the gate then rejects; (2) add rectangular cutout and pocket primitives (through, blind) with `<kind>_<index>_<dim>` parameters relative to the host face; (3) route stepped planar loops to the slab/step path of plan 1 if plan 1 can express them. The maintainer must confirm which parts are wanted and whether (1) alone is enough as a first step.
+When a cap-to-cap or blind-pocket region is not a circle or stadium, the detector rejects early with a named reason (a new reason string, for example `rectangular cutout or pocket not supported`) and the pipeline falls back to polyhedron. The Hausdorff gate is no longer the first thing to notice. No rectangular primitives are added here; a later ticket adds them, likely on the plan 1 slab work.
 
 ## Owns
 
@@ -45,9 +42,9 @@ Not a ruling. Suggested approach, not a ruling: (1) make the detector reject ear
 
 ## Acceptance
 
-- [ ] New test `test_rectangular_cutout_is_not_a_silent_wrong_solid`: for plate_rectangular_through_cutout the pipeline either emits the cutout or records a named rejection before the gate; the gate is not the first thing that notices.
-- [ ] New test `test_rectangular_cutout_fixtures_pass_gate`: the six fixtures above (list in the test) have a Hausdorff below the gate, per the confirmed scope.
-- [ ] New test `test_cutout_and_hole_combines`: plate_cutout_and_hole yields both a cutout and a hole.
+- [ ] New test `test_rectangular_cutout_is_not_a_silent_wrong_solid`: for plate_rectangular_through_cutout the pipeline records the new named rejection before the gate; the gate is not the first thing that notices.
+- [ ] New test `test_rectangular_cutout_fixtures_fall_back_with_named_reason`: plate_rectangular_through_cutout, plate_rectangular_top_pocket, plate_two_rectangular_pockets, box_with_top_notch, box_two_cutouts and box_side_cutout each fall back with the new named reason, and none fails the Hausdorff gate.
+- [ ] plate_cutout_and_hole falls back with the new named reason (or its existing refusal reason, unchanged); no cutout-plus-hole output is required.
 - [ ] Existing tests in `tests/test_segmentation_*.py` stay unchanged.
 - [ ] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
 - [ ] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.

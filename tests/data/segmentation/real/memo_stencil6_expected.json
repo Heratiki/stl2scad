@@ -1,0 +1,1255 @@
+{
+  "status": "draft - needs hand check",
+  "short_name": "memo_stencil6",
+  "source_stl": "/home/heratiki/Downloads/MEMO_BOY___CONSOLE_STICKY_NOTE_HOLDER/MEMO BOY - STENCIL - 6.STL",
+  "selection_note": "Stand-in for the Hero Me target: the Hero Me corpus in artifacts/local_corpus_report.html is not on this machine. This is a real third-party part from ~/Downloads (MEMO BOY sticky-note holder). It is not copied into the repo. See docs/planning/segmentation_real_parts.md.",
+  "hand_check": [
+    "Two through slots: width 2.0, length 66.6 (centre-to-centre 64.6 + 2), along Z at x = 25.3 and x = 51.3, z 11..77.6.",
+    "Outer corner rounds R2 at (2,8), (74.6,8), (2,80.6), (74.6,80.6) and tab corners: check the count (7 rounds) against the picture.",
+    "Plate thickness 1.0 (Y 0..1)."
+  ],
+  "description": "Draft ground truth for MEMO BOY - STENCIL - 6.STL. Measured by scripts/survey_real_parts.py draft (normal clustering, circle fits, signed dihedrals); not copied from segment_mesh. Plane normals point out of the material. Coordinates are in the STL frame. Faces smaller than 0.25 mm^2 are omitted.",
+  "units": "mm",
+  "triangles": 1148,
+  "bbox_min": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "bbox_max": [
+    76.6,
+    1.0,
+    82.6
+  ],
+  "volume_mm3": 5722.295,
+  "surface_area_mm2": 12028.37,
+  "area_covered_by_listed_faces": 1.0,
+  "area_freeform_or_unfitted_mm2": 0.0,
+  "hausdorff_max_mm": 0.1127,
+  "tolerances": {
+    "plane_normal_deg": 1.0,
+    "plane_offset_mm": 0.05,
+    "cylinder_axis_deg": 1.0,
+    "cylinder_radius_rel": 0.02,
+    "volume_rel": 0.001
+  },
+  "variants": [
+    {
+      "name": "as_printed",
+      "stl": "/home/heratiki/Downloads/MEMO_BOY___CONSOLE_STICKY_NOTE_HOLDER/MEMO BOY - STENCIL - 6.STL",
+      "rotate_deg": [
+        0,
+        0,
+        0
+      ],
+      "translate_before": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "faces": [
+    {
+      "id": "P0",
+      "kind": "plane",
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "point": [
+        16.333,
+        0.333,
+        6.0
+      ],
+      "area_mm2": 21.5
+    },
+    {
+      "id": "P1",
+      "kind": "plane",
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "point": [
+        76.6,
+        0.667,
+        32.2
+      ],
+      "area_mm2": 72.6
+    },
+    {
+      "id": "P2",
+      "kind": "plane",
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "point": [
+        60.267,
+        0.667,
+        6.0
+      ],
+      "area_mm2": 21.5
+    },
+    {
+      "id": "P3",
+      "kind": "plane",
+      "normal": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "point": [
+        0.0,
+        0.333,
+        32.2
+      ],
+      "area_mm2": 72.6
+    },
+    {
+      "id": "P4",
+      "kind": "plane",
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "point": [
+        50.4,
+        0.667,
+        82.6
+      ],
+      "area_mm2": 72.6
+    },
+    {
+      "id": "P5",
+      "kind": "plane",
+      "normal": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "point": [
+        68.5,
+        1.0,
+        33.533
+      ],
+      "area_mm2": 5722.3
+    },
+    {
+      "id": "P6",
+      "kind": "plane",
+      "normal": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "point": [
+        68.5,
+        0.0,
+        55.067
+      ],
+      "area_mm2": 5722.3
+    },
+    {
+      "id": "P7",
+      "kind": "plane",
+      "normal": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "point": [
+        23.5,
+        0.333,
+        3.333
+      ],
+      "area_mm2": 4.0
+    },
+    {
+      "id": "P8",
+      "kind": "plane",
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "point": [
+        46.567,
+        0.667,
+        3.0
+      ],
+      "area_mm2": 16.6
+    },
+    {
+      "id": "P9",
+      "kind": "plane",
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "point": [
+        53.1,
+        0.667,
+        4.667
+      ],
+      "area_mm2": 2.0
+    },
+    {
+      "id": "P10",
+      "kind": "plane",
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "point": [
+        28.167,
+        0.667,
+        0.0
+      ],
+      "area_mm2": 8.0
+    },
+    {
+      "id": "P11",
+      "kind": "plane",
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "point": [
+        35.5,
+        0.333,
+        2.667
+      ],
+      "area_mm2": 1.0
+    },
+    {
+      "id": "P12",
+      "kind": "plane",
+      "normal": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "point": [
+        52.3,
+        0.667,
+        33.533
+      ],
+      "area_mm2": 64.6
+    },
+    {
+      "id": "P13",
+      "kind": "plane",
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "point": [
+        50.3,
+        0.667,
+        55.067
+      ],
+      "area_mm2": 64.6
+    },
+    {
+      "id": "P14",
+      "kind": "plane",
+      "normal": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "point": [
+        26.3,
+        0.667,
+        33.533
+      ],
+      "area_mm2": 64.6
+    },
+    {
+      "id": "P15",
+      "kind": "plane",
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "point": [
+        24.3,
+        0.667,
+        55.067
+      ],
+      "area_mm2": 64.6
+    },
+    {
+      "id": "C16",
+      "kind": "cylinder",
+      "axis": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "point": [
+        2.0,
+        1.0,
+        8.0
+      ],
+      "radius": 2.0,
+      "convexity": "convex",
+      "length": 1.0,
+      "sweep_deg": 90.0,
+      "fit_max_residual_mm": 0.0,
+      "area_mm2": 3.14
+    },
+    {
+      "id": "C17",
+      "kind": "cylinder",
+      "axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "point": [
+        74.6,
+        0.0,
+        8.0
+      ],
+      "radius": 2.0,
+      "convexity": "convex",
+      "length": 1.0,
+      "sweep_deg": 90.0,
+      "fit_max_residual_mm": 0.0,
+      "area_mm2": 3.14
+    },
+    {
+      "id": "C18",
+      "kind": "cylinder",
+      "axis": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "point": [
+        74.6,
+        1.0,
+        80.6
+      ],
+      "radius": 2.0,
+      "convexity": "convex",
+      "length": 1.0,
+      "sweep_deg": 90.0,
+      "fit_max_residual_mm": 0.0,
+      "area_mm2": 3.14
+    },
+    {
+      "id": "C19",
+      "kind": "cylinder",
+      "axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "point": [
+        2.0,
+        0.0,
+        80.6
+      ],
+      "radius": 2.0,
+      "convexity": "convex",
+      "length": 1.0,
+      "sweep_deg": 90.0,
+      "fit_max_residual_mm": 0.0,
+      "area_mm2": 3.14
+    },
+    {
+      "id": "C20",
+      "kind": "cylinder",
+      "axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "point": [
+        52.1,
+        0.0,
+        4.0
+      ],
+      "radius": 1.0,
+      "convexity": "convex",
+      "length": 1.0,
+      "sweep_deg": 90.0,
+      "fit_max_residual_mm": 0.0,
+      "area_mm2": 1.57
+    },
+    {
+      "id": "C21",
+      "kind": "cylinder",
+      "axis": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "point": [
+        25.5,
+        1.0,
+        2.0
+      ],
+      "radius": 2.0,
+      "convexity": "convex",
+      "length": 1.0,
+      "sweep_deg": 90.0,
+      "fit_max_residual_mm": 0.0,
+      "area_mm2": 3.14
+    },
+    {
+      "id": "C22",
+      "kind": "cylinder",
+      "axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "point": [
+        33.5,
+        0.0,
+        2.0
+      ],
+      "radius": 2.0,
+      "convexity": "convex",
+      "length": 1.0,
+      "sweep_deg": 90.0,
+      "fit_max_residual_mm": 0.0,
+      "area_mm2": 3.14
+    },
+    {
+      "id": "C23",
+      "kind": "cylinder",
+      "axis": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "point": [
+        51.3,
+        1.0,
+        12.0
+      ],
+      "radius": 1.0,
+      "convexity": "concave",
+      "length": 1.0,
+      "sweep_deg": 180.0,
+      "fit_max_residual_mm": 0.0,
+      "area_mm2": 3.14
+    },
+    {
+      "id": "C24",
+      "kind": "cylinder",
+      "axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "point": [
+        51.3,
+        0.0,
+        76.6
+      ],
+      "radius": 1.0,
+      "convexity": "concave",
+      "length": 1.0,
+      "sweep_deg": 180.0,
+      "fit_max_residual_mm": 0.0,
+      "area_mm2": 3.14
+    },
+    {
+      "id": "C25",
+      "kind": "cylinder",
+      "axis": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "point": [
+        25.3,
+        1.0,
+        12.0
+      ],
+      "radius": 1.0,
+      "convexity": "concave",
+      "length": 1.0,
+      "sweep_deg": 180.0,
+      "fit_max_residual_mm": 0.0,
+      "area_mm2": 3.14
+    },
+    {
+      "id": "C26",
+      "kind": "cylinder",
+      "axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "point": [
+        25.3,
+        0.0,
+        76.6
+      ],
+      "radius": 1.0,
+      "convexity": "concave",
+      "length": 1.0,
+      "sweep_deg": 180.0,
+      "fit_max_residual_mm": 0.0,
+      "area_mm2": 3.14
+    }
+  ],
+  "edges": [
+    {
+      "faces": [
+        "P0",
+        "P5"
+      ],
+      "convexity": "convex",
+      "length_mm": 21.5
+    },
+    {
+      "faces": [
+        "P0",
+        "P6"
+      ],
+      "convexity": "convex",
+      "length_mm": 21.5
+    },
+    {
+      "faces": [
+        "P0",
+        "P7"
+      ],
+      "convexity": "concave",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P0",
+        "C16"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P1",
+        "P5"
+      ],
+      "convexity": "convex",
+      "length_mm": 72.6
+    },
+    {
+      "faces": [
+        "P1",
+        "P6"
+      ],
+      "convexity": "convex",
+      "length_mm": 72.6
+    },
+    {
+      "faces": [
+        "P1",
+        "C17"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P1",
+        "C18"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P2",
+        "P5"
+      ],
+      "convexity": "convex",
+      "length_mm": 21.5
+    },
+    {
+      "faces": [
+        "P2",
+        "P6"
+      ],
+      "convexity": "convex",
+      "length_mm": 21.5
+    },
+    {
+      "faces": [
+        "P2",
+        "P9"
+      ],
+      "convexity": "concave",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P2",
+        "C17"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P3",
+        "P5"
+      ],
+      "convexity": "convex",
+      "length_mm": 72.6
+    },
+    {
+      "faces": [
+        "P3",
+        "P6"
+      ],
+      "convexity": "convex",
+      "length_mm": 72.6
+    },
+    {
+      "faces": [
+        "P3",
+        "C16"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P3",
+        "C19"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P4",
+        "P5"
+      ],
+      "convexity": "convex",
+      "length_mm": 72.6
+    },
+    {
+      "faces": [
+        "P4",
+        "P6"
+      ],
+      "convexity": "convex",
+      "length_mm": 72.6
+    },
+    {
+      "faces": [
+        "P4",
+        "C18"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P4",
+        "C19"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P5",
+        "P7"
+      ],
+      "convexity": "convex",
+      "length_mm": 4.0
+    },
+    {
+      "faces": [
+        "P5",
+        "P8"
+      ],
+      "convexity": "convex",
+      "length_mm": 16.6
+    },
+    {
+      "faces": [
+        "P5",
+        "P9"
+      ],
+      "convexity": "convex",
+      "length_mm": 2.0
+    },
+    {
+      "faces": [
+        "P5",
+        "P10"
+      ],
+      "convexity": "convex",
+      "length_mm": 8.0
+    },
+    {
+      "faces": [
+        "P5",
+        "P11"
+      ],
+      "convexity": "convex",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P5",
+        "P12"
+      ],
+      "convexity": "convex",
+      "length_mm": 64.6
+    },
+    {
+      "faces": [
+        "P5",
+        "P13"
+      ],
+      "convexity": "convex",
+      "length_mm": 64.6
+    },
+    {
+      "faces": [
+        "P5",
+        "P14"
+      ],
+      "convexity": "convex",
+      "length_mm": 64.6
+    },
+    {
+      "faces": [
+        "P5",
+        "P15"
+      ],
+      "convexity": "convex",
+      "length_mm": 64.6
+    },
+    {
+      "faces": [
+        "P5",
+        "C16"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P5",
+        "C17"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P5",
+        "C18"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P5",
+        "C19"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P5",
+        "C20"
+      ],
+      "convexity": "convex",
+      "length_mm": 1.57
+    },
+    {
+      "faces": [
+        "P5",
+        "C21"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P5",
+        "C22"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P5",
+        "C23"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P5",
+        "C24"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P5",
+        "C25"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P5",
+        "C26"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P6",
+        "P7"
+      ],
+      "convexity": "convex",
+      "length_mm": 4.0
+    },
+    {
+      "faces": [
+        "P6",
+        "P8"
+      ],
+      "convexity": "convex",
+      "length_mm": 16.6
+    },
+    {
+      "faces": [
+        "P6",
+        "P9"
+      ],
+      "convexity": "convex",
+      "length_mm": 2.0
+    },
+    {
+      "faces": [
+        "P6",
+        "P10"
+      ],
+      "convexity": "convex",
+      "length_mm": 8.0
+    },
+    {
+      "faces": [
+        "P6",
+        "P11"
+      ],
+      "convexity": "convex",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P6",
+        "P12"
+      ],
+      "convexity": "convex",
+      "length_mm": 64.6
+    },
+    {
+      "faces": [
+        "P6",
+        "P13"
+      ],
+      "convexity": "convex",
+      "length_mm": 64.6
+    },
+    {
+      "faces": [
+        "P6",
+        "P14"
+      ],
+      "convexity": "convex",
+      "length_mm": 64.6
+    },
+    {
+      "faces": [
+        "P6",
+        "P15"
+      ],
+      "convexity": "convex",
+      "length_mm": 64.6
+    },
+    {
+      "faces": [
+        "P6",
+        "C16"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P6",
+        "C17"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P6",
+        "C18"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P6",
+        "C19"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P6",
+        "C20"
+      ],
+      "convexity": "convex",
+      "length_mm": 1.57
+    },
+    {
+      "faces": [
+        "P6",
+        "C21"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P6",
+        "C22"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P6",
+        "C23"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P6",
+        "C24"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P6",
+        "C25"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P6",
+        "C26"
+      ],
+      "convexity": "convex",
+      "length_mm": 3.14
+    },
+    {
+      "faces": [
+        "P7",
+        "C21"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P8",
+        "P11"
+      ],
+      "convexity": "concave",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P8",
+        "C20"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P9",
+        "C20"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P10",
+        "C21"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P10",
+        "C22"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P11",
+        "C22"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P12",
+        "C23"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P12",
+        "C24"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P13",
+        "C23"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P13",
+        "C24"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P14",
+        "C25"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P14",
+        "C26"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P15",
+        "C25"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    },
+    {
+      "faces": [
+        "P15",
+        "C26"
+      ],
+      "convexity": "tangent",
+      "length_mm": 1.0
+    }
+  ],
+  "features": [
+    {
+      "id": "body",
+      "kind": "plate_profile_extrude",
+      "polarity": "additive",
+      "extrude_axis": [
+        0,
+        1,
+        0
+      ],
+      "thickness": 1.0,
+      "faces": [
+        "P5",
+        "P6"
+      ],
+      "profile_note": "Outline in XZ: rectangle x 0..76.6, z 6..82.6 with four R2 corners, plus a lower tab x 23.5..53.1 reaching z 0 (R2 at (25.5,2) and (33.5,2), a step to z 3 for x 35.5..53.1, R1 at (52.1,4)). Hand check the tab outline."
+    },
+    {
+      "kind": "edge_round",
+      "polarity": "subtractive",
+      "radius": 2.0,
+      "between": [
+        "P0",
+        "P3"
+      ],
+      "id": "edge_round_1",
+      "faces": [
+        "C16"
+      ]
+    },
+    {
+      "kind": "edge_round",
+      "polarity": "subtractive",
+      "radius": 2.0,
+      "between": [
+        "P1",
+        "P2"
+      ],
+      "id": "edge_round_2",
+      "faces": [
+        "C17"
+      ]
+    },
+    {
+      "kind": "edge_round",
+      "polarity": "subtractive",
+      "radius": 2.0,
+      "between": [
+        "P1",
+        "P4"
+      ],
+      "id": "edge_round_3",
+      "faces": [
+        "C18"
+      ]
+    },
+    {
+      "kind": "edge_round",
+      "polarity": "subtractive",
+      "radius": 2.0,
+      "between": [
+        "P3",
+        "P4"
+      ],
+      "id": "edge_round_4",
+      "faces": [
+        "C19"
+      ]
+    },
+    {
+      "kind": "edge_round",
+      "polarity": "subtractive",
+      "radius": 1.0,
+      "between": [
+        "P8",
+        "P9"
+      ],
+      "id": "edge_round_5",
+      "faces": [
+        "C20"
+      ]
+    },
+    {
+      "kind": "edge_round",
+      "polarity": "subtractive",
+      "radius": 2.0,
+      "between": [
+        "P7",
+        "P10"
+      ],
+      "id": "edge_round_6",
+      "faces": [
+        "C21"
+      ]
+    },
+    {
+      "kind": "edge_round",
+      "polarity": "subtractive",
+      "radius": 2.0,
+      "between": [
+        "P10",
+        "P11"
+      ],
+      "id": "edge_round_7",
+      "faces": [
+        "C22"
+      ]
+    },
+    {
+      "id": "through_slot_1",
+      "kind": "through_slot",
+      "polarity": "subtractive",
+      "width": 2.0,
+      "length": 66.6,
+      "depth": 1.0,
+      "end_radius": 1.0,
+      "faces": [
+        "C23",
+        "C24",
+        "P12",
+        "P13"
+      ]
+    },
+    {
+      "id": "through_slot_2",
+      "kind": "through_slot",
+      "polarity": "subtractive",
+      "width": 2.0,
+      "length": 66.6,
+      "depth": 1.0,
+      "end_radius": 1.0,
+      "faces": [
+        "C25",
+        "C26",
+        "P14",
+        "P15"
+      ]
+    }
+  ]
+}

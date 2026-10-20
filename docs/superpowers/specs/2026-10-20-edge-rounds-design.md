@@ -98,6 +98,7 @@ free-form region.
 | Snapping | Snapping moves a value by 0.001 mm or less (`emit.py` `SNAP_MAX_SHIFT_MM`). Confirmed. |
 | Scope | Grow the scope to goals 5–8, and keep "done": both real parts pass the gate. |
 | Feet outline | A parametric ellipse with two semi-axis sliders (the measured geometry is an ellipse, not arcs). The round along its bottom edge is parametric now. |
+| Architecture | Adopt the Argon blueprint (`docs/research/2026-10-20-argon-reconstruction-methods.md`, section A): replace the one-pass step 4 with (1) constrained regularization of the fitted faces, (2) iterative defeaturing of the face graph (corner blends, then rounds and chamfers, then bosses, holes, counterbores) with extension of the host faces to the sharp edge, (3) multi-height slab slicing into 2D profiles (lines, circular arcs, elliptical arcs), then replay of the removed features. The existing tests and the stencil result are the regression fence. |
 | Corners | Corners where rounds or chamfers meet (sphere patch, torus on a boss top, a round that meets a chamfer at a vertex) are out of scope now. They may go to the free-form polyhedron. The synthetic parts include no such corners. |
 
 ## Non-goals
@@ -144,9 +145,6 @@ free-form region.
 
 - **Thread output.** The SCAD is self-contained. It does not need BOSL2 or another library,
   because the output must render on a plain OpenSCAD installation.
-- **Research first.** The plan starts after the Argon research report
-  (`docs/research/2026-10-20-argon-reconstruction-methods.md`), because the report can change
-  the method.
 
 ## Left to the builder
 

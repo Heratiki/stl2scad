@@ -1,6 +1,6 @@
 # T-002: Cube STL test race under pytest-xdist
 
-Status: open
+Status: landed (worktree-agent-a39a573524f2e7b01, 2026-10-20)
 Opened: 2026-10-20 by the orchestrator, from the first full run (`pytest -n auto`).
 Depends on: none
 
@@ -64,16 +64,16 @@ shared directory.
 
 ## Acceptance
 
-- [ ] With `tests/data/cube.stl` deleted first, this command passes three times in
+- [x] With `tests/data/cube.stl` deleted first, this command passes three times in
   a row: `flock /tmp/stl2scad-pytest.lock env QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -n auto -q -o addopts="" -p no:logging tests/test_conversion.py tests/test_debug.py tests/test_verification.py`.
   This scoped command, with flock, is the acceptance check and the lane may run
   it; it must not run the full suite.
-- [ ] After those runs `tests/data/cube.stl` does not exist.
-- [ ] The same three files pass serially (same command without `-n auto`).
-- [ ] No assertion is removed or weakened; the diff adds or changes only file
+- [x] After those runs `tests/data/cube.stl` does not exist.
+- [x] The same three files pass serially (same command without `-n auto`).
+- [x] No assertion is removed or weakened; the diff adds or changes only file
   location and fixture code.
-- [ ] No new test is required; the three files above are the check.
-- [ ] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
-- [ ] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.
+- [x] No new test is required; the three files above are the check.
+- [x] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
+- [x] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.
 
 Do NOT run the test harness beyond the scoped acceptance command above. Stage paths explicitly.

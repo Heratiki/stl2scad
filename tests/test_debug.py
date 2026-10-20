@@ -13,7 +13,7 @@ from pathlib import Path
 from stl2scad.core.converter import stl2scad, get_openscad_path
 
 
-def test_debug_features(test_output_dir, verbose=True, log_file="test_run.log"):
+def test_debug_features(test_output_dir, cube_stl_path, verbose=True, log_file="test_run.log"):
     """Test the debug features of the STL to SCAD converter."""
 
     def log(msg, level="INFO"):
@@ -55,7 +55,7 @@ def test_debug_features(test_output_dir, verbose=True, log_file="test_run.log"):
     # regardless of the working directory pytest is invoked from.
     sample_file = Path(__file__).parent / "data" / "Cube_3d_printing_sample.stl"
     if not sample_file.exists():
-        sample_file = Path(__file__).parent / "data" / "cube.stl"
+        sample_file = cube_stl_path
     input_file = str(sample_file)
     output_file = str(test_output_dir / "test_output.scad")
 

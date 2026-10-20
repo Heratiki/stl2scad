@@ -6,7 +6,9 @@ import tempfile
 import uuid
 from pathlib import Path
 
+import numpy as np
 import pytest
+import stl
 
 
 _REPO_LOCAL_TEMP = Path(__file__).parent / ".tmp_output"
@@ -25,6 +27,58 @@ class _LocalTmpPathFactory:
         temp_dir = _REPO_LOCAL_TEMP / f"{basename}{suffix}"
         temp_dir.mkdir()
         return temp_dir
+
+
+def create_cube_stl(output_file):
+    """Create a simple cube STL file for testing."""
+    # Define the 8 vertices of the cube
+    vertices = np.array(
+        [
+            [0, 0, 0],
+            [1, 0, 0],
+            [1, 1, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+            [1, 0, 1],
+            [1, 1, 1],
+            [0, 1, 1],
+        ]
+    )
+
+    # Define the 12 triangles composing the cube
+    faces = np.array(
+        [
+            [0, 3, 1],
+            [1, 3, 2],  # bottom face
+            [0, 4, 7],
+            [0, 7, 3],  # left face
+            [4, 5, 6],
+            [4, 6, 7],  # top face
+            [5, 1, 2],
+            [5, 2, 6],  # right face
+            [2, 3, 6],
+            [3, 7, 6],  # front face
+            [0, 1, 5],
+            [0, 5, 4],  # back face
+        ]
+    )
+
+    # Create the mesh
+    cube = stl.mesh.Mesh(np.zeros(faces.shape[0], dtype=stl.mesh.Mesh.dtype))
+    for i, f in enumerate(faces):
+        for j in range(3):
+            cube.vectors[i][j] = vertices[f[j], :]
+
+    # Write the mesh to file
+    cube.save(output_file)
+
+
+@pytest.fixture(scope="session")
+def cube_stl_path(tmp_path_factory):
+    """Write a unit cube STL once per session (per xdist worker); return its path."""
+    cube_file = tmp_path_factory.mktemp("cube_stl") / "cube.stl"
+    create_cube_stl(cube_file)
+    return cube_file
 
 
 @pytest.fixture
@@ -58,12 +112,12 @@ def tmp_path_factory():
 
 
 @pytest.fixture
-def sample_stl_file(test_data_dir):
+def sample_stl_file(test_data_dir, cube_stl_path):
     """Return path to sample STL file."""
     candidate = test_data_dir / "Cube_3d_printing_sample.stl"
     if candidate.exists():
         return candidate
-    return test_data_dir / "cube.stl"
+    return cube_stl_path
 
 
 @pytest.fixture

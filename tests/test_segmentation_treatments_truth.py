@@ -354,3 +354,46 @@ def test_extrusion_axis_unchanged_for_plain_posts(openscad_path, tmp_path, size)
     mesh = _render_post(openscad_path, tmp_path, *size, chamfer=False)
     axis = extrusion_axis(regularize(segment_mesh(mesh)))
     assert abs(float(axis @ np.array(PLAIN_POST_AXES[size]))) == pytest.approx(1.0, abs=1e-6)
+
+
+def _unequal_block_scad(design, rotation):
+    w, l, h = design["body_width"], design["body_length"], design["body_height"]
+    c1, c2 = design["chamfer_1_width"], design["chamfer_2_width"]
+    return (
+        f"$fn=64;\nrotate({list(rotation)}) translate([-{l / 2},-{w / 2},-{h / 2}])"
+        f" difference(){{ cube([{l},{w},{h}]);\n"
+        f" translate([-1,0,0]) rotate([90,0,90]) linear_extrude({l + 2})"
+        f" polygon([[0,{h}],[{c1},{h}],[0,{h - c1}]]);\n"
+        f" translate([-1,0,0]) rotate([90,0,90]) linear_extrude({l + 2})"
+        f" polygon([[{w},{h}],[{w - c2},{h}],[{w},{h - c2}]]);\n}}\n"
+    )
+
+
+def test_treatment_numbering_is_stable_under_180_rotation(openscad_path, tmp_path):
+    """T-005: the same physical chamfer keeps its id when the part is rotated."""
+    from stl2scad.core.segmentation import segment_mesh
+    from stl2scad.core.segmentation.defeature import defeature
+
+    truth = EXPECTED["rotation_stability"]
+    assert [0, 0, 180] in truth["rotations_deg"]
+    for rotation in truth["rotations_deg"]:
+        scad = tmp_path / f"unequal_{rotation[2]}.scad"
+        scad.write_text(_unequal_block_scad(truth["design"], rotation), encoding="utf-8")
+        target = scad.with_suffix(".stl")
+        assert run_openscad(
+            scad.stem, ["--render", "-o", str(target), str(scad)],
+            str(scad.with_suffix(".log")), openscad_path,
+        )
+        mesh = Mesh.from_file(str(target))
+        found = {t.id: t for t in defeature(segment_mesh(mesh)).treatments}
+        assert set(found) == {t["id"] for t in truth["treatments"]}, rotation
+        matrix = _rotation(rotation)
+        for expected in truth["treatments"]:
+            treatment = found[expected["id"]]
+            assert treatment.size == pytest.approx(expected["width"], abs=1e-3), rotation
+            # Part-frame point and direction mapped into the world frame.
+            point = matrix @ np.asarray(expected["edge_point"], float)
+            direction = matrix @ np.asarray(expected["edge_direction"], float)
+            offset = np.asarray(treatment.edge_point) - point
+            assert np.linalg.norm(np.cross(offset, direction)) < 1e-2, (
+                rotation, expected["id"])

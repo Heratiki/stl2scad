@@ -1,6 +1,6 @@
 # T-005: Treatment numbering depends on part orientation
 
-Status: open
+Status: landed (worktree-agent-aab0178974c87af52, 2026-10-20)
 Opened: 2026-10-20 by the orchestrator, from an agy review (`.scratch/lanes/plan1-review23/REPORT.md`) whose finding was reproduced.
 Depends on: none
 Route: codex lane (segmentation work).
@@ -84,9 +84,9 @@ Any other detector change, new primitive kinds, and weakening any existing treat
 
 ## Acceptance
 
-- [ ] New test (in the treatment test file) `test_treatment_numbering_is_stable_under_180_rotation`: an unequal-width chamfered block (3 mm and 2 mm, the `f1.py` block) at [0,0,0] and [0,0,180] yields the same `chamfer_N` id for the same physical edge (the 3 mm chamfer is `chamfer_1` in both). `treatments_expected.json` gets a 180 degree Z-rotation variant with unequal chamfer widths (3 mm and 2 mm) whose ids map to the same physical edges as the unrotated part.
-- [ ] Existing tests in `tests/test_segmentation_*.py` stay unchanged, including the existing `chamfered_block` entries.
-- [ ] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
-- [ ] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.
+- [x] New test (in the treatment test file) `test_treatment_numbering_is_stable_under_180_rotation`: an unequal-width chamfered block (3 mm and 2 mm, the `f1.py` block) at [0,0,0] and [0,0,180] yields the same `chamfer_N` id for the same physical edge (the 3 mm chamfer is `chamfer_1` in both). `treatments_expected.json` gets a 180 degree Z-rotation variant with unequal chamfer widths (3 mm and 2 mm) whose ids map to the same physical edges as the unrotated part.
+- [x] Existing tests in `tests/test_segmentation_*.py` stay unchanged, including the existing `chamfered_block` entries.
+- [x] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
+- [x] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.
 
 Do NOT run the test harness. Stage paths explicitly.

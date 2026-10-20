@@ -242,7 +242,7 @@ def render_scad(source: str) -> Mesh:
             directory / "model.stl",
             directory / "render.log",
         )
-        scad.write_text(source)
+        scad.write_text(source, encoding="utf-8")
         if (
             not run_openscad(
                 "Editable segmentation gate",

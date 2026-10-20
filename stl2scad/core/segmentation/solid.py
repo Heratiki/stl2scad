@@ -208,7 +208,7 @@ def reconstruct_mesh(features: list[Feature]) -> Mesh:
     with TemporaryDirectory(prefix="stl2scad-feature-solid-") as directory:
         root = Path(directory)
         scad, stl, log = root / "solid.scad", root / "solid.stl", root / "render.log"
-        scad.write_text(source)
+        scad.write_text(source, encoding="utf-8")
         if not run_openscad(
             "Feature solid validation",
             ["--render", "-o", stl.as_posix(), scad.as_posix()],

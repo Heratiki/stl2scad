@@ -57,11 +57,35 @@ def _side_frame(result, axis, sine, cosine):
         ]
     )
     support = (np.abs(normals @ normals.T) >= cosine) @ areas
-    index = min(range(len(sides)), key=lambda i: (-support[i], sides[i].id))
+    # Equal support (a parallel pair) falls to the larger face, then the id.
+    index = min(
+        range(len(sides)),
+        key=lambda i: (
+            -round(float(support[i]), 6),
+            -round(float(areas[i]), 6),
+            sides[i].id,
+        ),
+    )
     u = _unit(normals[index] - np.dot(normals[index], axis) * axis)
-    # This sign chooses deterministic labels only; geometry uses unoriented
-    # directions. Changing the global orientation cannot change eligibility.
-    if u[np.argmax(abs(u))] < 0:
+    # The sign sets treatment numbering (customer-visible parameter names), so
+    # it comes from the part: u points from the mesh centroid to the side face.
+    # A rigid rotation of the part then leaves the labels unchanged. Geometry
+    # uses unoriented directions, so eligibility does not depend on it.
+    mesh = result.mesh
+    centers = mesh.vertices[mesh.triangles].mean(axis=1)
+    centroid = (mesh.areas @ centers) / mesh.areas.sum()
+    twin = any(
+        j != index
+        and normals[j] @ normals[index] <= -cosine
+        and abs(areas[j] - areas[index]) <= 1e-3 * areas[index]
+        for j in range(len(sides))
+    )
+    if twin:
+        # A mirror-symmetric pair has no part-intrinsic order: the labels are
+        # interchangeable, so keep the previous world-axis sign here.
+        if u[np.argmax(abs(u))] < 0:
+            u = -u
+    elif np.dot(sides[index].params.point - centroid, u) < 0:
         u = -u
     return u, _unit(np.cross(axis, u))
 

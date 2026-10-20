@@ -111,3 +111,11 @@ artifacts/thumbs/
 artifacts/HMG7.3 Ender 5 V Wheel X Carriage V2_verification.html
 artifacts/HMG7.3 Ender 5 V Wheel X Carriage V2_verification.json
 artifacts/HMG7.3 Ender 5 V Wheel X Carriage V2_visualizations/
+
+# Orchestration (bootstrap-orchestration 2026-10-20)
+.unlazy/
+.unlazy-hook-state.json
+.claude/worktrees/
+.claude/settings.local.json
+.scratch/
+!docs/agents/model-register.runs.json

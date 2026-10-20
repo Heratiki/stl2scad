@@ -152,11 +152,17 @@ def slab_profiles(defeatured: Defeatured, frame: np.ndarray) -> list[Slab]
 
 Approach: levels are the merged heights of planes with normal ∥ axis (tolerance `mesh.diagonal * 2e-5`). For each pair of adjacent levels, the active side faces are planes with normal ⟂ axis and cylinders with axis ∥ axis whose triangles span the slab. At mid-height, each plane gives a line and each cylinder an arc (keep `segments` and phase as in `sections.py`); order them by graph adjacency and trim at neighbour intersections. A side face that is neither (for example an elliptic wall) gives the mesh section polyline at mid-height for that span and its id goes in `point_face_ids`. Adjacent slabs with equal loops (within tolerance) merge.
 
-- [ ] **Step 1: Write tests.** `test_stepped_bar_levels_and_loops` (levels `[0, 2, 10]` within 0.01; slab 1 one loop = bar ∪ head outline; slab 2 loops = head with two R1 arcs + rib with two R0.5 arcs; arc radii within 2 %; all variants). `test_clipped_arc_plate_profile` (after defeature: one slab, one loop with four R3 arcs; the chamfer does not change the loop). `test_point_face_ids_for_non_analytic_side` (an extruded ellipse plate 3 × 8 quarter-ellipse corner: the elliptic wall id is in `point_face_ids`, and the loop is within 0.001 mm of the true section).
-- [ ] **Step 2: Run, expect FAIL.**
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** the new tests and `tests/test_segmentation_*.py`. Expected: PASS.
-- [ ] **Step 5: Commit** `feat: slice multi-height slabs into analytic section profiles`.
+- [x] **Step 1: Write tests.** `test_stepped_bar_levels_and_loops` (levels `[0, 2, 10]` within 0.01; slab 1 one loop = bar ∪ head outline; slab 2 loops = head with two R1 arcs + rib with two R0.5 arcs; arc radii within 2 %; all variants). `test_clipped_arc_plate_profile` (after defeature: one slab, one loop with four R3 arcs; the chamfer does not change the loop). `test_point_face_ids_for_non_analytic_side` (an extruded ellipse plate 3 × 8 quarter-ellipse corner: the elliptic wall id is in `point_face_ids`, and the loop is within 0.001 mm of the true section).
+- [x] **Step 2: Run, expect FAIL.**
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** the new tests and `tests/test_segmentation_*.py`. Expected: PASS.
+- [x] **Step 5: Commit** `feat: slice multi-height slabs into analytic section profiles`.
+
+Implementation clarifications for Task 4 (2026-10-20):
+
+- Filter face-graph edges by whether their source mesh edges cross the slab midpoint. Two faces touching below a step are not necessarily neighbors above it. This keeps the head and free-ended rib separate without changing segmentation.
+- A source face spanning multiple intervals is owned by its first slab; later section segments retain its ID. Upward caps belong below their level and downward caps above it. Equal-section merges retain both intervals' side provenance. Faces wholly outside the recovered cap intervals remain unowned for the later remainder stage.
+- The elliptic-wall test supplies an independently meshed, hand-labeled nonanalytic region. Task 4 consumes that region as section points; detecting or grouping elliptic walls remains outside this task. No new analytic surface type or ellipse fit is introduced.
 
 ### Task 5: Remainder regions and the new dispatch
 

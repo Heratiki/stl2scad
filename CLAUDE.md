@@ -48,7 +48,7 @@ The recommended pipeline exists in [stl2scad/core/segmentation/](stl2scad/core/s
 ### Three invariants you must not break
 
 1. **Byte-exact regeneration** ([test_feature_fixture_manifest_matches_checked_in_scad](tests/test_feature_fixtures.py)) — regenerating fixtures from the manifest must equal the checked-in `.scad` files byte-for-byte. If you change the generator, regenerate the library and commit the updated `.scad` files in the same change; do not edit `.scad` files by hand.
-2. **Dimensional round-trip** ([test_feature_fixture_round_trip_detection](tests/test_feature_fixtures.py)) — the detector must find the right count AND dimensions (within tolerance) for every fixture. Fails hard in CI when `OpenSCAD` is missing.
+2. **Dimensional round-trip** ([test_feature_fixture_round_trip_detection](tests/test_feature_fixtures.py)) — the detector must find the right count AND dimensions (within tolerance) for every fixture. Fails hard in CI when `OpenSCAD` is missing. Exception (maintainer ruling 2026-10-20, T-003): the legacy revolve detector is archived (`stl2scad/legacy/`, `DetectorConfig.enable_revolve_detection=False`), so the 11 `revolve` fixtures and 7 named fixtures in `_REVOLVE_ARCHIVED_NON_REVOLVE_FIXTURES` are xfail per fixture; every other fixture still fails hard. Do not add a name to that set for any other cause.
 3. **Roadmap coverage** ([test_feature_fixture_manifest_covers_roadmap_stress_cases](tests/test_feature_fixtures.py)) — the manifest must always contain at least one fixture per stress category (mixed, high-aspect, small/large diameter, near-boundary ≤0.5 mm, plus box and l_bracket types). Never shrink the manifest below this bar.
 
 ### How to use the fixture library

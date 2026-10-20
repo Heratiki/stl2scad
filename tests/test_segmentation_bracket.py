@@ -38,7 +38,7 @@ def transformed_faces(variant):
     rot = _rotation(variant["rotate_deg"])
     shift = np.asarray(variant["translate_before"], dtype=float)
     faces = []
-    for face in EXPECTED["faces"]:
+    for face in EXPECTED["faces"] + variant.get("additional_faces", []):
         out = dict(face)
         out["point"] = (rot @ (np.asarray(face["point"], dtype=float) + shift)).tolist()
         key = "normal" if face["kind"] == "plane" else "axis"
@@ -82,12 +82,18 @@ def test_ground_truth_references_are_consistent():
     for feature in EXPECTED["features"]:
         assert set(feature["faces"]) <= set(face_ids), feature
         assert feature["polarity"] in {"additive", "subtractive"}
+    for variant in VARIANTS.values():
+        ids = face_ids + [f['id'] for f in variant.get('additional_faces', [])]
+        assert len(ids) == len(set(ids))
+        for edge in variant.get('edges', EXPECTED['edges']):
+            assert set(edge['faces']) <= set(ids), edge
+            assert edge['convexity'] in {'convex', 'concave', 'tangent'}
 
 
 @pytest.mark.parametrize("variant_name", list(VARIANTS))
 def test_rendered_volume_matches_ground_truth(rendered, variant_name):
     volume, _, _ = rendered[variant_name].get_mass_properties()
-    expected = EXPECTED["volume_mm3"]
+    expected = VARIANTS[variant_name]["volume_mm3"]
     assert abs(volume - expected) / expected < EXPECTED["tolerances"]["volume_rel"]
 
 
@@ -126,7 +132,7 @@ def test_segmentation_recovers_faces_and_edges(rendered, variant_name):
             assert best.convexity == face["convexity"], face["id"]
         matched[face["id"]] = best
 
-    for edge in EXPECTED["edges"]:
+    for edge in VARIANTS[variant_name].get("edges", EXPECTED["edges"]):
         a, b = (matched[i] for i in edge["faces"])
         assert result.edge_convexity(a, b) == edge["convexity"], edge
 
@@ -197,9 +203,15 @@ def test_emitted_scad_is_labeled_and_adjustable(rendered, openscad_path, tmp_pat
                         ["-o", str(params_path), "--export-format=param", str(tmp_path / "emitted.scad")],
                         str(tmp_path / "params.log"), openscad_path), "Customizer parameter export failed"
     params = {p["name"]: p for p in json.loads(params_path.read_text())["parameters"]}
+    assert '/* [Resolution] */' in scad
     for name in ("boss_1_height", "blind_hole_1_depth", "fillet_1_radius"):
         assert {"min", "max", "step"} <= params[name].keys(), f"Customizer did not parse the range of {name}"
         assert params[name].get("caption"), f"Customizer has no caption for {name}"
+    for feature, face in [('boss_1','boss_side'), ('blind_hole_1','hole_wall'), ('fillet_1','fillet')]:
+        parameter = params[feature+'_segments']
+        assert parameter['initial'] == variant['tessellation']['segments'][face]
+        assert parameter['step'] == 1
+        assert 'smoother' in parameter['caption'].lower()
     limit = gate_limit_mm(mesh)
     assert limit == pytest.approx(max(0.05, 0.001 * np.linalg.norm(np.ptp(mesh.points.reshape(-1, 3), axis=0))))
     from stl2scad.core.segmentation.solid import mesh_hausdorff
@@ -218,3 +230,21 @@ def test_emitted_scad_is_labeled_and_adjustable(rendered, openscad_path, tmp_pat
     local = _part_frame_points(changed, variant)
     radial = np.linalg.norm(local[:, :2] - np.array([25.0, 15.0]), axis=1)
     assert (radial < 6.1).all() and (local[:, 2] > 4.9).all(), "edit changed geometry outside the boss"
+
+
+@pytest.mark.parametrize('variant_name', list(VARIANTS))
+def test_faceted_volumes_are_derived_from_polygon_areas(variant_name):
+    variant = VARIANTS[variant_name]
+    tessellation = variant['tessellation']
+    radii = dict(fillet=3., boss_side=6., hole_wall=2.5)
+    segments = tessellation['segments']
+    for name, radius in radii.items():
+        n = tessellation['fn'] or math.ceil(max(min(360/tessellation['fa'], 2*math.pi*radius/tessellation['fs']), 5))
+        assert segments[name] == n
+    area = lambda radius, n: n*radius*radius*math.sin(2*math.pi/n)/2
+    # All fillet polygons here have reflection symmetry in both coordinate
+    # axes, so clipping to the quarter gives exactly one quarter of the area.
+    assert segments['fillet'] % 2 == 0
+    volume = (10500 + 6*area(6,segments['boss_side']) - 3*area(2.5,segments['hole_wall'])
+              + 30*(9-area(3,segments['fillet'])/4))
+    assert variant['volume_mm3'] == pytest.approx(volume, abs=1e-9)

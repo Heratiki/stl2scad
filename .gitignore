@@ -76,6 +76,11 @@ tests/data/.generated/
 !tests/data/real_world_corpus_manifest.json
 !tests/data/feature_fixtures_scad/
 !tests/data/feature_fixtures_scad/*.scad
+!tests/data/segmentation/
+!tests/data/segmentation/composite_bracket*.scad
+!tests/data/segmentation/composite_bracket_expected.json
+!tests/data/segmentation/real/
+!tests/data/segmentation/real/*_expected.json
 !artifacts/real_world_recall_baseline.json
 !artifacts/segmentation/composite_bracket_axis_aligned.scad
 !artifacts/segmentation/composite_bracket_rotated.scad

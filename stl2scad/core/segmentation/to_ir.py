@@ -10,6 +10,7 @@ import numpy as np
 
 from .. import ir
 from .features import Feature
+from .fitting import cylinder_phase
 
 
 @dataclass(frozen=True)
@@ -19,6 +20,7 @@ class Binding:
     points: tuple[tuple[str, str], ...] = ()
     center: tuple[str, str, str] = ("0", "0", "0")
     corner: tuple[str, str, str] = ("0", "0", "0")
+    phase_deg: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -201,6 +203,7 @@ def features_to_ir(features: list[Feature]) -> ParametricModel:
     labels.extend((f, "body_1_boundary", "plane") for f in body.face_ids)
     additive, cuts = [extrusion], []
     names = set()
+    resolutions = []
     for feature in features:
         if feature is body:
             continue
@@ -209,6 +212,25 @@ def features_to_ir(features: list[Feature]) -> ParametricModel:
             raise ValueError("Feature names must be unique")
         names.add(name)
         group = name.replace("_", " ").title()
+        segments = feature.segments or 64
+        resolutions.append(
+            ir.Parameter(
+                name=f"{name}_segments",
+                value=segments,
+                raw_value=segments,
+                min=3,
+                step=1,
+                max=max(256, segments),
+                group="Resolution",
+                description="Higher value gives a smoother part",
+                face_ids=feature.face_ids,
+            )
+        )
+        constraint(
+            f"{name}_segments >= 3 && {name}_segments == floor({name}_segments)",
+            "Resolution must be an integer of at least 3",
+            feature.face_ids,
+        )
         if feature.kind in ("boss", "blind_hole"):
             expected = "additive" if feature.kind == "boss" else "subtractive"
             if feature.polarity != expected or not feature.on_face:
@@ -319,7 +341,14 @@ def features_to_ir(features: list[Feature]) -> ParametricModel:
                     else f"{name}_x-{name}_radius-({clearance}) > {inner}"
                 )
                 constraint(inequality, "Cylinder must clear the wall", feature.face_ids)
-            bindings.append(Binding(node, name, center=tuple(location)))
+            bindings.append(
+                Binding(
+                    node,
+                    name,
+                    center=tuple(location),
+                    phase_deg=cylinder_phase(feature.axis, feature.radial_reference),
+                )
+            )
             labels.extend(
                 (
                     f,
@@ -377,8 +406,24 @@ def features_to_ir(features: list[Feature]) -> ParametricModel:
                 face_ids=feature.face_ids,
             )
             additive.append(node)
-            bindings.append(Binding(node, name, center=center, corner=corner))
-            labels.extend((f, name, "cylinder") for f in feature.face_ids)
+            phase = (
+                float(
+                    np.degrees(
+                        np.arctan2(
+                            feature.radial_reference[1], feature.radial_reference[0]
+                        )
+                    )
+                )
+                if feature.radial_reference is not None
+                else 0.0
+            )
+            bindings.append(
+                Binding(node, name, center=center, corner=corner, phase_deg=phase)
+            )
+            labels.extend(
+                (f, name, "plane" if f in feature.trim_face_ids else "cylinder")
+                for f in feature.face_ids
+            )
             constraint(
                 f"{name}_radius < body_width-wall_thickness && {name}_radius < body_height-base_thickness",
                 "Fillet must fit between the free leg ends",
@@ -410,6 +455,7 @@ def features_to_ir(features: list[Feature]) -> ParametricModel:
         cuts=tuple(cuts),
         face_ids=tuple(f for feature in features for f in feature.face_ids),
     )
+    parameters += resolutions
     return ParametricModel(
         ir.TransformMultMatrix(
             matrix=body.part_frame, child=root, face_ids=root.face_ids

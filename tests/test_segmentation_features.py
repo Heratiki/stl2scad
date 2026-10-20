@@ -251,7 +251,8 @@ def test_bracket_features_partition_faces_and_frames_follow_the_part(rendered):
     features = {name: detect_features(result) for name, result in results.items()}
     for name, recovered in features.items():
         owners = [face_id for f in recovered for face_id in f.face_ids]
-        assert len(owners) == len(set(owners)) == 13
+        expected_count = len(VARIANTS[name].get("additional_faces", [])) + 13
+        assert len(owners) == len(set(owners)) == expected_count
         assert set(owners) == {f.id for f in results[name].faces}
         frame = np.asarray(recovered[0].part_frame)
         for feature in recovered:
@@ -310,3 +311,10 @@ def test_u_and_t_sections_are_recovered_from_mesh_caps(profile, cap, kind, rotat
     assert body.kind == kind
     assert len(body.profile.points) == 8
     assert body.height == pytest.approx(2.0)
+
+
+def test_collapsed_render_triangles_do_not_poison_surface_distance():
+    triangles = cube()
+    collapsed = np.array([[[0.0, 0, 0], [1, 0, 0], [2, 0, 0]]])
+    rebuilt = mesh_of(np.concatenate((triangles, collapsed)))
+    assert mesh_hausdorff(rebuilt, mesh_of(triangles), samples=32) < 1e-10

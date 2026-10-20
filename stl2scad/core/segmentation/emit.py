@@ -164,7 +164,7 @@ def ir_to_scad(model: ParametricModel) -> str:
             length = name + ("_height" if isinstance(node, ir.Boss) else "_depth")
             out.append(
                 pad
-                + f'translate([{", ".join(center)}]) rotate(a={_number(angle)}, v={_array(turn)}) cylinder(r={name}_radius, h={length}+_join_epsilon);'
+                + f'translate([{", ".join(center)}]) rotate(a={_number(angle)}, v={_array(turn)}) rotate([0,0,{_number(binding.phase_deg)}]) cylinder(r={name}_radius, h={length}+_join_epsilon, $fn={name}_segments);'
             )
         elif isinstance(node, ir.Fillet):
             # Enter the hosts slightly, avoiding near-coincident internal faces.
@@ -177,7 +177,8 @@ def ir_to_scad(model: ParametricModel) -> str:
                 pad + "linear_extrude(height=body_depth) difference() {",
                 pad
                 + f"  polygon(points=[[{corner[0]}, {corner[1]}], [{x}, {corner[1]}], [{x}, {y}], [{corner[0]}, {y}]]);",
-                pad + f"  translate([{x}, {y}]) circle(r={name}_radius);",
+                pad
+                + f"  translate([{x}, {y}]) rotate({_number(binding.phase_deg)}) circle(r={name}_radius, $fn={name}_segments);",
                 pad + "}",
             ]
         else:

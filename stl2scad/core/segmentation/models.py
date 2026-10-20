@@ -39,6 +39,8 @@ class Cylinder:
     axis: Vector
     point: Vector
     radius: float
+    segments: int | None = None
+    radial_reference: Vector | None = None
 
 
 # Add cone/sphere/torus parameter dataclasses here, and a corresponding fitter

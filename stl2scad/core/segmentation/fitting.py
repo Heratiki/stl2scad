@@ -61,3 +61,25 @@ def cylinder_residuals(cylinder: Cylinder, points: np.ndarray) -> np.ndarray:
     delta = points - cylinder.point
     radial = delta - (delta @ cylinder.axis)[..., None] * np.asarray(cylinder.axis)
     return np.abs(np.linalg.norm(radial, axis=-1) - cylinder.radius)
+
+
+def cylinder_phase(axis, radial_reference):
+    """Phase about local Z after the emitter's Z-to-axis rotation."""
+    if radial_reference is None:
+        return 0.0
+    axis = np.asarray(axis, dtype=float).copy()
+    axis[np.abs(axis) < 1e-7] = 0
+    axis /= np.linalg.norm(axis)
+    turn = np.cross([0.0, 0.0, 1.0], axis)
+    cosine = axis[2]
+    if np.linalg.norm(turn) < 1e-8:
+        rotation = np.eye(3) if cosine > 0 else np.diag([1.0, -1.0, -1.0])
+    else:
+        sine = np.linalg.norm(turn)
+        x, y, z = turn / sine
+        cross = np.array([[0.0, -z, y], [z, 0.0, -x], [-y, x, 0.0]])
+        rotation = np.eye(3) + sine * cross + (1 - cosine) * (cross @ cross)
+    reference = np.asarray(radial_reference)
+    return float(
+        np.degrees(np.arctan2(reference @ rotation[:, 1], reference @ rotation[:, 0]))
+    )

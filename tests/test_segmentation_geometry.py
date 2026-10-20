@@ -275,3 +275,51 @@ def test_disconnected_coaxial_regions_keep_separate_faces():
     cylinders = [face for face in result.faces if face.kind == "cylinder"]
     assert len(cylinders) == 2
     assert not result.graph.has_edge(cylinders[0].id, cylinders[1].id)
+
+
+@pytest.mark.parametrize("sections", [5, 8, 16])
+@pytest.mark.parametrize("rotated", [False, True])
+def test_coarse_full_cylinders_retain_circumradius_and_resolution(sections, rotated):
+    triangles = cylinder_triangles(sections=sections)
+    if rotated:
+        triangles = triangles @ rotation().T + [7, -4, 3]
+    result = segment_mesh(mesh_of(triangles))
+    assert len(result.faces) == 3
+    (cylinder,) = [f for f in result.faces if f.kind == "cylinder"]
+    assert cylinder.params.radius == pytest.approx(2.0, abs=2e-6)
+    assert cylinder.params.segments == sections
+    assert cylinder.params.radial_reference is not None
+    expected = rotation() @ [0, 0, 1] if rotated else np.array([0, 0, 1])
+    assert abs(np.dot(cylinder.params.axis, expected)) > 1 - 1e-10
+
+
+@pytest.mark.parametrize("clipped", [False, True])
+@pytest.mark.parametrize("rotated", [False, True])
+def test_two_facet_and_clipped_three_facet_strips_are_cylinders(clipped, rotated):
+    angles = np.radians([0, 36, 72, 108] if clipped else [0, 45, 90])
+    ring = np.column_stack(
+        (3 * np.cos(angles), 3 * np.sin(angles), np.zeros(len(angles)))
+    )
+    if clipped:
+        ring[0] = (ring[0] + ring[1]) / 2  # Clipped point lies on chord, NOT circle.
+    top = ring + [0, 0, 4]
+    triangles = []
+    for i in range(len(ring) - 1):
+        triangles.extend(
+            ([ring[i], ring[i + 1], top[i + 1]], [ring[i], top[i + 1], top[i]])
+        )
+    triangles = np.array(triangles)
+    if rotated:
+        triangles = triangles @ rotation().T + [3, 6, -2]
+    result = segment_mesh(mesh_of(triangles))
+    (face,) = result.faces
+    assert face.kind == "cylinder"
+    assert face.params.radius == pytest.approx(3.0, abs=2e-6)
+    assert face.params.segments == (10 if clipped else 8)
+    assert len(face.triangle_indices) == len(triangles)
+
+
+def test_square_prism_is_not_a_four_segment_cylinder():
+    result = segment_mesh(mesh_of(cube()))
+    assert len(result.faces) == 6
+    assert all(f.kind == "plane" for f in result.faces)

@@ -56,6 +56,9 @@ class Feature:
     axis: Vector = (0.0, 0.0, 1.0)
     profile: Profile | None = None
     corner: Vector | None = None  # Sharp corner replaced by an additive fillet.
+    segments: int | None = None
+    radial_reference: Vector | None = None
+    trim_face_ids: tuple[str, ...] = ()
 
     @property
     def host(self):
@@ -198,6 +201,49 @@ def _cylinder_features(result):
         ]
         planes = [f for f in adjacent if isinstance(f.params, Plane)]
         tangent = [f for f in planes if result.edge_convexity(curved, f) == "tangent"]
+        trims = []
+        if (
+            curved.convexity == "concave"
+            and len(tangent) == 1
+            and result.mesh is not None
+        ):
+            # A clipped odd-quarter polygon can leave a short planar lip
+            # between the arc and its analytic host. Keep that physical plane
+            # as provenance owned by the fillet, not as a new body dimension.
+            for lip in planes:
+                if (
+                    lip in tangent
+                    or abs(np.dot(lip.params.normal, curved.params.axis)) > 1e-3
+                ):
+                    continue
+                indices = np.isin(result.mesh.source_indices, lip.triangle_indices)
+                vertices = result.mesh.vertices[result.mesh.triangles[indices]].reshape(
+                    -1, 3
+                )
+                radial = vertices - curved.params.point
+                radial -= (radial @ curved.params.axis)[:, None] * np.asarray(
+                    curved.params.axis
+                )
+                if (
+                    np.linalg.norm(radial, axis=1).max()
+                    > curved.params.radius + result.mesh.diagonal * 2e-5
+                ):
+                    continue
+                for key in result.graph.neighbors(lip.id):
+                    host = result.graph.nodes[key]["face"]
+                    if (
+                        isinstance(host.params, Plane)
+                        and host.id != tangent[0].id
+                        and abs(np.dot(host.params.normal, tangent[0].params.normal))
+                        < 1e-3
+                        and abs(np.dot(host.params.normal, curved.params.axis)) < 1e-3
+                        and result.edge_convexity(lip, host) == "concave"
+                    ):
+                        tangent.append(host)
+                        trims.append(lip)
+                        break
+                if trims:
+                    break
         if (
             curved.convexity == "concave"
             and len(tangent) == 2
@@ -206,7 +252,14 @@ def _cylinder_features(result):
             )
             and abs(np.dot(tangent[0].params.normal, tangent[1].params.normal)) < 1e-3
         ):
-            features.append(dict(kind="fillet", curved=curved, between=tuple(tangent)))
+            features.append(
+                dict(
+                    kind="fillet",
+                    curved=curved,
+                    between=tuple(tangent),
+                    trims=tuple(trims),
+                )
+            )
             continue
         caps = [
             f
@@ -336,6 +389,7 @@ def detect_features(result: SegmentationResult) -> list[Feature]:
     owned = {
         item[key].id for item in secondary for key in ("curved", "end") if key in item
     }
+    owned.update(face.id for item in secondary for face in item.get("trims", ()))
     body_faces = [f for f in result.faces if f.id not in owned]
     if not body_faces or any(not isinstance(f.params, Plane) for f in body_faces):
         raise ValueError("The base body must have planar section caps and sides")
@@ -360,10 +414,10 @@ def detect_features(result: SegmentationResult) -> list[Feature]:
         corner = np.linalg.solve(normals, offsets)
         center3 = _axis_plane_point(cylinder, cap.params)
         center = local(center3)
-        radial_error = np.abs(
-            np.linalg.norm(profile_points - center[:2], axis=1) - cylinder.radius
+        arc = (
+            np.linalg.norm(profile_points - center[:2], axis=1)
+            <= cylinder.radius + tolerance
         )
-        arc = radial_error <= tolerance
         if not arc.any() or arc.all():
             raise ValueError("Fillet has no bounded section arc")
         start = int(np.flatnonzero(~arc)[0])
@@ -399,6 +453,12 @@ def detect_features(result: SegmentationResult) -> list[Feature]:
             kind=kind,
             part_frame=matrix,
             radius=curved.params.radius,
+            segments=curved.params.segments,
+            radial_reference=(
+                tuple(np.asarray(curved.params.radial_reference) @ rot)
+                if curved.params.radial_reference is not None
+                else None
+            ),
         )
         if kind == "fillet":
             center, corner = fillet_data[curved.id]
@@ -406,7 +466,8 @@ def detect_features(result: SegmentationResult) -> list[Feature]:
                 Feature(
                     **common,
                     polarity="additive",
-                    face_ids=(curved.id,),
+                    face_ids=(curved.id,) + tuple(f.id for f in item.get("trims", ())),
+                    trim_face_ids=tuple(f.id for f in item.get("trims", ())),
                     between=tuple(f.id for f in item["between"]),
                     height=length,
                     position=tuple(center),

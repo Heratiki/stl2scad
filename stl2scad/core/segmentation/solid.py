@@ -25,6 +25,10 @@ def _cylinder(feature, epsilon):
     direction /= np.linalg.norm(direction)
     u = np.cross(direction, np.eye(3)[np.argmin(np.abs(direction))])
     u /= np.linalg.norm(u)
+    if feature.radial_reference is not None:
+        u = np.asarray(feature.radial_reference, dtype=float)
+        u = u - (u @ direction) * direction
+        u /= np.linalg.norm(u)
     matrix = np.eye(4)
     matrix[:3, :3] = np.column_stack((u, np.cross(direction, u), direction))
     # Extend the host end only. The cap/floor remains at its measured depth.
@@ -32,7 +36,7 @@ def _cylinder(feature, epsilon):
     length = feature.height if feature.kind == "boss" else feature.depth
     if feature.radius is None or feature.radius <= 0 or length is None or length <= 0:
         raise ValueError("Cylinder features need a positive radius and length")
-    return f"multmatrix({_literal(matrix)}) cylinder(r={feature.radius:.17g}, h={length + epsilon:.17g});"
+    return f"multmatrix({_literal(matrix)}) cylinder(r={feature.radius:.17g}, h={length + epsilon:.17g}, $fn={feature.segments or 64});"
 
 
 def _validation_source(features: list[Feature]) -> str:
@@ -109,10 +113,21 @@ def _validation_source(features: list[Feature]) -> str:
                 center[:2],
                 [corner[0], center[1]],
             ]
+            phase = (
+                float(
+                    np.degrees(
+                        np.arctan2(
+                            feature.radial_reference[1], feature.radial_reference[0]
+                        )
+                    )
+                )
+                if feature.radial_reference is not None
+                else 0.0
+            )
             additive.append(
                 f"translate([0,0,{center[2]:.17g}]) linear_extrude(height={feature.height:.17g}) "
                 f"difference() {{ polygon(points={_literal(wedge)}); "
-                f"translate({_literal(center[:2])}) circle(r={feature.radius:.17g}); }}"
+                f"translate({_literal(center[:2])}) rotate({phase:.17g}) circle(r={feature.radius:.17g}, $fn={feature.segments or 64}); }}"
             )
         else:
             raise ValueError(f"Unsupported feature solid: {feature.kind}")
@@ -158,15 +173,23 @@ def _closest_points(points, triangles):
     nearest = np.empty_like(points, dtype=float)
     for start in range(0, len(triangles), 256):
         target = triangles[start : start + 256]
-        projected = closest_point(
-            np.tile(target, (len(points), 1, 1)), np.repeat(points, len(target), axis=0)
-        ).reshape(len(points), len(target), 3)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            projected = closest_point(
+                np.tile(target, (len(points), 1, 1)),
+                np.repeat(points, len(target), axis=0),
+            ).reshape(len(points), len(target), 3)
         distances = np.sum((projected - points[:, None]) ** 2, axis=2)
+        # CSG renders can contain collapsed/near-collinear triangles. Their
+        # invalid projections must not mask valid neighbors or leave nearest
+        # entries uninitialized.
+        distances[~np.isfinite(distances)] = np.inf
         indices = distances.argmin(axis=1)
         current = distances[np.arange(len(points)), indices]
         update = current < best
         nearest[update] = projected[np.arange(len(points)), indices][update]
         best[update] = current[update]
+    if not np.isfinite(best).all():
+        raise ValueError("No finite closest surface point")
     return nearest
 
 

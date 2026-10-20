@@ -1,0 +1,752 @@
+{
+  "description": "Ground truth for tests/data/segmentation/composite_bracket*.scad. Plane normals point out of the material. Coordinates are in the un-rotated part frame; apply each variant's transform (p' = Rz(c) Ry(b) Rx(a) (p + translate_before)) to compare.",
+  "units": "mm",
+  "fn": 64,
+  "volume_mm3": 11177.621647,
+  "hausdorff_max_mm": 0.05,
+  "tolerances": {
+    "plane_normal_deg": 1.0,
+    "plane_offset_mm": 0.05,
+    "cylinder_axis_deg": 1.0,
+    "cylinder_radius_rel": 0.02,
+    "volume_rel": 0.001
+  },
+  "variants": [
+    {
+      "name": "axis_aligned",
+      "scad": "composite_bracket.scad",
+      "rotate_deg": [
+        0,
+        0,
+        0
+      ],
+      "translate_before": [
+        0,
+        0,
+        0
+      ],
+      "tessellation": {
+        "fn": 64,
+        "fa": 12,
+        "fs": 2,
+        "segments": {
+          "fillet": 64,
+          "boss_side": 64,
+          "hole_wall": 64
+        }
+      },
+      "volume_mm3": 11176.967166648335
+    },
+    {
+      "name": "rotated",
+      "scad": "composite_bracket_rotated.scad",
+      "rotate_deg": [
+        17,
+        31,
+        9
+      ],
+      "translate_before": [
+        -20,
+        -15,
+        -17.5
+      ],
+      "tessellation": {
+        "fn": 64,
+        "fa": 12,
+        "fs": 2,
+        "segments": {
+          "fillet": 64,
+          "boss_side": 64,
+          "hole_wall": 64
+        }
+      },
+      "volume_mm3": 11176.967166648335
+    },
+    {
+      "name": "fn16_rotated",
+      "scad": "composite_bracket_fn16_rotated.scad",
+      "rotate_deg": [
+        17,
+        31,
+        9
+      ],
+      "translate_before": [
+        -20,
+        -15,
+        -17.5
+      ],
+      "tessellation": {
+        "fn": 16,
+        "fa": 12,
+        "fs": 2,
+        "segments": {
+          "fillet": 16,
+          "boss_side": 16,
+          "hole_wall": 16
+        }
+      },
+      "volume_mm3": 11167.225402794962
+    },
+    {
+      "name": "default_res",
+      "scad": "composite_bracket_default_res.scad",
+      "rotate_deg": [
+        0,
+        0,
+        0
+      ],
+      "translate_before": [
+        0,
+        0,
+        0
+      ],
+      "tessellation": {
+        "fn": 0,
+        "fa": 12,
+        "fs": 2,
+        "segments": {
+          "fillet": 10,
+          "boss_side": 19,
+          "hole_wall": 8
+        }
+      },
+      "volume_mm3": 11184.872779570309,
+      "additional_faces": [
+        {
+          "id": "fillet_lip",
+          "kind": "plane",
+          "normal": [
+            1,
+            0,
+            0
+          ],
+          "point": [
+            8,
+            0,
+            5
+          ]
+        }
+      ],
+      "geometry_note": "The decagon has no vertex at the bottom tangent: its clipped quarter leaves a vertical lip of height 3*(1-cos(pi/10)) at x=8.",
+      "edges": [
+        {
+          "faces": [
+            "base_bottom",
+            "wall_outer"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "base_bottom",
+            "base_end"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "base_bottom",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "base_bottom",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "base_top",
+            "base_end"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "base_top",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "base_top",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "base_top",
+            "hole_wall"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "fillet",
+            "wall_inner"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "fillet",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "fillet",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "wall_top",
+            "wall_inner"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "wall_top",
+            "wall_outer"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "wall_top",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "wall_top",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "wall_inner",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "wall_inner",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "wall_outer",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "wall_outer",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "base_end",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "base_end",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "base_top",
+            "boss_side"
+          ],
+          "convexity": "concave"
+        },
+        {
+          "faces": [
+            "boss_side",
+            "boss_top"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "hole_wall",
+            "hole_floor"
+          ],
+          "convexity": "concave"
+        },
+        {
+          "faces": [
+            "base_top",
+            "fillet_lip"
+          ],
+          "convexity": "concave"
+        },
+        {
+          "faces": [
+            "fillet_lip",
+            "fillet"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "fillet_lip",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "fillet_lip",
+            "back"
+          ],
+          "convexity": "convex"
+        }
+      ]
+    }
+  ],
+  "faces": [
+    {
+      "id": "base_bottom",
+      "kind": "plane",
+      "normal": [
+        0,
+        0,
+        -1
+      ],
+      "point": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "base_top",
+      "kind": "plane",
+      "normal": [
+        0,
+        0,
+        1
+      ],
+      "point": [
+        40,
+        0,
+        5
+      ]
+    },
+    {
+      "id": "base_end",
+      "kind": "plane",
+      "normal": [
+        1,
+        0,
+        0
+      ],
+      "point": [
+        40,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "front",
+      "kind": "plane",
+      "normal": [
+        0,
+        -1,
+        0
+      ],
+      "point": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "back",
+      "kind": "plane",
+      "normal": [
+        0,
+        1,
+        0
+      ],
+      "point": [
+        0,
+        30,
+        0
+      ]
+    },
+    {
+      "id": "wall_outer",
+      "kind": "plane",
+      "normal": [
+        -1,
+        0,
+        0
+      ],
+      "point": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "wall_top",
+      "kind": "plane",
+      "normal": [
+        0,
+        0,
+        1
+      ],
+      "point": [
+        0,
+        0,
+        35
+      ]
+    },
+    {
+      "id": "wall_inner",
+      "kind": "plane",
+      "normal": [
+        1,
+        0,
+        0
+      ],
+      "point": [
+        5,
+        0,
+        35
+      ]
+    },
+    {
+      "id": "boss_top",
+      "kind": "plane",
+      "normal": [
+        0,
+        0,
+        1
+      ],
+      "point": [
+        25,
+        15,
+        11
+      ]
+    },
+    {
+      "id": "hole_floor",
+      "kind": "plane",
+      "normal": [
+        0,
+        0,
+        1
+      ],
+      "point": [
+        34,
+        24,
+        2
+      ]
+    },
+    {
+      "id": "fillet",
+      "kind": "cylinder",
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "point": [
+        8,
+        0,
+        8
+      ],
+      "radius": 3.0,
+      "convexity": "concave"
+    },
+    {
+      "id": "boss_side",
+      "kind": "cylinder",
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "point": [
+        25,
+        15,
+        0
+      ],
+      "radius": 6.0,
+      "convexity": "convex"
+    },
+    {
+      "id": "hole_wall",
+      "kind": "cylinder",
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "point": [
+        34,
+        24,
+        0
+      ],
+      "radius": 2.5,
+      "convexity": "concave"
+    }
+  ],
+  "edges": [
+    {
+      "faces": [
+        "base_bottom",
+        "wall_outer"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "base_bottom",
+        "base_end"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "base_bottom",
+        "front"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "base_bottom",
+        "back"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "base_top",
+        "base_end"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "base_top",
+        "front"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "base_top",
+        "back"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "base_top",
+        "hole_wall"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "base_top",
+        "fillet"
+      ],
+      "convexity": "tangent"
+    },
+    {
+      "faces": [
+        "fillet",
+        "wall_inner"
+      ],
+      "convexity": "tangent"
+    },
+    {
+      "faces": [
+        "fillet",
+        "front"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "fillet",
+        "back"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "wall_top",
+        "wall_inner"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "wall_top",
+        "wall_outer"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "wall_top",
+        "front"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "wall_top",
+        "back"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "wall_inner",
+        "front"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "wall_inner",
+        "back"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "wall_outer",
+        "front"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "wall_outer",
+        "back"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "base_end",
+        "front"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "base_end",
+        "back"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "base_top",
+        "boss_side"
+      ],
+      "convexity": "concave"
+    },
+    {
+      "faces": [
+        "boss_side",
+        "boss_top"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "hole_wall",
+        "hole_floor"
+      ],
+      "convexity": "concave"
+    }
+  ],
+  "features": [
+    {
+      "id": "body",
+      "kind": "l_profile_extrude",
+      "polarity": "additive",
+      "faces": [
+        "base_bottom",
+        "base_top",
+        "base_end",
+        "front",
+        "back",
+        "wall_outer",
+        "wall_top",
+        "wall_inner"
+      ]
+    },
+    {
+      "id": "fillet",
+      "kind": "fillet",
+      "polarity": "additive",
+      "radius": 3.0,
+      "between": [
+        "base_top",
+        "wall_inner"
+      ],
+      "faces": [
+        "fillet"
+      ]
+    },
+    {
+      "id": "boss",
+      "kind": "boss",
+      "polarity": "additive",
+      "radius": 6.0,
+      "height": 6.0,
+      "on_face": "base_top",
+      "faces": [
+        "boss_side",
+        "boss_top"
+      ]
+    },
+    {
+      "id": "blind_hole",
+      "kind": "blind_hole",
+      "polarity": "subtractive",
+      "radius": 2.5,
+      "depth": 3.0,
+      "on_face": "base_top",
+      "faces": [
+        "hole_wall",
+        "hole_floor"
+      ]
+    }
+  ]
+}

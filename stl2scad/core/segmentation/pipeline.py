@@ -10,6 +10,7 @@ from stl.mesh import Mesh
 from .fitting import cylinder_residuals, fit_cylinder, fit_plane
 from .models import Cylinder, Face, SegmentationResult
 from .repair import RepairedMesh, repair_mesh
+from .coarse import extract_coarse, tessellation
 
 
 @dataclass(frozen=True)
@@ -176,6 +177,7 @@ def _region_graph(mesh, faces, owner, config):
     graph = nx.Graph()
     graph.add_nodes_from((face.id, {"face": face}) for face in faces)
     boundaries = defaultdict(list)
+    analytic_tangent = defaultdict(list)
     for edge in mesh.shared_edges:
         i, j = edge.triangles
         a, b = int(owner[i]), int(owner[j])
@@ -191,11 +193,33 @@ def _region_graph(mesh, faces, owner, config):
         cosine = mesh.normals[i] @ mesh.normals[j]
         angle = float(np.degrees(np.arctan2(sine, cosine)))
         boundaries[tuple(sorted((a, b)))].append((edge, angle, length))
+        fitted_normals = []
+        for owner_id in (a, b):
+            face = faces[owner_id]
+            if isinstance(face.params, Cylinder):
+                radial = (p + q) / 2 - face.params.point
+                radial -= np.dot(radial, face.params.axis) * np.asarray(
+                    face.params.axis
+                )
+                fitted_normals.append(
+                    radial
+                    / np.linalg.norm(radial)
+                    * (1 if face.convexity == "convex" else -1)
+                )
+            else:
+                fitted_normals.append(np.asarray(face.params.normal))
+        analytic_tangent[tuple(sorted((a, b)))].append(
+            any(isinstance(faces[k].params, Cylinder) for k in (a, b))
+            and np.dot(*fitted_normals) > np.cos(np.radians(config.plane_normal_deg))
+        )
     for (a, b), evidence in sorted(boundaries.items()):
         angles = np.array([angle for _, angle, _ in evidence])
         lengths = np.array([length for _, _, length in evidence])
         signed = float(np.average(angles, weights=lengths))
-        if np.max(np.abs(angles)) <= config.tangent_angle_deg:
+        if (
+            all(analytic_tangent[(a, b)])
+            or np.max(np.abs(angles)) <= config.tangent_angle_deg
+        ):
             convexity = "tangent"
         else:
             convexity = "convex" if signed > 0 else "concave"
@@ -226,7 +250,20 @@ def segment_mesh(
     repaired = repair_mesh(mesh, weld_relative=config.weld_relative)
     patches, labels = _plane_patches(repaired, config)
     cylinders = _extract_cylinders(repaired, patches, labels, config)
+    cylinders = [
+        (
+            members,
+            tessellation(
+                model,
+                repaired.vertices[repaired.triangles[members]],
+                repaired.diagonal * config.cylinder_distance_relative,
+            ),
+            convexity,
+        )
+        for members, model, convexity in cylinders
+    ]
     claimed = set(int(i) for members, _, _ in cylinders for i in members)
+    cylinders += extract_coarse(repaired, patches, labels, claimed, config)
     regions = list(cylinders)
     for patch in patches:
         if int(patch[0]) in claimed:

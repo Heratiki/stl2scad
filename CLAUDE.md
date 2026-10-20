@@ -4,9 +4,11 @@ This file is the canonical entry point for AI coding assistants (Claude Code, Cu
 
 ## Project in one paragraph
 
-stl2scad converts STL meshes into editable OpenSCAD. Today's output is primarily polyhedron; the long-term goal is **primitive detection + parametric SCAD output** with confidence-scored multi-interpretation ranking. Core conversion lives in [stl2scad/core/converter.py](stl2scad/core/converter.py); the detector pipeline lives in [stl2scad/core/feature_graph.py](stl2scad/core/feature_graph.py) and [stl2scad/core/feature_inventory.py](stl2scad/core/feature_inventory.py). The roadmap and current assessment is in [docs/planning/feature_level_reconstruction.md](docs/planning/feature_level_reconstruction.md) — read this before proposing detector or fixture changes.
+stl2scad converts STL meshes into editable OpenSCAD. The long-term goal is **primitive detection + parametric SCAD output**. Conversion goes through the segmentation pipeline only: entry point [stl2scad/core/conversion.py](stl2scad/core/conversion.py) (`convert_stl_to_scad`), pipeline in [stl2scad/core/segmentation/](stl2scad/core/segmentation/), OpenSCAD helpers in [stl2scad/core/openscad/runner.py](stl2scad/core/openscad/runner.py). The legacy whole-mesh detectors are archived in `stl2scad/legacy/` (T-003, T-004). The roadmap and current assessment is in [docs/planning/feature_level_reconstruction.md](docs/planning/feature_level_reconstruction.md) — read this before proposing detector or fixture changes.
 
-## Failure analysis (2026-10-20) — read before new detector work
+## Failure analysis (2026-10-20) — historical (T-004)
+
+The legacy detectors, the legacy `stl2scad()` converter, and the tuning and corpus tools now live in `stl2scad/legacy/`. Nothing outside it imports it. Their tests are in `tests/legacy/` and run only with `STL2SCAD_LEGACY_TESTS=1`. Scripts import them from `stl2scad.legacy`. The analysis below explains why they were replaced.
 
 An outside review of the repo (code, git history, test output and artifacts) found why parametric mode stalls on real parts. Evidence: [artifacts/local_corpus_report.html](artifacts/local_corpus_report.html) shows 18 of 20 real parts (Hero Me Gen7 mounts and similar) falling back to polyhedron and 2 giving only plane pairs, although its header claims "30% preview ready"; [docs/planning/detector_autotune_results.md](docs/planning/detector_autotune_results.md) tuned 25 thresholds with Optuna for no gain and concluded "the bottleneck is algorithmic, not parametric."
 
@@ -32,7 +34,7 @@ Before more tuning or reporting work, make one real composite part (a bracket wi
 
 ## Segmentation pipeline status (2026-10-20)
 
-The recommended pipeline exists in [stl2scad/core/segmentation/](stl2scad/core/segmentation/). Use it with `stl2scad in.stl out.scad --pipeline segmentation`. The default is still `legacy`. Spec, output decisions and known limits: [docs/planning/segmentation_composite_bracket.md](docs/planning/segmentation_composite_bracket.md).
+The recommended pipeline exists in [stl2scad/core/segmentation/](stl2scad/core/segmentation/). It is the default and only conversion path: `stl2scad in.stl out.scad`. `--pipeline legacy` prints a deprecation warning on stderr, writes nothing and exits 2. `--parametric`, `--recognition-backend`, `--compute-backend` and `--tolerance` warn and are ignored. `feature-graph`, `feature-graph-from-inventory` and `feature-inventory` warn and exit 2. verify, batch and the GUI convert through segmentation. An invalid STL (non-manifold edges, no usable faces) raises `STLValidationError` before segmentation, and the CLI exits 1. Requires Python ≥3.10, `networkx` and `trimesh`. Spec, output decisions and known limits: [docs/planning/segmentation_composite_bracket.md](docs/planning/segmentation_composite_bracket.md).
 
 - Output is labeled, adjustable SCAD: Customizer groups and ranges, `<kind>_<index>_<dim>` parameters relative to host faces, `assert()` links, face provenance comments, one part-frame `multmatrix()`.
 - The gate is all or nothing. If the Hausdorff distance is more than max(0.05 mm, 0.1 % of the bbox diagonal), the output is a polyhedron.
@@ -43,7 +45,9 @@ The recommended pipeline exists in [stl2scad/core/segmentation/](stl2scad/core/s
 
 ## Feature Fixtures — the detector-validation harness (READ FIRST)
 
-[tests/data/feature_fixtures_manifest.json](tests/data/feature_fixtures_manifest.json) + [tests/data/feature_fixtures_scad/](tests/data/feature_fixtures_scad/) + [stl2scad/core/feature_fixtures.py](stl2scad/core/feature_fixtures.py) + [tests/test_feature_fixtures.py](tests/test_feature_fixtures.py) form a closed-loop ground-truth system: **manifest → generated SCAD → rendered STL → feature graph → asserted against the manifest**. This is the primary safety net for detector work.
+[tests/data/feature_fixtures_manifest.json](tests/data/feature_fixtures_manifest.json) + [tests/data/feature_fixtures_scad/](tests/data/feature_fixtures_scad/) + [stl2scad/core/feature_fixtures.py](stl2scad/core/feature_fixtures.py) + [tests/test_feature_fixtures.py](tests/test_feature_fixtures.py) form a closed-loop ground-truth system: **manifest → generated SCAD → rendered STL → detector → asserted against the manifest**. This is the primary safety net for detector work.
+
+Status after T-004: invariants 1 and 3 stay in `tests/test_feature_fixtures.py`. The legacy detection round-trip (invariant 2 as written below, with the T-003 exception) moved to `tests/legacy/test_feature_fixtures_round_trip.py` and does not run by default. T-009 retargets invariant 2 to the segmentation pipeline: each fixture is parametric within the Hausdorff gate with matching hole/slot/counterbore counts, or falls back with its expected reason as a known gap listed by name; fixtures over ~30 s carry a `slow` marker. Until T-009 lands, the fixture library has no live detection check.
 
 ### Three invariants you must not break
 
@@ -67,7 +71,7 @@ The recommended pipeline exists in [stl2scad/core/segmentation/](stl2scad/core/s
 
 ## Conventions and constraints worth knowing
 
-- `get_openscad_path()` enforces `"OpenSCAD (Nightly)"` in the Windows path string. Don't remove this substring check; it guards against the installed stable OpenSCAD lacking features the codebase relies on.
+- `get_openscad_path()` (in `stl2scad/core/openscad/runner.py`) enforces `"OpenSCAD (Nightly)"` in the Windows path string. Don't remove this substring check; it guards against the installed stable OpenSCAD lacking features the codebase relies on.
 - Never embed raw Windows `Path` objects in OpenSCAD source. Use `.as_posix()` so OpenSCAD's parser doesn't choke on backslashes.
 - Never call `logging.basicConfig(force=True)` inside library functions — it overrides pytest's log capture. Only the CLI entry point may configure logging.
 - `--preview=throwntogether` fails headlessly on Windows; use `--render` in tests and headless code paths.
@@ -80,6 +84,10 @@ The recommended pipeline exists in [stl2scad/core/segmentation/](stl2scad/core/s
 # Feature-fixture test slice (fastest detector feedback loop)
 python -m pytest tests/test_feature_fixtures.py -v
 
+# Convert one file (segmentation pipeline)
+stl2scad input.stl output.scad
+
+# The scripts below run the ARCHIVED legacy detectors (stl2scad.legacy); for history only
 # Build a feature graph for one file (with SCAD preview)
 python scripts/build_feature_graph.py input.stl --output artifacts/graph.json --scad-preview artifacts/preview.scad
 
@@ -94,7 +102,7 @@ python scripts/build_feature_graph.py "path/to/stls" --output artifacts/feature_
 
 - Roadmap and priorities: [docs/planning/feature_level_reconstruction.md](docs/planning/feature_level_reconstruction.md)
 - Memory bank (Cline-style): [docs/memory-bank/](docs/memory-bank/)
-- Core converter entry point: [stl2scad/core/converter.py](stl2scad/core/converter.py)
+- Conversion entry point: [stl2scad/core/conversion.py](stl2scad/core/conversion.py); archived legacy converter: `stl2scad/legacy/converter.py`
 
 ## Lanes and Subagents (set up 2026-10-20)
 

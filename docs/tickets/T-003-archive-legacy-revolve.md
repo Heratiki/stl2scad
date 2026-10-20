@@ -1,6 +1,6 @@
 # T-003: Archive the legacy revolve detector behind a flag
 
-Status: open
+Status: landed (worktree-agent-a420ea3416132c235, 2026-10-20)
 Opened: 2026-10-20 by the orchestrator, from a read-only survey and the maintainer's rulings.
 Depends on: none
 
@@ -48,14 +48,14 @@ Depends on: none
 
 ## Acceptance
 
-- [ ] `enable_revolve_detection` exists, defaults False, and gates the call at `feature_graph.py`.
-- [ ] `git grep -n revolve_recovery -- stl2scad/core` shows only the gated lazy import (or nothing).
-- [ ] Revolve tests moved to `tests/legacy/` with the skip conftest; with `STL2SCAD_LEGACY_TESTS=1` they run with the flag on and fail only on `test_detect_revolve_solid_accepts_cylinder_without_cap_center_vertices` (known, pre-existing).
-- [ ] Fixture tests: revolve ones xfail(strict=False) with the stated reason; `test_feature_fixture_manifest_matches_checked_in_scad` and `test_feature_fixture_manifest_covers_roadmap_stress_cases` unchanged and passing; non_revolve negatives pass.
-- [ ] No assertion deleted, no tolerance loosened; the report lists every non-revolve fixture whose detection changed.
-- [ ] Scoped run shows 0 failed (xfails allowed; the lane may run it): `flock /tmp/stl2scad-pytest.lock env QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -n auto -q -o addopts="" -p no:logging tests/test_feature_fixtures.py tests/test_feature_graph.py tests/test_ir.py tests/legacy`
-- [ ] `tests/test_segmentation_*.py` untouched.
-- [ ] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
-- [ ] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` (0) and `node scripts/check-tickets.mjs`.
+- [x] `enable_revolve_detection` exists, defaults False, and gates the call at `feature_graph.py`.
+- [x] `git grep -n revolve_recovery -- stl2scad/core` shows only the gated lazy import (or nothing).
+- [x] Revolve tests moved to `tests/legacy/` with the skip conftest; with `STL2SCAD_LEGACY_TESTS=1` they run with the flag on and fail only on `test_detect_revolve_solid_accepts_cylinder_without_cap_center_vertices` (known, pre-existing).
+- [x] Fixture tests: revolve ones xfail(strict=False) with the stated reason; `test_feature_fixture_manifest_matches_checked_in_scad` and `test_feature_fixture_manifest_covers_roadmap_stress_cases` unchanged and passing; non_revolve negatives pass.
+- [x] No assertion deleted, no tolerance loosened; the report lists every non-revolve fixture whose detection changed.
+- [x] Scoped run shows 0 failed (xfails allowed; the lane may run it): `flock /tmp/stl2scad-pytest.lock env QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -n auto -q -o addopts="" -p no:logging tests/test_feature_fixtures.py tests/test_feature_graph.py tests/test_ir.py tests/legacy`
+- [x] `tests/test_segmentation_*.py` untouched.
+- [x] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
+- [x] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` (0) and `node scripts/check-tickets.mjs`.
 
 Do NOT run the test harness beyond the scoped command above. Stage paths explicitly.

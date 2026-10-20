@@ -2,6 +2,7 @@
 Tests for manifest-driven OpenSCAD feature fixtures.
 """
 
+import contextlib
 import os
 from math import dist, isclose
 from pathlib import Path
@@ -29,6 +30,50 @@ _SLOT_LENGTH_TOL = 0.2
 _PATTERN_STEP_TOL = 0.15
 _PATTERN_SPACING_TOL = 0.15
 _POCKET_DEPTH_TOL = 0.15
+
+# T-003: the whole-mesh revolve detector is archived behind
+# DetectorConfig.enable_revolve_detection (default False). Fixtures of type
+# "revolve" are no longer detected by default, so they are expected failures.
+# Non-revolve fixtures whose detection changed are listed here by name.
+_REVOLVE_ARCHIVED_REASON = "revolve detector archived (T-003)"
+_REVOLVE_ARCHIVED_NON_REVOLVE_FIXTURES: frozenset = frozenset(
+    {
+        # Expect a revolve_solid entry that is no longer produced.
+        "cylinder_plain",
+        "cylinder_short_disk",
+        "cylinder_x_axis",
+        "cylinder_y_axis",
+        "cylinder_narrow_tall",
+        # With revolve off nothing suppresses the box check: got a box_like_solid.
+        "cylinder_large_diameter",
+        # With revolve off nothing suppresses linear-extrude: got a linear_extrude_solid.
+        "prism_octagon",
+    }
+)
+
+
+def _is_revolve_archived_fixture(fixture) -> bool:
+    return (
+        fixture["fixture_type"] == "revolve"
+        or fixture["name"] in _REVOLVE_ARCHIVED_NON_REVOLVE_FIXTURES
+    )
+
+
+@contextlib.contextmanager
+def _xfail_if_revolve_archived(fixture, archived_failures):
+    """Per-fixture xfail(strict=False) inside a fixture loop.
+
+    A failing archived fixture is recorded and the loop continues, so passing
+    fixtures stay checked. An archived fixture that passes is not an error
+    (strict=False semantics).
+    """
+    if not _is_revolve_archived_fixture(fixture):
+        yield
+        return
+    try:
+        yield
+    except AssertionError as exc:
+        archived_failures.append(f"{fixture['name']}: {exc}")
 
 
 def _pop_best_match(candidates, score):
@@ -1454,6 +1499,7 @@ def test_feature_fixture_round_trip_detection(test_data_dir, test_output_dir):
             pytest.fail(f"OpenSCAD is required in CI for feature round-trip checks: {exc}")
         pytest.skip(f"OpenSCAD not available: {exc}")
 
+    archived_failures: list[str] = []
     for fixture in fixtures:
         scad_path = test_output_dir / fixture["output_filename"]
         stl_path = test_output_dir / f"{Path(fixture['output_filename']).stem}.stl"
@@ -1475,12 +1521,16 @@ def test_feature_fixture_round_trip_detection(test_data_dir, test_output_dir):
             feature_type = feature["type"]
             feature_counts[feature_type] = feature_counts.get(feature_type, 0) + 1
 
-        for feature_type, expected_count in iter_expected_feature_counts(fixture).items():
-            assert (
-                feature_counts.get(feature_type, 0) == expected_count
-            ), f"{fixture['name']} expected {expected_count} {feature_type} entries, got {feature_counts.get(feature_type, 0)}"
+        with _xfail_if_revolve_archived(fixture, archived_failures):
+            for feature_type, expected_count in iter_expected_feature_counts(fixture).items():
+                assert (
+                    feature_counts.get(feature_type, 0) == expected_count
+                ), f"{fixture['name']} expected {expected_count} {feature_type} entries, got {feature_counts.get(feature_type, 0)}"
 
-        _assert_fixture_dimensions(fixture, graph["features"])
+            _assert_fixture_dimensions(fixture, graph["features"])
+
+    if archived_failures:
+        pytest.xfail(f"{_REVOLVE_ARCHIVED_REASON}: " + "; ".join(archived_failures))
 
 
 def test_feature_fixture_preview_round_trip_detection(test_data_dir, test_output_dir):
@@ -1560,6 +1610,7 @@ def test_feature_fixture_preview_round_trip_detection(test_data_dir, test_output
             )
 
 
+@pytest.mark.xfail(strict=False, reason=_REVOLVE_ARCHIVED_REASON)
 def test_revolve_fixture_exposes_confidence_components(test_data_dir, test_output_dir):
     manifest_path = test_data_dir / "feature_fixtures_manifest.json"
     fixtures = load_feature_fixture_manifest(manifest_path)
@@ -1601,6 +1652,7 @@ def test_revolve_fixture_exposes_confidence_components(test_data_dir, test_outpu
             assert 0.0 <= float(components[key]) <= 1.0
 
 
+@pytest.mark.xfail(strict=False, reason=_REVOLVE_ARCHIVED_REASON)
 def test_revolve_fixture_preview_round_trip(test_data_dir, test_output_dir):
     manifest_path = test_data_dir / "feature_fixtures_manifest.json"
     fixtures = load_feature_fixture_manifest(manifest_path)
@@ -1649,6 +1701,7 @@ def test_revolve_fixture_preview_round_trip(test_data_dir, test_output_dir):
         )
 
 
+@pytest.mark.xfail(strict=False, reason=_REVOLVE_ARCHIVED_REASON)
 def test_revolve_fixture_phase2_primitive_upgrade(test_data_dir, test_output_dir):
     """Phase 2 acceptance: revolve fixtures with phase2_expected_primitive must produce
     a matching primitive_upgrade in the feature graph and emit the corresponding

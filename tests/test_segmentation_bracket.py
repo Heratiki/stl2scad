@@ -108,10 +108,6 @@ def test_every_expected_plane_has_mesh_support(rendered, variant_name):
         assert areas[on_plane].sum() > 1.0, f"{variant_name}: no mesh support for {face['id']}"
 
 
-@pytest.mark.xfail(
-    raises=ImportError, strict=True,
-    reason="segmentation pipeline (CLAUDE.md steps 1-3) not built yet",
-)
 @pytest.mark.parametrize("variant_name", list(VARIANTS))
 def test_segmentation_recovers_faces_and_edges(rendered, variant_name):
     from stl2scad.core.segmentation import segment_mesh

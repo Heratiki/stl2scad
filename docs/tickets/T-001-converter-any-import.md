@@ -1,6 +1,6 @@
 # T-001: Import `Any` in converter.py (static gate F821)
 
-Status: open
+Status: landed (worktree-agent-a66be755c7829de3b, 2026-10-20)
 Opened: 2026-10-20 by the orchestrator, from the failing static gate on main.
 Depends on: none
 

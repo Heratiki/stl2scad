@@ -11,7 +11,7 @@ import sys
 import re
 import tempfile
 import json
-from typing import Tuple, List, Dict, Optional, Union
+from typing import Any, Tuple, List, Dict, Optional, Union
 from dataclasses import dataclass
 from numpy.typing import NDArray
 

@@ -1,0 +1,606 @@
+{
+ "description": "Segmentation round-trip expectations for the feature fixtures (T-009). Read by tests/test_segmentation_fixtures.py. status parametric: converts parametric, measured Hausdorff within the gate, and the emitted Customizer groups match the counts (Hole N -> hole_count, Slot N -> slot_count, Through Hole N and Blind Hole N -> counterbore_count). status known_gap: falls back to a polyhedron with exactly fallback_reason on the '// Full mesh fallback:' line; the test xfails after asserting the reason, and fails if the fixture starts working (move it to parametric). slow: conversion took 30 s or more; run with -m slow. manifest false: the fixture is not in feature_fixtures_manifest.json, so its counts were taken from the first measured emission, not from the manifest.",
+ "measured": "2026-10-20 at c792e76, 7 parallel workers on 8 cores",
+ "fixtures": {
+  "box_cubic": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "box_hollow_ambiguous": {
+   "status": "known_gap",
+   "fallback_reason": "Unsnapped feature solid failed the Hausdorff gate",
+   "slow": false
+  },
+  "box_large_z_hole": {
+   "status": "parametric",
+   "hole_count": 1,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "box_plain": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "box_plain_rotated_z25": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "box_rotated_x20": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "box_rotated_z25_with_hole": {
+   "status": "parametric",
+   "hole_count": 1,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "box_rounded_edges": {
+   "status": "known_gap",
+   "fallback_reason": "Unsupported cylinder topology at F0",
+   "slow": false
+  },
+  "box_rounded_edges_with_top_notch": {
+   "status": "known_gap",
+   "fallback_reason": "Unsupported cylinder topology at F0",
+   "slow": false
+  },
+  "box_side_cutout": {
+   "status": "known_gap",
+   "fallback_reason": "Unsnapped feature solid failed the Hausdorff gate",
+   "manifest": false,
+   "slow": false
+  },
+  "box_small": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "box_tall_narrow": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "box_two_cutouts": {
+   "status": "known_gap",
+   "fallback_reason": "Unsnapped feature solid failed the Hausdorff gate",
+   "slow": false
+  },
+  "box_two_z_holes": {
+   "status": "parametric",
+   "hole_count": 2,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "box_with_top_notch": {
+   "status": "known_gap",
+   "fallback_reason": "Unsnapped feature solid failed the Hausdorff gate",
+   "slow": false
+  },
+  "box_x_through_hole": {
+   "status": "parametric",
+   "hole_count": 1,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "box_y_through_hole": {
+   "status": "parametric",
+   "hole_count": 1,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "box_z_through_hole": {
+   "status": "parametric",
+   "hole_count": 1,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "box_z_through_hole_rotated_z25": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "cone_shallow": {
+   "status": "known_gap",
+   "fallback_reason": "No matching opposite section caps for an extruded body",
+   "slow": false
+  },
+  "cone_steep": {
+   "status": "known_gap",
+   "fallback_reason": "No matching opposite section caps for an extruded body",
+   "slow": false
+  },
+  "cylinder_large_diameter": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "cylinder_narrow_tall": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "cylinder_plain": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "cylinder_short_disk": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "cylinder_x_axis": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "cylinder_y_axis": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "l_bracket_plain": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "l_bracket_tall": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "l_bracket_wide": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "manifest": false,
+   "slow": false
+  },
+  "negative_cone": {
+   "status": "known_gap",
+   "fallback_reason": "No matching opposite section caps for an extruded body",
+   "slow": false
+  },
+  "negative_hex_prism": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "negative_sphere": {
+   "status": "known_gap",
+   "fallback_reason": "Unsnapped feature solid failed the Hausdorff gate",
+   "slow": true
+  },
+  "negative_torus": {
+   "status": "known_gap",
+   "fallback_reason": "No matching opposite section caps for an extruded body",
+   "slow": true
+  },
+  "non_revolve_cube": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "non_revolve_flat_symmetric": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "non_revolve_shaft_with_keyway": {
+   "status": "known_gap",
+   "fallback_reason": "Unsupported cylinder topology at F0",
+   "slow": false
+  },
+  "non_revolve_square_prism": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "non_revolve_symmetric_composite": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "non_revolve_tall_box": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_3x3_grid": {
+   "status": "parametric",
+   "hole_count": 9,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": true
+  },
+  "plate_4x4_grid": {
+   "status": "parametric",
+   "hole_count": 16,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": true
+  },
+  "plate_chamfered_with_hole": {
+   "status": "known_gap",
+   "fallback_reason": "No matching opposite section caps for an extruded body",
+   "slow": true
+  },
+  "plate_counterbore_and_slot": {
+   "status": "known_gap",
+   "fallback_reason": "Unsupported cylinder topology at F3",
+   "slow": false
+  },
+  "plate_counterbore_depth_near_thickness": {
+   "status": "known_gap",
+   "fallback_reason": "Editable cylinders currently require a profile-side host",
+   "slow": false
+  },
+  "plate_counterbore_pair": {
+   "status": "known_gap",
+   "fallback_reason": "Editable cylinders currently require a profile-side host",
+   "slow": false
+  },
+  "plate_counterbore_small_clearance": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 1,
+   "slow": true
+  },
+  "plate_cutout_and_hole": {
+   "status": "known_gap",
+   "fallback_reason": "Unsupported through-cut section: expected circular hole or stadium",
+   "slow": false
+  },
+  "plate_filleted_grid_holes": {
+   "status": "parametric",
+   "hole_count": 4,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": true
+  },
+  "plate_filleted_linear_holes": {
+   "status": "parametric",
+   "hole_count": 2,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_grid_two_by_three": {
+   "status": "parametric",
+   "hole_count": 6,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": true
+  },
+  "plate_large_hole_pair": {
+   "status": "parametric",
+   "hole_count": 2,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_linear_two_holes": {
+   "status": "parametric",
+   "hole_count": 2,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_long_aspect_linear": {
+   "status": "parametric",
+   "hole_count": 3,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_mixed_linear_and_slot": {
+   "status": "parametric",
+   "hole_count": 2,
+   "slot_count": 1,
+   "counterbore_count": 0,
+   "slow": true
+  },
+  "plate_multi_pattern_mixed_edge": {
+   "status": "parametric",
+   "hole_count": 9,
+   "slot_count": 1,
+   "counterbore_count": 0,
+   "slow": true
+  },
+  "plate_near_boundary_linear": {
+   "status": "parametric",
+   "hole_count": 2,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": true
+  },
+  "plate_plain": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_plain_chamfered_edges": {
+   "status": "known_gap",
+   "fallback_reason": "No matching opposite section caps for an extruded body",
+   "slow": true
+  },
+  "plate_plain_filleted_edges": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_plain_rotated_x30": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_plain_rotated_z30": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_rectangular_through_cutout": {
+   "status": "known_gap",
+   "fallback_reason": "Unsnapped feature solid failed the Hausdorff gate",
+   "slow": false
+  },
+  "plate_rectangular_top_pocket": {
+   "status": "known_gap",
+   "fallback_reason": "Unsnapped feature solid failed the Hausdorff gate",
+   "slow": false
+  },
+  "plate_rotated_x30_with_two_holes": {
+   "status": "parametric",
+   "hole_count": 2,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_rotated_z30_with_hole": {
+   "status": "parametric",
+   "hole_count": 1,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_rotated_z30_with_linear_pattern": {
+   "status": "parametric",
+   "hole_count": 3,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": true
+  },
+  "plate_rotated_z30_with_slot": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 1,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_rotated_z45_plain": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_single_counterbore": {
+   "status": "known_gap",
+   "fallback_reason": "Editable cylinders currently require a profile-side host",
+   "slow": false
+  },
+  "plate_single_hole": {
+   "status": "parametric",
+   "hole_count": 1,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_single_slot": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 1,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_slot_pair": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 2,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_small_hole_grid": {
+   "status": "parametric",
+   "hole_count": 4,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": true
+  },
+  "plate_square": {
+   "status": "parametric",
+   "hole_count": 1,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_thick": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_three_holes": {
+   "status": "parametric",
+   "hole_count": 3,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": true
+  },
+  "plate_two_rectangular_pockets": {
+   "status": "known_gap",
+   "fallback_reason": "Unsnapped feature solid failed the Hausdorff gate",
+   "slow": false
+  },
+  "plate_two_slots": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 2,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "plate_wide_linear": {
+   "status": "parametric",
+   "hole_count": 4,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": true
+  },
+  "prism_octagon": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "prism_pentagon": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "prism_triangle": {
+   "status": "parametric",
+   "hole_count": 0,
+   "slot_count": 0,
+   "counterbore_count": 0,
+   "slow": false
+  },
+  "revolve_annular_tube": {
+   "status": "known_gap",
+   "fallback_reason": "An arc profile needs a straight side to define its frame",
+   "slow": false
+  },
+  "revolve_christmas_tree": {
+   "status": "known_gap",
+   "fallback_reason": "No matching opposite section caps for an extruded body",
+   "slow": false
+  },
+  "revolve_fat_disk": {
+   "status": "known_gap",
+   "fallback_reason": "Unsnapped feature solid failed the Hausdorff gate",
+   "slow": false
+  },
+  "revolve_frustum_trapezoid": {
+   "status": "known_gap",
+   "fallback_reason": "No matching opposite section caps for an extruded body",
+   "slow": false
+  },
+  "revolve_inverted_cone": {
+   "status": "known_gap",
+   "fallback_reason": "No matching opposite section caps for an extruded body",
+   "slow": false
+  },
+  "revolve_rectangle_profile": {
+   "status": "known_gap",
+   "fallback_reason": "Unsnapped feature solid failed the Hausdorff gate",
+   "slow": false
+  },
+  "revolve_semicircle_profile": {
+   "status": "known_gap",
+   "fallback_reason": "Unsupported cylinder topology at F0",
+   "slow": false
+  },
+  "revolve_stepped_shaft": {
+   "status": "known_gap",
+   "fallback_reason": "No matching opposite section caps for an extruded body",
+   "slow": false
+  },
+  "revolve_triangle_profile": {
+   "status": "known_gap",
+   "fallback_reason": "No matching opposite section caps for an extruded body",
+   "slow": false
+  },
+  "revolve_vase": {
+   "status": "known_gap",
+   "fallback_reason": "No matching opposite section caps for an extruded body",
+   "slow": false
+  },
+  "revolve_vase_dome": {
+   "status": "known_gap",
+   "fallback_reason": "No matching opposite section caps for an extruded body",
+   "manifest": false,
+   "slow": false
+  },
+  "revolve_y_axis": {
+   "status": "known_gap",
+   "fallback_reason": "Unsnapped feature solid failed the Hausdorff gate",
+   "slow": false
+  }
+ }
+}

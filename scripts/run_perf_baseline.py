@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from stl2scad.core.perf_baseline import run_conversion_perf_baseline
+from stl2scad.legacy.perf_baseline import run_conversion_perf_baseline
 
 
 def _build_parser() -> argparse.ArgumentParser:

@@ -6,7 +6,7 @@ import importlib
 import json
 from pathlib import Path
 
-from stl2scad.tuning.real_world_corpus import RealWorldCorpusScore
+from stl2scad.legacy.tuning.real_world_corpus import RealWorldCorpusScore
 
 
 def _build_stub_score(tmp_path: Path) -> RealWorldCorpusScore:

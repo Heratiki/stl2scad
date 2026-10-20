@@ -11,7 +11,7 @@ from tempfile import TemporaryDirectory
 import numpy as np
 from stl.mesh import Mesh
 
-from ..converter import get_openscad_path, run_openscad
+from ..openscad.runner import get_openscad_path, run_openscad
 from ..verification.metrics import calculate_hausdorff_distance, sample_mesh_points
 from .features import Feature
 

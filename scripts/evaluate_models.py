@@ -18,7 +18,7 @@ from typing import Any
 
 import stl
 
-from stl2scad.core.converter import stl2scad
+from stl2scad.legacy.converter import stl2scad
 from stl2scad.core.verification.verification import verify_existing_conversion
 
 

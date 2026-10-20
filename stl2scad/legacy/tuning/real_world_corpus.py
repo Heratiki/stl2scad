@@ -10,9 +10,9 @@ from typing import Any, Iterable, Optional
 
 from stl.mesh import Mesh
 
-from stl2scad.core.feature_inventory import _bbox
+from stl2scad.legacy.feature_inventory import _bbox
 from stl2scad.tuning.config import DetectorConfig
-from stl2scad.tuning.scoring import FixtureScore, score_fixture
+from stl2scad.legacy.tuning.scoring import FixtureScore, score_fixture
 
 
 @dataclass(frozen=True)

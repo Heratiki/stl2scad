@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Union, List, Tuple
 import stl
 
-from ..converter import run_openscad, get_openscad_path
+from ..openscad.runner import run_openscad, get_openscad_path
 
 
 def _get_stl_z_bounds(stl_path: Path) -> Tuple[float, float]:
@@ -164,7 +164,7 @@ def generate_comparison_visualization(
 
     # Write script to file
     vis_file = output_path / "comparison.scad"
-    with open(vis_file, "w") as f:
+    with open(vis_file, "w", encoding="utf-8") as f:
         f.write(vis_script)
 
     # Generate visualizations
@@ -560,7 +560,7 @@ def generate_verification_report_html(
     """
 
     # Write HTML to file
-    with open(output_file, "w") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         f.write(html)
 
 

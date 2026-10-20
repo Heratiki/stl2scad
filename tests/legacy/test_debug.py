@@ -10,7 +10,7 @@ import datetime
 import psutil
 from pathlib import Path
 
-from stl2scad.core.converter import stl2scad, get_openscad_path
+from stl2scad.legacy.converter import stl2scad, get_openscad_path
 
 
 def test_debug_features(test_output_dir, cube_stl_path, verbose=True, log_file="test_run.log"):

@@ -3,12 +3,12 @@ Tests for STL to SCAD conversion functionality.
 """
 
 import pytest
-from stl2scad.core.converter import stl2scad, validate_stl, STLValidationError
-from stl2scad.core import converter as converter_module
+from stl2scad.legacy.converter import stl2scad, validate_stl, STLValidationError
+from stl2scad.legacy import converter as converter_module
 from stl2scad.core.benchmark_fixtures import ensure_benchmark_fixtures
-from stl2scad.core import recognition as recognition_module
+from stl2scad.legacy import recognition as recognition_module
 import stl
-from .utils import setup_logging, verify_debug_files
+from tests.utils import setup_logging, verify_debug_files
 import numpy
 
 

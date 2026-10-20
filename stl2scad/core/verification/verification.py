@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 import stl
 import numpy as np
 
-from ..converter import stl2scad
+from ..conversion import convert_stl_to_scad
 from ..temp_paths import temporary_directory
 from .metrics import get_stl_metrics, calculate_scad_metrics, compare_metrics
 
@@ -180,7 +180,7 @@ class VerificationResult:
         Args:
             output_file: Path to save the report
         """
-        with open(output_file, "w") as f:
+        with open(output_file, "w", encoding="utf-8") as f:
             f.write(self.to_json())
 
 
@@ -226,7 +226,7 @@ def verify_conversion(
         # Create temporary directory for output
         with temporary_directory(prefix="verification") as temp_dir:
             temp_scad = temp_dir / f"{stl_path.stem}.scad"
-            stl2scad(str(stl_path), str(temp_scad), debug=debug)
+            convert_stl_to_scad(str(stl_path), str(temp_scad))
             return verify_existing_conversion(
                 stl_path, temp_scad, tolerance, debug, sample_seed=sample_seed
             )
@@ -449,7 +449,7 @@ def batch_verify(
         },
     }
 
-    with open(output_path / "verification_summary.json", "w") as f:
+    with open(output_path / "verification_summary.json", "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
 
     return results

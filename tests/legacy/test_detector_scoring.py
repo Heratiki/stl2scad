@@ -5,14 +5,14 @@ from pathlib import Path
 import pytest
 
 from stl2scad.tuning.config import DetectorConfig
-from stl2scad.tuning.scoring import (
+from stl2scad.legacy.tuning.scoring import (
     FixtureScore,
     ManifestScore,
     score_fixture,
     score_manifest,
 )
 from stl2scad.core.feature_fixtures import load_feature_fixture_manifest, write_feature_fixture_library
-from stl2scad.core.converter import get_openscad_path, run_openscad
+from stl2scad.core.openscad.runner import get_openscad_path, run_openscad
 from stl2scad.core.feature_fixtures import iter_expected_feature_counts
 
 
@@ -57,7 +57,7 @@ def test_score_fixture_penalizes_missing_holes():
                                 "rectangular_pocket_count": 0},
     }
     # Feed a fake graph directly via a test-only entry point (see impl).
-    from stl2scad.tuning.scoring import score_fixture_against_graph
+    from stl2scad.legacy.tuning.scoring import score_fixture_against_graph
     graph = {"features": [{"type": "plate_like_solid", "confidence": 0.95,
                             "size": [20.0, 10.0, 2.0], "origin": [0, 0, 0]}]}
     score = score_fixture_against_graph(fixture, graph)
@@ -116,7 +116,7 @@ def test_score_fixture_penalizes_generic_future_feature_counts():
             "boss_count": 1,
         },
     }
-    from stl2scad.tuning.scoring import score_fixture_against_graph
+    from stl2scad.legacy.tuning.scoring import score_fixture_against_graph
 
     graph = {
         "features": [

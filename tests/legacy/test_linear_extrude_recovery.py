@@ -1,11 +1,11 @@
-"""Tests for stl2scad.core.linear_extrude_recovery."""
+"""Tests for stl2scad.legacy.linear_extrude_recovery."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from stl2scad.core.linear_extrude_recovery import detect_linear_extrude_solid
+from stl2scad.legacy.linear_extrude_recovery import detect_linear_extrude_solid
 
 
 # ---------------------------------------------------------------------------

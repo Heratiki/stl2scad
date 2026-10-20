@@ -15,27 +15,61 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from stl2scad.core.converter import ConversionStats, STLValidationError, stl2scad
 from stl2scad.core.acceleration import get_acceleration_report
-from stl2scad.core.feature_graph import (
-    build_feature_graph_for_folder,
-    build_feature_graph_for_stl,
-    emit_feature_graph_scad_preview,
+from stl2scad.core.conversion import (
+    ConversionStats,
+    STLValidationError,
+    convert_stl_to_scad,
 )
-from stl2scad.core.feature_inventory import (
-    InventoryConfig,
-    InventorySelectionConfig,
-    analyze_stl_folder,
-    analyze_stl_folder_for_feature_graphs,
-    build_feature_graphs_from_inventory,
-)
-from stl2scad.core.recognition import SUPPORTED_RECOGNITION_BACKENDS
 from stl2scad.core.temp_paths import temporary_directory
 from stl2scad.core.verification import (
     generate_comparison_visualization,
     generate_verification_report_html,
     verify_conversion,
 )
+
+
+# Backend ids the archived legacy recognizers accepted. Kept so existing
+# scripts that pass --recognition-backend still parse (T-004); the value is
+# ignored.
+LEGACY_RECOGNITION_BACKENDS = ("native", "trimesh_manifold", "cgal")
+
+LEGACY_REMOVED_NOTE = (
+    "the legacy pipeline was removed (T-004); stl2scad converts through "
+    "segmentation only"
+)
+
+
+def _warn_deprecated(message: str) -> None:
+    """Print one deprecation warning line to stderr."""
+    print(f"DeprecationWarning: {message}", file=sys.stderr)
+
+
+def _warn_ignored_legacy_options(args: argparse.Namespace) -> None:
+    """Warn once per legacy-only option the user set; the options are ignored."""
+    ignored = []
+    if getattr(args, "parametric", False):
+        ignored.append("--parametric")
+    if getattr(args, "recognition_backend", None) is not None:
+        ignored.append("--recognition-backend")
+    if getattr(args, "compute_backend", None) is not None:
+        ignored.append("--compute-backend")
+    if getattr(args, "tolerance", None) is not None:
+        ignored.append("--tolerance")
+    for option in ignored:
+        _warn_deprecated(
+            f"{option} is deprecated and ignored: {LEGACY_REMOVED_NOTE}."
+        )
+
+
+def _legacy_command_removed(args: argparse.Namespace) -> int:
+    """Handler for commands that only ran the archived legacy detectors."""
+    _warn_deprecated(
+        f"'{args.command}' is deprecated and does nothing: it only ran the "
+        f"legacy feature-graph detectors, and {LEGACY_REMOVED_NOTE}. "
+        "The archived code is in stl2scad/legacy/."
+    )
+    return 2
 
 
 def _positive_float(value: str) -> float:
@@ -125,37 +159,40 @@ def build_parser() -> argparse.ArgumentParser:
     convert_parser.add_argument("output_file", help="Output SCAD file")
     convert_parser.add_argument(
         "--pipeline",
-        choices=["legacy", "segmentation"],
-        default="legacy",
-        help="Conversion pipeline (default: legacy)",
+        choices=["segmentation", "legacy"],
+        default="segmentation",
+        help=(
+            "Conversion pipeline (default: segmentation). 'legacy' is "
+            "deprecated: it prints a warning, writes nothing and exits 2"
+        ),
     )
     convert_parser.add_argument(
         "--tolerance",
         type=_positive_float,
-        default=1e-6,
-        help="Vertex deduplication tolerance (default: 1e-6)",
+        default=None,
+        help="Deprecated and ignored (legacy vertex deduplication tolerance)",
     )
     convert_parser.add_argument(
         "--debug",
         action="store_true",
-        help="Enable debug mode (renders SCAD diagnostic artifacts)",
+        help="Print a traceback when conversion fails",
     )
     convert_parser.add_argument(
         "--parametric",
         action="store_true",
-        help="Try to detect and write primitives instead of a flat polyhedron",
+        help="Deprecated and ignored (legacy primitive recognition)",
     )
     convert_parser.add_argument(
         "--recognition-backend",
-        choices=list(SUPPORTED_RECOGNITION_BACKENDS),
-        default="native",
-        help="Recognition backend for parametric mode (default: native)",
+        choices=list(LEGACY_RECOGNITION_BACKENDS),
+        default=None,
+        help="Deprecated and ignored (legacy recognition backend)",
     )
     convert_parser.add_argument(
         "--compute-backend",
         choices=["auto", "cpu", "gpu"],
-        default="auto",
-        help="Compute backend for heavy array ops (default: auto)",
+        default=None,
+        help="Deprecated and ignored (legacy vertex deduplication backend)",
     )
     convert_parser.set_defaults(handler=convert_command)
 
@@ -201,13 +238,13 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument(
         "--parametric",
         action="store_true",
-        help="Try to detect and write primitives instead of a flat polyhedron during verification conversion",
+        help="Deprecated and ignored (legacy primitive recognition)",
     )
     verify_parser.add_argument(
         "--recognition-backend",
-        choices=list(SUPPORTED_RECOGNITION_BACKENDS),
-        default="native",
-        help="Recognition backend for parametric conversion (default: native)",
+        choices=list(LEGACY_RECOGNITION_BACKENDS),
+        default=None,
+        help="Deprecated and ignored (legacy recognition backend)",
     )
     verify_parser.add_argument(
         "--sample-seed",
@@ -218,8 +255,8 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument(
         "--compute-backend",
         choices=["auto", "cpu", "gpu"],
-        default="auto",
-        help="Compute backend for conversion step when SCAD must be generated (default: auto)",
+        default=None,
+        help="Deprecated and ignored (legacy vertex deduplication backend)",
     )
     verify_parser.set_defaults(handler=verify_command)
 
@@ -255,13 +292,13 @@ def build_parser() -> argparse.ArgumentParser:
     batch_parser.add_argument(
         "--parametric",
         action="store_true",
-        help="Try to detect and write primitives instead of a flat polyhedron during batch conversion",
+        help="Deprecated and ignored (legacy primitive recognition)",
     )
     batch_parser.add_argument(
         "--recognition-backend",
-        choices=list(SUPPORTED_RECOGNITION_BACKENDS),
-        default="native",
-        help="Recognition backend for parametric conversion (default: native)",
+        choices=list(LEGACY_RECOGNITION_BACKENDS),
+        default=None,
+        help="Deprecated and ignored (legacy recognition backend)",
     )
     batch_parser.add_argument(
         "--sample-seed",
@@ -272,8 +309,8 @@ def build_parser() -> argparse.ArgumentParser:
     batch_parser.add_argument(
         "--compute-backend",
         choices=["auto", "cpu", "gpu"],
-        default="auto",
-        help="Compute backend for conversion step (default: auto)",
+        default=None,
+        help="Deprecated and ignored (legacy vertex deduplication backend)",
     )
     batch_parser.set_defaults(handler=batch_command)
 
@@ -290,7 +327,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     feature_inventory_parser = subparsers.add_parser(
         "feature-inventory",
-        help="Analyze STL folders for feature-level reconstruction signals",
+        help="Deprecated: warns and exits 2 (legacy feature inventory)",
     )
     feature_inventory_parser.add_argument(
         "input_dir",
@@ -318,11 +355,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Parallel workers for folder scans. Use 0 for auto, 1 for serial",
     )
-    feature_inventory_parser.set_defaults(handler=feature_inventory_command)
+    feature_inventory_parser.set_defaults(handler=_legacy_command_removed)
 
     feature_graph_parser = subparsers.add_parser(
         "feature-graph",
-        help="Build conservative feature graphs for STL files or folders",
+        help="Deprecated: warns and exits 2 (legacy feature graph)",
     )
     feature_graph_parser.add_argument(
         "input_path",
@@ -394,11 +431,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional SCAD preview output path for a single STL input",
     )
-    feature_graph_parser.set_defaults(handler=feature_graph_command)
+    feature_graph_parser.set_defaults(handler=_legacy_command_removed)
 
     feature_graph_inventory_parser = subparsers.add_parser(
         "feature-graph-from-inventory",
-        help="Build feature graphs only for mechanical candidates from an inventory report",
+        help="Deprecated: warns and exits 2 (legacy feature graph)",
     )
     feature_graph_inventory_parser.add_argument(
         "inventory_json",
@@ -449,9 +486,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=(),
         help="Optional comma-separated family subset for inventory family-confidence selection (plate,box,cylinder)",
     )
-    feature_graph_inventory_parser.set_defaults(
-        handler=feature_graph_from_inventory_command
-    )
+    feature_graph_inventory_parser.set_defaults(handler=_legacy_command_removed)
 
     maintainer_parser = subparsers.add_parser(
         "maintainer",
@@ -511,7 +546,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     maintainer_parser.add_argument(
         "--perf-recognition-backend",
-        choices=list(SUPPORTED_RECOGNITION_BACKENDS),
+        choices=list(LEGACY_RECOGNITION_BACKENDS),
         default="native",
         help="Recognition backend used by perf baseline (default: native)",
     )
@@ -543,29 +578,32 @@ def build_parser() -> argparse.ArgumentParser:
     maintainer_parser.add_argument(
         "--stl-dir",
         default=None,
-        help="Optional STL directory for inventory + inventory-prefiltered feature graph",
+        help=(
+            "Deprecated and ignored: the inventory and feature-graph steps it "
+            "added ran the legacy detectors (T-004)"
+        ),
     )
     maintainer_parser.add_argument(
         "--inventory-output",
         default="artifacts/feature_inventory_maintainer.json",
-        help="Output path for optional inventory JSON",
+        help="Deprecated and ignored (was used with --stl-dir)",
     )
     maintainer_parser.add_argument(
         "--feature-graph-output",
         default="artifacts/feature_graph_maintainer.json",
-        help="Output path for optional feature-graph JSON",
+        help="Deprecated and ignored (was used with --stl-dir)",
     )
     maintainer_parser.add_argument(
         "--workers",
         type=_non_negative_int,
         default=0,
-        help="Workers for optional STL inventory/graph steps. Use 0 for auto",
+        help="Deprecated and ignored (was used with --stl-dir)",
     )
     maintainer_parser.add_argument(
         "--max-files",
         type=_non_negative_int,
         default=None,
-        help="Optional cap for STL files in optional inventory/graph steps",
+        help="Deprecated and ignored (was used with --stl-dir)",
     )
     maintainer_parser.set_defaults(handler=maintainer_command)
 
@@ -710,8 +748,9 @@ def _build_maintainer_steps(args: argparse.Namespace) -> List[MaintainerStep]:
                     python_exe,
                     "-m",
                     "pytest",
-                    "tests/test_feature_graph.py",
-                    "tests/test_feature_inventory.py",
+                    # Moved by T-004; skipped unless STL2SCAD_LEGACY_TESTS=1.
+                    "tests/legacy/test_feature_graph.py",
+                    "tests/legacy/test_feature_inventory.py",
                     "-q",
                 ],
             ),
@@ -781,51 +820,16 @@ def _build_maintainer_steps(args: argparse.Namespace) -> List[MaintainerStep]:
             )
         )
 
-    if args.stl_dir:
-        steps.append(
-            MaintainerStep(
-                name="Corpus feature inventory",
-                command=[
-                    python_exe,
-                    "-m",
-                    "stl2scad",
-                    "feature-inventory",
-                    args.stl_dir,
-                    "--output",
-                    args.inventory_output,
-                    "--workers",
-                    str(args.workers),
-                ],
-            )
-        )
-        graph_command = [
-            python_exe,
-            "-m",
-            "stl2scad",
-            "feature-graph",
-            args.stl_dir,
-            "--output",
-            args.feature_graph_output,
-            "--workers",
-            str(args.workers),
-            "--inventory-prefilter",
-            "--inventory-output",
-            args.inventory_output,
-        ]
-        if args.max_files is not None:
-            graph_command.extend(["--max-files", str(args.max_files)])
-        steps.append(
-            MaintainerStep(
-                name="Corpus feature graph (inventory-prefilter)",
-                command=graph_command,
-            )
-        )
-
     return steps
 
 
 def maintainer_command(args: argparse.Namespace) -> int:
     """Execute the chained maintainer workflow."""
+    if getattr(args, "stl_dir", None):
+        _warn_deprecated(
+            "--stl-dir is deprecated and ignored: its feature-inventory and "
+            f"feature-graph steps ran the legacy detectors, and {LEGACY_REMOVED_NOTE}."
+        )
     try:
         if args.perf_repeat < 1:
             raise ValueError("--perf-repeat must be >= 1")
@@ -908,311 +912,6 @@ def acceleration_command(args: argparse.Namespace) -> int:
     return 0
 
 
-def feature_inventory_command(args: argparse.Namespace) -> int:
-    """Execute the feature-inventory command."""
-    try:
-        workers = _resolve_workers(args.workers)
-
-        def _progress(done: int, total: int, path: str) -> None:
-            print(
-                f"\r[{done}/{total}] {Path(path).name}",
-                end="",
-                flush=True,
-                file=sys.stderr,
-            )
-            if done == total:
-                print(file=sys.stderr)
-
-        report = analyze_stl_folder(
-            input_dir=Path(args.input_dir),
-            output_json=Path(args.output),
-            config=InventoryConfig(
-                recursive=not args.no_recursive,
-                max_files=args.max_files,
-                workers=workers,
-            ),
-            progress_callback=_progress,
-        )
-        summary = report["summary"]
-        print(f"Feature inventory written to: {args.output}")
-        print(f"Files analyzed: {summary['file_count']}")
-        print(f"Workers: {workers}")
-        print(f"OK: {summary['ok_count']}")
-        print(f"Errors: {summary['error_count']}")
-        print(f"Classifications: {summary['classification_counts']}")
-        print(f"Candidate features: {summary['candidate_feature_counts']}")
-        if summary.get("detector_focus_counts"):
-            print(f"Detector focus: {summary['detector_focus_counts']}")
-        return 0
-    except FileNotFoundError as exc:
-        print(f"Error: File not found - {str(exc)}", file=sys.stderr)
-        return 1
-    except NotADirectoryError as exc:
-        print(f"Error: Not a directory - {str(exc)}", file=sys.stderr)
-        return 1
-    except Exception as exc:
-        print(f"Error: {str(exc)}", file=sys.stderr)
-        return 1
-
-
-def feature_graph_command(args: argparse.Namespace) -> int:
-    """Execute the feature-graph command."""
-    try:
-        input_path = Path(args.input_path)
-        output_path = Path(args.output)
-        has_inventory_selection_filters = any(
-            (
-                args.inventory_min_mechanical_score is not None,
-                args.inventory_max_organic_score is not None,
-                args.inventory_allow_non_mechanical_primary,
-                args.inventory_min_family_confidence is not None,
-                bool(args.inventory_families),
-            )
-        )
-
-        if not input_path.is_dir() and (
-            args.inventory_prefilter or args.inventory_output or has_inventory_selection_filters
-        ):
-            raise ValueError(
-                "--inventory-prefilter, --inventory-output, and --inventory-* selection options require a directory input"
-            )
-        if has_inventory_selection_filters and not args.inventory_prefilter:
-            raise ValueError(
-                "--inventory-* selection options require --inventory-prefilter"
-            )
-
-        if input_path.is_dir():
-            workers = _resolve_workers(args.workers)
-
-            def _progress(done: int, total: int, path: str) -> None:
-                print(
-                    f"\r[{done}/{total}] {Path(path).name}",
-                    end="",
-                    flush=True,
-                    file=sys.stderr,
-                )
-                if done == total:
-                    print(file=sys.stderr)
-
-            if args.inventory_prefilter:
-
-                def _inventory_progress(done: int, total: int, path: str) -> None:
-                    print(
-                        f"\r[inventory {done}/{total}] {Path(path).name}",
-                        end="",
-                        flush=True,
-                        file=sys.stderr,
-                    )
-                    if done == total:
-                        print(file=sys.stderr)
-
-                def _graph_progress(done: int, total: int, path: str) -> None:
-                    print(
-                        f"\r[graph {done}/{total}] {Path(path).name}",
-                        end="",
-                        flush=True,
-                        file=sys.stderr,
-                    )
-                    if done == total:
-                        print(file=sys.stderr)
-
-                report = analyze_stl_folder_for_feature_graphs(
-                    input_dir=input_path,
-                    output_json=output_path,
-                    inventory_config=InventoryConfig(
-                        recursive=not args.no_recursive,
-                        max_files=args.max_files,
-                        workers=workers,
-                    ),
-                    graph_workers=workers,
-                    selection_config=InventorySelectionConfig(
-                        require_primary_mechanical=(
-                            not args.inventory_allow_non_mechanical_primary
-                        ),
-                        min_mechanical_score=args.inventory_min_mechanical_score,
-                        max_organic_score=args.inventory_max_organic_score,
-                        min_family_confidence=args.inventory_min_family_confidence,
-                        allowed_families=args.inventory_families,
-                    ),
-                    inventory_output_json=(
-                        Path(args.inventory_output)
-                        if args.inventory_output is not None
-                        else None
-                    ),
-                    inventory_progress_callback=_inventory_progress,
-                    graph_progress_callback=_graph_progress,
-                )
-            else:
-                report = build_feature_graph_for_folder(
-                    input_path,
-                    output_path,
-                    recursive=not args.no_recursive,
-                    max_files=args.max_files,
-                    workers=workers,
-                    progress_callback=_progress,
-                )
-            summary = report["summary"]
-            print(f"Feature graph report written to: {output_path}")
-            if args.inventory_prefilter:
-                inventory_summary = report["inventory_summary"]
-                selection = report["selection"]
-                print(f"Files analyzed: {inventory_summary['file_count']}")
-                print(
-                    "Mechanical candidates processed: "
-                    f"{selection['mechanical_candidate_count']}"
-                )
-                print(
-                    "Skipped non-mechanical: "
-                    f"{selection['skipped_non_mechanical_count']}"
-                )
-                if selection.get("skipped_below_score_count", 0) > 0:
-                    print(
-                        "Skipped below score threshold: "
-                        f"{selection['skipped_below_score_count']}"
-                    )
-                if selection.get("skipped_below_family_confidence_count", 0) > 0:
-                    print(
-                        "Skipped below family-confidence threshold: "
-                        f"{selection['skipped_below_family_confidence_count']}"
-                    )
-                if selection.get("selected_non_mechanical_primary_count", 0) > 0:
-                    print(
-                        "Selected non-mechanical primary: "
-                        f"{selection['selected_non_mechanical_primary_count']}"
-                    )
-                if args.inventory_output:
-                    print(f"Inventory report written to: {args.inventory_output}")
-            else:
-                print(f"Files analyzed: {summary['file_count']}")
-            print(f"Workers: {workers}")
-            print(f"Errors: {summary['error_count']}")
-            print(f"Features: {summary['feature_counts']}")
-            return 0
-
-        graph = build_feature_graph_for_stl(input_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "w", encoding="utf-8") as output_handle:
-            json.dump(graph, output_handle, indent=2)
-        print(f"Feature graph written to: {output_path}")
-        print(f"Features: {len(graph['features'])}")
-
-        if args.scad_preview:
-            scad = emit_feature_graph_scad_preview(graph)
-            if scad is None:
-                print(
-                    "SCAD preview not emitted: no high-confidence supported feature combination."
-                )
-            else:
-                scad_path = Path(args.scad_preview)
-                scad_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(scad_path, "w", encoding="utf-8") as scad_handle:
-                    scad_handle.write(scad)
-                print(f"SCAD preview written to: {scad_path}")
-        return 0
-    except FileNotFoundError as exc:
-        print(f"Error: File not found - {str(exc)}", file=sys.stderr)
-        return 1
-    except NotADirectoryError as exc:
-        print(f"Error: Not a directory - {str(exc)}", file=sys.stderr)
-        return 1
-    except Exception as exc:
-        print(f"Error: {str(exc)}", file=sys.stderr)
-        return 1
-
-
-def feature_graph_from_inventory_command(args: argparse.Namespace) -> int:
-    """Execute the feature-graph-from-inventory command."""
-    try:
-        workers = _resolve_workers(args.workers)
-
-        def _progress(done: int, total: int, path: str) -> None:
-            print(
-                f"\r[{done}/{total}] {Path(path).name}",
-                end="",
-                flush=True,
-                file=sys.stderr,
-            )
-            if done == total:
-                print(file=sys.stderr)
-
-        report = build_feature_graphs_from_inventory(
-            inventory=Path(args.inventory_json),
-            output_json=Path(args.output),
-            workers=workers,
-            selection_config=InventorySelectionConfig(
-                require_primary_mechanical=(
-                    not args.inventory_allow_non_mechanical_primary
-                ),
-                min_mechanical_score=args.inventory_min_mechanical_score,
-                max_organic_score=args.inventory_max_organic_score,
-                min_family_confidence=args.inventory_min_family_confidence,
-                allowed_families=args.inventory_families,
-            ),
-            progress_callback=_progress,
-        )
-        summary = report["summary"]
-        selection = report["selection"]
-        print(f"Feature graph report written to: {args.output}")
-        print(
-            "Mechanical candidates processed: "
-            f"{selection['mechanical_candidate_count']}"
-        )
-        if selection.get("skipped_below_score_count", 0) > 0:
-            print(
-                "Skipped below score threshold: "
-                f"{selection['skipped_below_score_count']}"
-            )
-        if selection.get("skipped_below_family_confidence_count", 0) > 0:
-            print(
-                "Skipped below family-confidence threshold: "
-                f"{selection['skipped_below_family_confidence_count']}"
-            )
-        if selection.get("selected_non_mechanical_primary_count", 0) > 0:
-            print(
-                "Selected non-mechanical primary: "
-                f"{selection['selected_non_mechanical_primary_count']}"
-            )
-        print(f"Workers: {workers}")
-        print(f"Errors: {summary['error_count']}")
-        print(f"Features: {summary['feature_counts']}")
-
-        if args.scad_preview_dir:
-            preview_root = Path(args.scad_preview_dir)
-            preview_root.mkdir(parents=True, exist_ok=True)
-            emitted_count = 0
-            skipped_count = 0
-            for graph in report.get("graphs", []):
-                if graph.get("status") == "error":
-                    skipped_count += 1
-                    continue
-                scad = emit_feature_graph_scad_preview(graph)
-                if scad is None:
-                    skipped_count += 1
-                    continue
-
-                source_file = str(graph.get("source_file", "graph.stl"))
-                relative_source = Path(source_file)
-                output_path = preview_root / relative_source.with_suffix(".preview.scad")
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(output_path, "w", encoding="utf-8") as handle:
-                    handle.write(scad)
-                emitted_count += 1
-
-            print(f"SCAD previews emitted: {emitted_count}")
-            print(f"SCAD previews skipped: {skipped_count}")
-
-        return 0
-    except FileNotFoundError as exc:
-        print(f"Error: File not found - {str(exc)}", file=sys.stderr)
-        return 1
-    except NotADirectoryError as exc:
-        print(f"Error: Not a directory - {str(exc)}", file=sys.stderr)
-        return 1
-    except Exception as exc:
-        print(f"Error: {str(exc)}", file=sys.stderr)
-        return 1
-
-
 def convert_command(args: argparse.Namespace) -> int:
     """
     Execute the convert command.
@@ -1221,35 +920,23 @@ def convert_command(args: argparse.Namespace) -> int:
         args: Parsed command-line arguments for convert
 
     Returns:
-        int: Exit code (0 for success, 1 for error)
+        int: Exit code (0 for success, 1 for error, 2 for the removed
+        legacy pipeline)
     """
+    if getattr(args, "pipeline", "segmentation") == "legacy":
+        # Checked before any work so nothing is written (T-004).
+        _warn_deprecated(
+            f"--pipeline legacy is deprecated: {LEGACY_REMOVED_NOTE}. "
+            "Nothing was written. Use the default --pipeline segmentation."
+        )
+        return 2
+    _warn_ignored_legacy_options(args)
     try:
         print(f"Converting {args.input_file} to {args.output_file}")
-        print(f"Using tolerance: {args.tolerance}")
         if args.debug:
             print("Debug mode enabled")
-        if getattr(args, "pipeline", "legacy") == "segmentation":
-            from stl.mesh import Mesh
-            from stl2scad.core.segmentation import emit_scad
-
-            mesh = Mesh.from_file(args.input_file)
-            source = emit_scad(None, mesh, source_file=args.input_file)
-            Path(args.output_file).write_text(source)
-            print("Pipeline: segmentation")
-            return 0
-        if args.parametric:
-            print("Parametric primitive recognition enabled")
-            print(f"Recognition backend: {args.recognition_backend}")
-
-        stats = stl2scad(
-            args.input_file,
-            args.output_file,
-            args.tolerance,
-            args.debug,
-            getattr(args, "parametric", False),
-            recognition_backend=getattr(args, "recognition_backend", "native"),
-            compute_backend=getattr(args, "compute_backend", "auto"),
-        )
+        stats = convert_stl_to_scad(args.input_file, args.output_file)
+        print("Pipeline: segmentation")
         print_stats(stats)
         return 0
 
@@ -1282,6 +969,7 @@ def verify_command(args: argparse.Namespace) -> int:
         int: Exit code (0 for success, 1 for error, 2 for verification failure)
     """
     temp_dir_context = None
+    _warn_ignored_legacy_options(args)
     try:
         tolerance = _tolerance_from_args(args)
         visualize = bool(args.visualize or args.html_report)
@@ -1297,13 +985,7 @@ def verify_command(args: argparse.Namespace) -> int:
             scad_file_to_use = str(
                 temp_dir / f"{Path(args.input_file).stem}.scad"
             )
-            stl2scad(
-                args.input_file,
-                scad_file_to_use,
-                parametric=getattr(args, "parametric", False),
-                recognition_backend=getattr(args, "recognition_backend", "native"),
-                compute_backend=getattr(args, "compute_backend", "auto"),
-            )
+            convert_stl_to_scad(args.input_file, scad_file_to_use)
 
         print("Tolerance settings:")
         print(f"  Volume: {tolerance['volume']}%")
@@ -1381,6 +1063,7 @@ def batch_command(args: argparse.Namespace) -> int:
     Returns:
         int: Exit code (0 for success, 1 for error, 2 for verification failures)
     """
+    _warn_ignored_legacy_options(args)
     try:
         tolerance = _tolerance_from_args(args)
         input_path = Path(args.input_dir)
@@ -1421,13 +1104,7 @@ def batch_command(args: argparse.Namespace) -> int:
             print(f"Output: {scad_file}")
 
             try:
-                stl2scad(
-                    str(stl_file),
-                    str(scad_file),
-                    parametric=getattr(args, "parametric", False),
-                    recognition_backend=getattr(args, "recognition_backend", "native"),
-                    compute_backend=getattr(args, "compute_backend", "auto"),
-                )
+                convert_stl_to_scad(str(stl_file), str(scad_file))
                 result = verify_conversion(
                     stl_file,
                     scad_file,

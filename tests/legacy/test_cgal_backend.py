@@ -11,11 +11,11 @@ import numpy as np
 import pytest
 import stl
 
-from stl2scad.core import cgal_backend
-from stl2scad.core import recognition as recognition_module
-from stl2scad.core import converter as converter_module
+from stl2scad.legacy import cgal_backend
+from stl2scad.legacy import recognition as recognition_module
+from stl2scad.legacy import converter as converter_module
 from stl2scad.core.verification import verification as verification_module
-from stl2scad.core.converter import stl2scad
+from stl2scad.legacy.converter import stl2scad
 from stl2scad.core.benchmark_fixtures import ensure_benchmark_fixtures
 
 

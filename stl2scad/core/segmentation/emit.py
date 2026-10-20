@@ -7,7 +7,7 @@ import numpy as np
 from stl.mesh import Mesh
 
 from .. import ir
-from ..converter import get_openscad_path, run_openscad
+from ..openscad.runner import get_openscad_path, run_openscad
 from ..temp_paths import temporary_directory
 from .solid import mesh_hausdorff
 from .to_ir import ParametricModel, features_to_ir

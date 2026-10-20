@@ -12,7 +12,7 @@ from typing import Any, Iterable, Optional
 
 import stl
 
-from .benchmark_fixtures import load_benchmark_manifest
+from stl2scad.core.benchmark_fixtures import load_benchmark_manifest
 from .recognition import detect_primitive_with_diagnostics
 
 

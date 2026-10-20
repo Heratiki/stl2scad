@@ -6,7 +6,7 @@ import json
 
 from stl2scad import cli
 from stl2scad.core.benchmark_fixtures import ensure_benchmark_fixtures
-from stl2scad.core.feature_inventory import (
+from stl2scad.legacy.feature_inventory import (
     InventoryConfig,
     InventorySelectionConfig,
     analyze_stl_file,

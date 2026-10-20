@@ -7,6 +7,8 @@ PyOpenGL>=3.1.7
 PyOpenGL-accelerate>=3.1.7
 typing_extensions>=4.12.2
 psutil>=5.9.0
+networkx>=3.0  # segmentation pipeline
+trimesh>=4.0.0  # segmentation Hausdorff gate
 
 # Test dependencies
 pytest>=8.0.0

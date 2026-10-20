@@ -13,7 +13,7 @@ from stl2scad.tuning.config import DetectorConfig
 
 
 def test_ir_tree_wraps_revolve_solid_as_extrude_revolve():
-    from stl2scad.core.feature_graph import _build_ir_tree
+    from stl2scad.legacy.feature_graph import _build_ir_tree
 
     graph = {
         "schema_version": 1,
@@ -45,7 +45,7 @@ def test_ir_tree_wraps_revolve_solid_as_extrude_revolve():
 
 
 def test_emit_revolve_scad_preview_generates_rotate_extrude():
-    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+    from stl2scad.legacy.feature_graph import emit_feature_graph_scad_preview
 
     graph = {
         "schema_version": 1,
@@ -74,7 +74,7 @@ def test_build_feature_graph_detects_revolve_before_cylinder(tmp_path):
     """Rule 1: revolve recovery runs before cylinder detection."""
     import numpy as np
     from stl.mesh import Mesh as StlMesh
-    from stl2scad.core.feature_graph import build_feature_graph_for_stl
+    from stl2scad.legacy.feature_graph import build_feature_graph_for_stl
 
     def _cyl(h, r, seg):
         theta = np.linspace(0, 2*np.pi, seg, endpoint=False)
@@ -111,7 +111,7 @@ def test_build_feature_graph_detects_revolve_before_cylinder(tmp_path):
 
 def test_emit_revolve_scad_preview_cylinder_upgrade_emits_cylinder():
     """Phase 2: rectangle profile with primitive_upgrade emits cylinder() call."""
-    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+    from stl2scad.legacy.feature_graph import emit_feature_graph_scad_preview
 
     graph = {
         "schema_version": 1,
@@ -143,7 +143,7 @@ def test_emit_revolve_scad_preview_cylinder_upgrade_emits_cylinder():
 
 def test_emit_revolve_scad_preview_cone_upgrade_emits_cylinder_r1_r2():
     """Phase 2: cone profile with primitive_upgrade emits cylinder(r1=..., r2=...) call."""
-    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+    from stl2scad.legacy.feature_graph import emit_feature_graph_scad_preview
 
     graph = {
         "schema_version": 1,
@@ -174,7 +174,7 @@ def test_emit_revolve_scad_preview_cone_upgrade_emits_cylinder_r1_r2():
 
 def test_emit_revolve_scad_preview_sphere_upgrade_emits_sphere():
     """Phase 2: sphere profile with primitive_upgrade emits sphere() call."""
-    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+    from stl2scad.legacy.feature_graph import emit_feature_graph_scad_preview
 
     graph = {
         "schema_version": 1,
@@ -205,7 +205,7 @@ def test_emit_revolve_scad_preview_sphere_upgrade_emits_sphere():
 
 def test_emit_revolve_scad_preview_annular_emits_difference_cylinders():
     """Annular revolve emits difference() of two cylinders."""
-    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+    from stl2scad.legacy.feature_graph import emit_feature_graph_scad_preview
 
     graph = {
         "schema_version": 1,
@@ -235,7 +235,7 @@ def test_emit_revolve_scad_preview_annular_emits_difference_cylinders():
 
 def test_emit_revolve_scad_preview_fallback_without_upgrade():
     """Without primitive_upgrade, generic rotate_extrude is emitted."""
-    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+    from stl2scad.legacy.feature_graph import emit_feature_graph_scad_preview
 
     graph = {
         "schema_version": 1,
@@ -394,7 +394,7 @@ def test_classify_revolve_profile_disabled_by_config():
 
 def test_revolve_rectangle_profile_emits_cylinder_preview():
     """The rect-profile revolve fixture's SCAD preview should emit cylinder() (Phase 2 upgrade)."""
-    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+    from stl2scad.legacy.feature_graph import emit_feature_graph_scad_preview
 
     # Build a synthetic revolve_solid feature with primitive_upgrade=cylinder
     graph = {
@@ -425,7 +425,7 @@ def test_revolve_rectangle_profile_emits_cylinder_preview():
 
 def test_revolve_triangle_profile_emits_cone_preview():
     """Triangle-profile revolve should emit cylinder(r1=..., r2=...) via Phase 2."""
-    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+    from stl2scad.legacy.feature_graph import emit_feature_graph_scad_preview
 
     graph = {
         "features": [
@@ -456,7 +456,7 @@ def test_revolve_triangle_profile_emits_cone_preview():
 
 def test_revolve_sphere_profile_emits_sphere_preview():
     """Sphere-profile revolve should emit sphere() via Phase 2."""
-    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+    from stl2scad.legacy.feature_graph import emit_feature_graph_scad_preview
 
     graph = {
         "features": [
@@ -486,7 +486,7 @@ def test_revolve_sphere_profile_emits_sphere_preview():
 
 def test_revolve_no_upgrade_uses_rotate_extrude():
     """A revolve feature WITHOUT primitive_upgrade must still emit rotate_extrude."""
-    from stl2scad.core.feature_graph import emit_feature_graph_scad_preview
+    from stl2scad.legacy.feature_graph import emit_feature_graph_scad_preview
 
     graph = {
         "features": [

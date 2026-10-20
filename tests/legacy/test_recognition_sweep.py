@@ -5,7 +5,7 @@ Tests for recognition sweep reporting and regression gates.
 from pathlib import Path
 
 from stl2scad.core.benchmark_fixtures import generate_benchmark_fixture_set
-from stl2scad.core.recognition_sweep import (
+from stl2scad.legacy.recognition_sweep import (
     SweepGateConfig,
     _infer_primitive_type,
     discover_fixtures,

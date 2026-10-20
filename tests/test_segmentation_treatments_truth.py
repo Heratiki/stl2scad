@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 from stl.mesh import Mesh
 
-from stl2scad.core.converter import run_openscad
+from stl2scad.core.openscad.runner import run_openscad
 from tests.test_segmentation_bracket import _rotation, openscad_path
 
 DATA = Path(__file__).parent / "data" / "segmentation"

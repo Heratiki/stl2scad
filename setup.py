@@ -22,12 +22,10 @@ setup(
         "Topic :: Scientific/Engineering :: Computer Aided Design",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.10",
     install_requires=[
         "numpy>=1.24.3",
         "numpy-stl>=3.1.2",
@@ -37,6 +35,11 @@ setup(
         "PyOpenGL-accelerate>=3.1.7",
         "typing_extensions>=4.12.2",
         "psutil>=5.9.0",
+        # Required by the segmentation pipeline (T-004 made it the only
+        # conversion path): networkx in segmentation models, trimesh for the
+        # Hausdorff gate's point/triangle distance.
+        "networkx>=3.0",
+        "trimesh>=4.0.0",
     ],
     extras_require={
         "parametric_phase1": [

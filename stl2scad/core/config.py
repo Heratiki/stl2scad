@@ -110,7 +110,7 @@ def load_config() -> Config:
 
     if config_path.exists():
         try:
-            with open(config_path, "r") as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 config_data = json.load(f)
                 # Merge with defaults to ensure all required keys exist
                 merged = DEFAULT_CONFIG.copy()
@@ -121,7 +121,7 @@ def load_config() -> Config:
     else:
         # Create default config file
         try:
-            with open(config_path, "w") as f:
+            with open(config_path, "w", encoding="utf-8") as f:
                 json.dump(DEFAULT_CONFIG, f, indent=2)
         except Exception as e:
             raise ConfigLoadError(f"Error creating config file: {e}") from e
@@ -141,7 +141,7 @@ def save_config(config: Config) -> None:
     """
     config_path = get_config_path()
     try:
-        with open(config_path, "w") as f:
+        with open(config_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
     except Exception as e:
         raise ConfigSaveError(f"Error saving config: {e}") from e

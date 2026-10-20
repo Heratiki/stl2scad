@@ -14,13 +14,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from stl2scad.core.feature_graph import (
+from stl2scad.legacy.feature_graph import (
     build_feature_graph_for_folder,
     build_feature_graph_for_stl,
     build_triage_report,
     emit_feature_graph_scad_preview,
 )
-from stl2scad.core.feature_inventory import (
+from stl2scad.legacy.feature_inventory import (
     InventoryConfig,
     InventorySelectionConfig,
     analyze_stl_folder_for_feature_graphs,

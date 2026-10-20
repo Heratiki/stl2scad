@@ -5,7 +5,7 @@ Tests for OpenSCAD command execution and version checking.
 import pytest
 import sys
 from pathlib import Path
-from stl2scad.core.converter import get_openscad_path, run_openscad
+from stl2scad.core.openscad.runner import get_openscad_path, run_openscad
 from .utils import setup_logging, check_openscad_processes
 
 

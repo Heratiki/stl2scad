@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import stl
 import numpy as np
-from stl2scad.core.converter import stl2scad
+from stl2scad.core.conversion import convert_stl_to_scad as stl2scad
 from stl2scad.core.verification import (
     calculate_stl_volume,
     calculate_stl_surface_area,

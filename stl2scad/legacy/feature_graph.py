@@ -29,7 +29,7 @@ COMPOSITE_CONTAINMENT_THRESHOLD = 0.50
 
 
 from stl2scad.tuning.config import DetectorConfig
-from stl2scad.core.linear_extrude_recovery import detect_linear_extrude_solid
+from stl2scad.legacy.linear_extrude_recovery import detect_linear_extrude_solid
 
 
 def _passes_preview_solid_confidence(

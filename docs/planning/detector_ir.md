@@ -46,6 +46,7 @@ Every primitive node below must appear as a child of exactly one Combine node, e
 | `TransformMirror` | `mirror([mx,my,mz])` |
 | `TransformScale` | `scale([sx,sy,sz])` |
 | `TransformMatrix` | `multmatrix(M)` — fallback only |
+| `TransformMultMatrix` | `multmatrix(M)` — 4x4 part-frame placement |
 
 Transforms wrap a single child feature. Patterns below are the structured alternative to repeating transforms by hand.
 
@@ -74,7 +75,7 @@ Transforms wrap a single child feature. Patterns below are the structured altern
 | IR Node | SCAD emission strategy | Detector status |
 | --- | --- | --- |
 | `HoleThrough` | `cylinder(h=plate_t+eps, d)` | Detected as `hole_like_cutout`; emitted. |
-| `HoleBlind` | depth-limited cylinder | Not detected. |
+| `HoleBlind` | depth-limited cylinder | Typed IR node defined; segmentation pipeline detection in progress. |
 | `HoleCounterbore` | named module, shaft + bore | Generator+fixture only; **not yet detected** from raw mesh. |
 | `HoleCountersink` | shaft + cone | Not detected. |
 | `Slot` / `Obround` | `hull()` of two cylinders | Detected as `slot_like_cutout`; emitted. |
@@ -85,8 +86,8 @@ Transforms wrap a single child feature. Patterns below are the structured altern
 
 | IR Node | SCAD | Detector status |
 | --- | --- | --- |
-| `Sketch2D` (`square`, `circle`, `polygon`, `slot2d`) | native 2D ops | `polygon` variant recovered from revolve profile (Phase 1 of rotate_extrude spec). Other variants pending. |
-| `ExtrudeLinear` | `linear_extrude(h, scale?, twist?)` | Not recovered. |
+| `Sketch2D` (`square`, `circle`, `polygon`, `slot2d`) | native 2D ops | `polygon` variant recovered from revolve profile (Phase 1) and linear extrude profile (Phase 3). Other variants pending. |
+| `ExtrudeLinear` | `linear_extrude(h, scale?, twist?)` | **Detected** via linear-extrude recovery pipeline (Phase 3). Emits `linear_extrude(height) polygon(...)` preview. |
 | `ExtrudeRevolve` | `rotate_extrude()` | **Detected** via axisymmetric-revolve pipeline (Phase 1). Profile emits as `polygon`; profile classification to native primitives is Phase 2. |
 
 Recovering extrusion-from-profile is the single largest future wins bucket (most mechanical parts are "profile + extrude" in intent). Blocked on 2D sketch extraction from mesh cross-sections.
@@ -97,6 +98,7 @@ Recovering extrusion-from-profile is the single largest future wins bucket (most
 | --- | --- | --- |
 | `ChamferEdge` | `hull()` or boolean approximation | **Promoted to first-class IR node** (`ChamferOrFilletEdge`) as a cut-list child of `BooleanDifference`. Emitted when `detected_via == "tolerant_chamfer_or_fillet"`. Exact kind (chamfer vs fillet) not yet distinguished. |
 | `FilletEdge` / `RoundEdge` | `minkowski()` or custom module | Shares the `ChamferOrFilletEdge` node until kind disambiguation lands. Detection pending. |
+| `Fillet` | rounding between adjacent faces | Typed IR node defined (radius between two face IDs). Segmentation detection in progress. |
 | `DraftFace` | scaled extrusion | Not detected. |
 
 Today chamfered edges are a *tolerance* in the plate detector, not an IR node. Promoting them to `ChamferEdge`/`FilletEdge` children of a plate or box lets the emitter print editable chamfer/fillet parameters rather than silently approximating them.
@@ -105,10 +107,17 @@ Today chamfered edges are a *tolerance* in the plate detector, not an IR node. P
 
 | IR Node | Status |
 | --- | --- |
-| `Boss` (added cylinder/rib on a face) | Not detected. |
+| `Boss` (added cylinder/rib on a face) | Typed IR node defined (height, radius, center, axis, host face); segmentation detection in progress. |
 | `Rib` / `Web` | Not detected. |
 | `Shell` / `Thickness` | Not detected. Relevant for `box_hollow_ambiguous` fixture. |
 | `Tab` / `Flange` | Not detected. |
+
+### Tier 2 — Parameters & Constraints (Customizer & Verification)
+
+| IR Node | Purpose | Fields |
+| --- | --- | --- |
+| `Parameter` | Parametric variable with OpenSCAD Customizer metadata | `name`, `value`, `raw_value`, `min`, `step`, `max`, `group`, `description`, `face_ids` |
+| `Constraint` | OpenSCAD assert expression with user-facing message | `expression`, `message`, `face_ids` |
 
 ### Tier 3 — Outline / morphology
 
@@ -151,19 +160,34 @@ Flat node types in [feature_graph.py](../../stl2scad/core/feature_graph.py) toda
 | `counterbore_hole` | `HoleCounterbore` (child of the enclosing `BooleanDifference`) |
 | `linear_hole_pattern` | `PatternLinear { child: HoleThrough }` |
 | `grid_hole_pattern` | `PatternGrid { child: HoleThrough }` |
+| `linear_extrude_solid` | `ExtrudeLinear { profile: Sketch2D(polygon), height }` |
+| `revolve_solid` | `TransformRotate { child: ExtrudeRevolve { profile: Sketch2D(polygon) } }` |
+| `rectangular_cutout` | `TransformTranslate { child: RectangularCutout }` |
+| `rectangular_pocket` | `TransformTranslate { child: RectangularPocket }` |
+
+### New pipeline IR nodes (composite bracket & parameterization)
+
+| New IR Node | Purpose | Fields |
+| --- | --- | --- |
+| `TransformMultMatrix` | 4x4 part-frame placement | `matrix`, `child`, `face_ids` |
+| `Boss` | Added cylindrical/rib boss on host face | `height`, `radius`, `center`, `axis`, `diameter`, `host_face_id`, `face_ids` |
+| `HoleBlind` | Depth-limited cylindrical blind hole | `depth`, `diameter`, `radius`, `center`, `axis`, `host_face_id`, `face_ids` |
+| `Fillet` | Rounding between two adjacent host faces | `radius`, `face1_id`, `face2_id`, `face_ids` |
+| `Parameter` | Named OpenSCAD Customizer parameter metadata | `name`, `value`, `raw_value`, `min`, `step`, `max`, `group`, `description`, `face_ids` |
+| `Constraint` | OpenSCAD assert statement expression and message | `expression`, `message`, `face_ids` |
 
 ## Gap summary (where to invest, in priority order)
 
 1. **Boolean + Transform wrapping of today's flat list.** Zero new detectors, pure refactor; resolves the cylinder-polarity problem structurally and unblocks anything rotated.
-2. **Chamfer/Fillet promotion to first-class IR nodes.** Currently hidden inside tolerance logic; promoting them makes Track B's filleted-edge work emit editable SCAD instead of silent approximations.
+2. **Chamfer/Fillet promotion to first-class IR nodes.** Currently hidden inside tolerance logic; promoting them makes Track B's filleted-edge work emit editable SCAD instead of silent approximations. `Fillet` typed IR node landed.
 3. **Positive `PrimitiveBox` emission.** Detector already fires; emitter skips. Track B item.
 4. **`PatternGrid` loop emission.** Metadata exists; emitter flat-lists. Track D.
 5. **`Interpretation` wrapper for ranked candidates.** Closes the detector-native ranking gap.
 6. **`PrimitiveCylinder` as a positive primitive** — but only after #1 lands. A cylinder detector without boolean context will keep mis-firing on holes.
 7. **`HoleCounterbore` / `HoleCountersink` detection from mesh.** Fixture-generator side exists; detector side doesn't.
 8. **`PatternMirror` and `PatternRadial`.** Next-highest-value pattern families.
-9. **Shell / `Boss` / `Rib` / `Tab`.** Structural features.
-10. **Sketch2D recovery and `ExtrudeLinear` from cross-sections.** `ExtrudeRevolve` plus `Sketch2D(polygon)` are now in main via the axisymmetric-revolve pipeline; native profile classification and linear extrude recovery remain.
+9. **Shell / `Boss` / `Rib` / `Tab`.** Structural features. `Boss` typed IR node landed.
+10. **Sketch2D recovery and profile classification.** `ExtrudeRevolve` plus `ExtrudeLinear` with `Sketch2D(polygon)` are now in main (Phases 1 & 3 landed); native profile classification (circle, slot2d) remains.
 
 Items below this line are deferred until the Real-World Feedback Loop (Phases 1–3 of [feature_level_reconstruction.md](feature_level_reconstruction.md)) raises real-world pass-rate meaningfully:
 

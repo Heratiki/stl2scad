@@ -7,7 +7,7 @@ fails, and when the maintainer rules. Procedure:
 ## Before any wave
 
 1. `~/.claude/lane-usage.sh`; log the line (memory `lane-usage-tally`,
-   "Pool readings"). Reading 2026-10-20T18:06Z: claude 5h 10 % / week 52 %; codex 5h 82 % used (resets 22:06Z) / week 15 %; agy gemini 5h 100 % / week 89 % left; agy-Claude week 14 %; Argon week 81 % left. Codex is above 80 % of its 5h window: no new codex lane before its reset.
+   "Pool readings"). Reading 2026-10-20T20:35Z (after wave 3): claude 5h 22 % / week 54 %; codex 5h 21 % / week 21 %; agy gemini 5h 100 % / week 89 % left; agy-Claude week 14 %; Argon week 81 % left. Before wave 3 (20:01Z): claude 5h 16 % / week 53 %; codex 5h 0 % / week 15 %.
 2. Check the model lists (`codex debug models`, `agy models`, the Claude
    models in the session) against the register.
 3. If this repo uses external lanes: the `lanes` tool `list` (and the tmux
@@ -17,17 +17,16 @@ fails, and when the maintainer rules. Procedure:
 
 | Ticket | Route | State | Next |
 |---|---|---|---|
-| Plan 1 Task 4: slab levels and section profiles | codex lane (`resume` plan1-task3) | queued | first of wave 3; plan file |
-| Plan 1 Tasks 5–7 | codex lanes in order | queued | after Task 4 |
-| T-005 orientation-dependent treatment numbering (+ UTF-8 temp SCAD writes in `emit.py:245`, `solid.py:211`) | codex lane | open, ruled | owns `defeature.py`; one at a time with T-006, T-008 (same file) |
-| T-006 chamfer on a non-orthogonal wall rejected | codex lane | open, ruled | after T-005 |
-| T-007 extrusion-axis tie-break loses the chamfer on tall posts | codex lane | open, ruled | owns `regularize.py`; can run beside T-005 |
-| T-008 chamfer on a split host wall dropped with no reason | codex lane | open, ruled | after T-006 |
-| T-010 revolved solids (cylinders, cones, stepped shafts first) | codex lane | open, ruled | after Plan 1 Task 4 (slabs) |
+| Plan 1 Task 5: remainder regions and the new dispatch | codex lane (`resume` plan1-task4) | queued | first of wave 4; plan file |
+| Plan 1 Tasks 6–7 | codex lanes in order | queued | after Task 5 |
+| T-006 chamfer on a non-orthogonal wall rejected | lane-dev (Sonnet) or codex | open, ruled | owns `defeature.py`; one at a time with T-008, T-015 |
+| T-008 chamfer on a split host wall dropped with no reason | lane-dev or codex | open, ruled | after T-006 |
+| T-015 part-intrinsic numbering for twin side faces | lane-dev (Opus, design inside) or codex | open, ruled | `defeature.py`; after T-006 or T-008 |
+| T-010 revolved solids (cylinders, cones, stepped shafts first) | codex lane | open, ruled | slabs landed; can start |
 | T-011 rectangular cutouts / pockets: early named rejection | codex lane | open, ruled | small; any wave |
 | T-012 segmentation speed + multi-core for one part | codex lane | open, ruled | profile first |
 | T-013 hollow box as negative primitive (void shells) | codex lane | open, ruled (in scope) | after T-011 |
-| T-014 shaft keyway as an extruded profile | codex lane | open, ruled | after Plan 1 Task 4 |
+| T-014 shaft keyway as an extruded profile | codex lane | open, ruled | slabs landed; can start |
 
 Wave order: a file two tickets need is changed by the first ticket's lane,
 merged, then the second lane starts. Plan 1 Task 4 and T-005..T-008 all touch
@@ -52,6 +51,14 @@ One line each: what to check, where, and which ticket it closes.
 
 Newest first: `## Wave N — <date>, <pushed at sha | NOT pushed>` and one line
 per ticket.
+
+## Wave 3 — 2026-10-20, NOT pushed
+
+- T-007 extrusion-axis tie prefers the axis that explains treatments: 0fd713a (Sonnet lane-dev; first commit broke `test_oblique_edge_is_not_a_treatment`, fixed in one round by counting only treatments defeature keeps).
+- T-005 treatment numbering from a centroid-anchored frame, + UTF-8 temp SCAD writes: 0b81078 (Sonnet lane-dev). Twin side faces keep the world-axis sign (maintainer ruling 2026-10-20); follow-up T-015 (8239599).
+- Plan 1 Task 4, slab levels and section profiles: 9fb6f58 (codex lane plan1-task4, gpt-6.1-sol high, resume of plan1-task3). Known limits in `.scratch/lanes/plan1-task4/REPORT.md`: multi-chain or branched regions raise ValueError.
+- Out of repo: lane-panel 0.7.1 (Codex usage reader past imported rollouts, f4826c8) and claude-config 4b541bc (`lane-usage.sh`), both pushed. Claude estimate fix in session `lane-panel-estimates`.
+- Full run at 9fb6f58: 441 passed, 220 skipped, 30 xfailed, 0 failed.
 
 ## Wave 2 — 2026-10-20, pushed to 608296f; 4 commits after it NOT pushed
 

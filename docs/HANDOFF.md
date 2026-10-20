@@ -1,6 +1,6 @@
 # Handoff
 
-**Last Updated:** 2026-10-20 — plan 1 Tasks 1–2 landed (ad41450, cbca1ee); orchestration set up; no lane in flight; segmentation tests 257 passed; nothing deployed (no deploy step).
+**Last Updated:** 2026-10-20 14:20Z — plan 1 Tasks 1–2 landed (ad41450, cbca1ee); orchestration set up (e0447f8); open tickets: flake8 `Any` import, stray gitlink; segmentation tests 257 passed; 18 commits not pushed; nothing deployed (no deploy step).
 
 ## Next session, first three things
 
@@ -32,4 +32,4 @@ Open:
 - The baseline has 3 known failures (`revolve_triangle_profile`); the user said not to fix them now.
 - The flake8 gate failure above.
 
-Outside this repo (this host only): lane-panel mod at `~/.claude/mods/lane-panel` (0.6.0, GitHub `Heratiki/lane-panel`); global config `~/.claude` (GitHub `Heratiki/claude-config`).
+Ledger: `docs/agents/work-ledger.md` (queue and Wave 1). Outside this repo (this host only; also on GitHub): lane-panel mod at `~/.claude/mods/lane-panel` (0.6.0, GitHub `Heratiki/lane-panel`); global config `~/.claude` (GitHub `Heratiki/claude-config`).

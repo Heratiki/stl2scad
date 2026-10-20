@@ -297,7 +297,30 @@ def extrusion_axis(result: SegmentationResult) -> np.ndarray:
                 treatment = cap[adjacent].any() and side[adjacent].any()
             if treatment:
                 explained[i] = True
-                treatments += 1
+                if not planar[i]:
+                    treatments += 1
+                    continue
+                # Count only treatments defeature would keep: exactly one
+                # cap/side host pair whose edge lies in the face, with the
+                # face centred on the hosts' bisector.
+                pairs = []
+                for c in (j for j in adjacent if cap[j]):
+                    for d in (j for j in adjacent if side[j]):
+                        edge = np.cross(directions[c], directions[d])
+                        norm = np.linalg.norm(edge)
+                        if norm == 0 or abs(directions[i] @ edge) > sine * norm:
+                            continue
+                        hosts = np.array([directions[c], directions[d]])
+                        coefficients = np.linalg.lstsq(
+                            hosts.T, directions[i], rcond=None
+                        )[0]
+                        if np.all(coefficients > 0):
+                            pairs.append(hosts)
+                if len(pairs) == 1:
+                    bisector = pairs[0].sum(axis=0)
+                    bisector /= np.linalg.norm(bisector)
+                    if directions[i] @ bisector >= cosine:
+                        treatments += 1
         scores.append(
             (
                 float(weights[~explained].sum()),

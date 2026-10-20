@@ -8,6 +8,8 @@ This file follows the `AGENTS.md` convention used by Codex and similar agents. T
 2. **The `.scad` files under `tests/data/feature_fixtures_scad/` are generated, but checked in as golden output.** Do not hand-edit them. If you change the generator in [stl2scad/core/feature_fixtures.py](stl2scad/core/feature_fixtures.py), regenerate the library and commit the updated `.scad` files in the same change.
 3. **Read [docs/planning/feature_level_reconstruction.md](docs/planning/feature_level_reconstruction.md) before proposing detector or fixture changes.** The long-term goal is primitive detection with confidence-ranked parametric SCAD output — not polyhedron transcription.
 
+4. **Read "Failure analysis (2026-10-20)" in [CLAUDE.md](CLAUDE.md) before detector work.** Parametric mode stalls on real parts (18 of 20 fall back to polyhedron) because detectors classify the whole mesh instead of segmenting it. Threshold tuning does not help; the fix is surface segmentation (region growing + RANSAC) and a region adjacency graph, then per-region features.
+
 ## Constraints
 
 - `get_openscad_path()` requires `"OpenSCAD (Nightly)"` in the Windows path — don't remove the substring check.

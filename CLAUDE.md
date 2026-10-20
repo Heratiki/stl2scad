@@ -6,6 +6,30 @@ This file is the canonical entry point for AI coding assistants (Claude Code, Cu
 
 stl2scad converts STL meshes into editable OpenSCAD. Today's output is primarily polyhedron; the long-term goal is **primitive detection + parametric SCAD output** with confidence-scored multi-interpretation ranking. Core conversion lives in [stl2scad/core/converter.py](stl2scad/core/converter.py); the detector pipeline lives in [stl2scad/core/feature_graph.py](stl2scad/core/feature_graph.py) and [stl2scad/core/feature_inventory.py](stl2scad/core/feature_inventory.py). The roadmap and current assessment is in [docs/planning/feature_level_reconstruction.md](docs/planning/feature_level_reconstruction.md) — read this before proposing detector or fixture changes.
 
+## Failure analysis (2026-10-20) — read before new detector work
+
+An outside review of the repo (code, git history, test output and artifacts) found why parametric mode stalls on real parts. Evidence: [artifacts/local_corpus_report.html](artifacts/local_corpus_report.html) shows 18 of 20 real parts (Hero Me Gen7 mounts and similar) falling back to polyhedron and 2 giving only plane pairs, although its header claims "30% preview ready"; [docs/planning/detector_autotune_results.md](docs/planning/detector_autotune_results.md) tuned 25 thresholds with Optuna for no gain and concluded "the bottleneck is algorithmic, not parametric."
+
+**Root cause: whole-mesh classification instead of segmentation.** Each detector in [feature_graph.py](stl2scad/core/feature_graph.py) asks "is this entire mesh a plate / box / cylinder / revolve / extrude?" Real parts are compositions of features, so every detector rejects them. Composition only handles physically disconnected components.
+
+Consequences of that design:
+- **World-axis assumptions.** Detection relies on normal histograms against X/Y/Z, opposing plane pairs and bounding boxes. Rotated cases were added one by one; fillets and chamfers break the "intact side plane" checks and needed tolerant special cases.
+- **Fixed detector priority with hard-coded thresholds** (confidence 0.70, containment 0.50, widened radius thresholds for float32 coordinates). The first match wins, which is how `box_x_through_hole` comes out as a cylinder ([pytest_output.txt](pytest_output.txt)). Box detection can false-positive on hollow shells.
+- **No polarity / ownership step.** Nothing decides whether a feature adds or removes material, or which body it belongs to, so `difference()` output is limited to through-holes in plates. Blind holes, pockets, countersinks, bosses, ribs and fillet radii are unsolved.
+- **Infrastructure before the core.** Corpus tooling, scoring, HTML reports and the auto-tuner were built before segmentation worked.
+- **Synthetic success hides the gap.** The 96 fixtures pass because each is a clean single feature on world axes. `artifacts/real_world_recall_baseline.json` was never populated (0 of 2 files present).
+
+**Keep:** the fixture round-trip loop and its three invariants (below), the negative cases (sphere, torus), the IR idea (Sketch2D, Extrude, Revolve, Boolean, Pattern nodes; [docs/planning/detector_ir.md](docs/planning/detector_ir.md)), the safe polyhedron fallback, confidence scores and diagnostics.
+
+**Recommended new pipeline (replace the whole-mesh detectors, not tune them):**
+1. Load and repair: weld vertices, work in float64, tolerances relative to part size.
+2. Segment the surface: region growing on normals/curvature plus RANSAC (Efficient RANSAC / Schnabel-style) for planes, cylinders, cones, spheres and tori at any orientation.
+3. Build a region adjacency graph and recover B-rep-like faces and edges; classify edges convex/concave; treat fillets as cylinder/torus strips between faces.
+4. Detect features from the graph, per region: dominant directions from plane normals; slice into 2D profiles to recover extrudes and revolves; concave cylinders are holes (this gives polarity directly); stepped planar loops are pockets and bosses.
+5. Emit through the IR, and validate with a Hausdorff distance to the input mesh, not only by dimension checks.
+
+Before more tuning or reporting work, make one real composite part (a bracket with a boss, a blind hole and a fillet) round-trip through steps 1–4.
+
 ## Feature Fixtures — the detector-validation harness (READ FIRST)
 
 [tests/data/feature_fixtures_manifest.json](tests/data/feature_fixtures_manifest.json) + [tests/data/feature_fixtures_scad/](tests/data/feature_fixtures_scad/) + [stl2scad/core/feature_fixtures.py](stl2scad/core/feature_fixtures.py) + [tests/test_feature_fixtures.py](tests/test_feature_fixtures.py) form a closed-loop ground-truth system: **manifest → generated SCAD → rendered STL → feature graph → asserted against the manifest**. This is the primary safety net for detector work.

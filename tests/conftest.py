@@ -124,3 +124,18 @@ def sample_stl_file(test_data_dir, cube_stl_path):
 def cleanup_output(test_output_dir):
     """Clean up temporary test output files after test."""
     yield
+
+
+def pytest_collection_modifyitems(config, items):
+    """Deselect tests marked slow unless the run passes -m (T-009).
+
+    Done here rather than in pytest.ini addopts because the suite is run with
+    -o addopts="". Use -m slow to run only the slow fixtures, or -m "slow or
+    not slow" for everything. Remove with the perf ticket.
+    """
+    if config.option.markexpr:
+        return
+    deselected = [item for item in items if item.get_closest_marker("slow")]
+    if deselected:
+        items[:] = [item for item in items if not item.get_closest_marker("slow")]
+        config.hook.pytest_deselected(items=deselected)

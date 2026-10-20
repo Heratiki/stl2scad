@@ -1,6 +1,6 @@
 # T-009: Retarget the fixture round-trip to the segmentation pipeline
 
-Status: open. Route: Sonnet lane-dev.
+Status: landed (worktree-agent-a0d77460d4116ade0, 2026-10-20). Route: Sonnet lane-dev.
 Opened: 2026-10-20 by the ticket-writer, from the maintainer's rulings and a measurement of the same date.
 Depends on: T-004
 
@@ -69,13 +69,13 @@ Measurement 2026-10-20 at HEAD 39185de, segmentation pipeline over every rendere
 
 ## Acceptance
 
-- [ ] New or retargeted round-trip test (name chosen by the lane): for every fixture in `fixture_expectations.json`, asserts parametric plus Hausdorff within the gate plus expected counts, or the expected fallback reason.
-- [ ] A test asserting every rendered fixture has an entry in the expectations file and every entry names an existing fixture.
-- [ ] Every known-gap fixture asserts its reason string.
-- [ ] `pytest -m slow --collect-only` collects exactly the fixtures flagged `slow` (those over about 30 s); the default run deselects them.
-- [ ] Existing tests unchanged: `test_feature_fixture_manifest_matches_checked_in_scad` and `test_feature_fixture_manifest_covers_roadmap_stress_cases`.
-- [ ] Scoped run of the fast set passes (lane may run it with the flock prefix from `test_scoped`).
-- [ ] Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
-- [ ] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.
+- [x] New or retargeted round-trip test (name chosen by the lane): for every fixture in `fixture_expectations.json`, asserts parametric plus Hausdorff within the gate plus expected counts, or the expected fallback reason.
+- [x] A test asserting every rendered fixture has an entry in the expectations file and every entry names an existing fixture.
+- [x] Every known-gap fixture asserts its reason string.
+- [x] `pytest -m slow --collect-only` collects exactly the fixtures flagged `slow` (those over about 30 s); the default run deselects them.
+- [x] Existing tests unchanged: `test_feature_fixture_manifest_matches_checked_in_scad` and `test_feature_fixture_manifest_covers_roadmap_stress_cases`.
+- [x] Scoped run of the fast set passes (lane may run it with the flock prefix from `test_scoped`).
+- [x] Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
+- [x] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.
 
 Do NOT run the test harness. Stage paths explicitly.

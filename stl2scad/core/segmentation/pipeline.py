@@ -247,4 +247,6 @@ def segment_mesh(
                 convexity,
             )
         )
-    return SegmentationResult(faces, _region_graph(repaired, faces, owner, config))
+    return SegmentationResult(
+        faces, _region_graph(repaired, faces, owner, config), repaired
+    )

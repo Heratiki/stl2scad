@@ -131,10 +131,6 @@ def test_segmentation_recovers_faces_and_edges(rendered, variant_name):
         assert result.edge_convexity(a, b) == edge["convexity"], edge
 
 
-@pytest.mark.xfail(
-    raises=ImportError, strict=True,
-    reason="feature detection from the region graph (CLAUDE.md step 4) not built yet",
-)
 @pytest.mark.parametrize("variant_name", list(VARIANTS))
 def test_features_recovered_with_polarity_and_hausdorff(rendered, variant_name):
     from stl2scad.core.segmentation import detect_features, hausdorff_to_mesh, segment_mesh

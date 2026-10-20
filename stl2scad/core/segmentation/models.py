@@ -6,6 +6,8 @@ from typing import Literal
 import networkx as nx
 import numpy as np
 
+from .repair import RepairedMesh
+
 Vector = tuple[float, float, float]
 Convexity = Literal["convex", "concave", "tangent"]
 
@@ -91,6 +93,9 @@ class Face:
 class SegmentationResult:
     faces: list[Face]
     graph: nx.Graph
+    # Indexed support is needed for section loops in step 4. It is never used
+    # as fallback geometry in the reconstructed feature solid.
+    mesh: RepairedMesh | None = None
 
     def edge_convexity(self, face_a: Face, face_b: Face) -> Convexity:
         """Return a boundary's classification; absent adjacencies raise KeyError."""

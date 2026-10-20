@@ -3017,5 +3017,63 @@
       ],
       "expected_output": "hybrid"
     }
-  ]
+  ],
+  "rotation_stability": {
+    "description": "Unequal chamfered block (T-005). Part frame is the f1 block centred at the origin (60x40x8). Ids follow a centroid-anchored order, so they name the same physical edge in every rigid rotation. edge_point and edge_direction are in the part frame; a rotated variant maps them with the rotation.",
+    "part": "chamfered_block_unequal",
+    "design": {
+      "body_length": 60,
+      "body_width": 40,
+      "body_height": 8,
+      "chamfer_1_width": 3,
+      "chamfer_2_width": 2
+    },
+    "rotations_deg": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        180
+      ],
+      [
+        0,
+        0,
+        90
+      ]
+    ],
+    "treatments": [
+      {
+        "id": "chamfer_1",
+        "width": 3,
+        "edge_point": [
+          0,
+          -20,
+          4
+        ],
+        "edge_direction": [
+          1,
+          0,
+          0
+        ]
+      },
+      {
+        "id": "chamfer_2",
+        "width": 2,
+        "edge_point": [
+          0,
+          20,
+          4
+        ],
+        "edge_direction": [
+          1,
+          0,
+          0
+        ]
+      }
+    ]
+  }
 }

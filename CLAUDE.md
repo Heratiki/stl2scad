@@ -30,6 +30,17 @@ Consequences of that design:
 
 Before more tuning or reporting work, make one real composite part (a bracket with a boss, a blind hole and a fillet) round-trip through steps 1–4.
 
+## Segmentation pipeline status (2026-10-20)
+
+The recommended pipeline exists in [stl2scad/core/segmentation/](stl2scad/core/segmentation/). Use it with `stl2scad in.stl out.scad --pipeline segmentation`. The default is still `legacy`. Spec, output decisions and known limits: [docs/planning/segmentation_composite_bracket.md](docs/planning/segmentation_composite_bracket.md).
+
+- Output is labeled, adjustable SCAD: Customizer groups and ranges, `<kind>_<index>_<dim>` parameters relative to host faces, `assert()` links, face provenance comments, one part-frame `multmatrix()`.
+- The gate is all or nothing. If the Hausdorff distance is more than max(0.05 mm, 0.1 % of the bbox diagonal), the output is a polyhedron.
+- Snapping moves a value by 0.001 mm or less. It removes float noise and keeps design values.
+- Ground truth: `tests/data/segmentation/` (composite bracket and rounded plate, each axis-aligned, rotated and coarse). Tests: `tests/test_segmentation_*.py`.
+- Real parts: `memo_stencil6` converts within 0.00001 mm. The legacy preview of the same part is 6.2 mm away. `memo_cartridge` and `memo_power_button` fall back, because convex 3D edge rounds are not supported yet. See [docs/planning/segmentation_real_parts.md](docs/planning/segmentation_real_parts.md).
+- `.gitignore` ignores `*.json` and most `.scad`. A new data file needs a `!` rule. Check with `git status -uall`.
+
 ## Feature Fixtures — the detector-validation harness (READ FIRST)
 
 [tests/data/feature_fixtures_manifest.json](tests/data/feature_fixtures_manifest.json) + [tests/data/feature_fixtures_scad/](tests/data/feature_fixtures_scad/) + [stl2scad/core/feature_fixtures.py](stl2scad/core/feature_fixtures.py) + [tests/test_feature_fixtures.py](tests/test_feature_fixtures.py) form a closed-loop ground-truth system: **manifest → generated SCAD → rendered STL → feature graph → asserted against the manifest**. This is the primary safety net for detector work.

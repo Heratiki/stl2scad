@@ -45,6 +45,10 @@ def features_to_ir(features: list[Feature]) -> ParametricModel:
     if len(bodies) != 1 or bodies[0].height is None:
         raise ValueError("Editable output requires one extruded body")
     body = bodies[0]
+    if body.profile.segments:
+        from .section_ir import section_to_ir
+
+        return section_to_ir(features)
     if body.polarity != "additive":
         raise ValueError("The body must add material")
     frame = np.asarray(body.part_frame)

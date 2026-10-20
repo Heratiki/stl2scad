@@ -19,8 +19,32 @@ FeatureKind = Literal[
     "boss",
     "blind_hole",
     "through_hole",
+    "through_slot",
+    "rounded_rectangle_profile_extrude",
+    "arc_profile_extrude",
     "pocket",
 ]
+
+
+@dataclass(frozen=True)
+class ProfileSegment:
+    """An oriented section edge; arc angles are in the shared part frame.
+
+    ``segments`` describes a full circle, including clipped polygon end chords.
+    Lines and arcs retain the side faces which produced them.
+    """
+
+    kind: Literal["line", "arc"]
+    start: tuple[float, float]
+    end: tuple[float, float]
+    face_ids: tuple[str, ...]
+    center: tuple[float, float] | None = None
+    radius: float | None = None
+    start_deg: float = 0.0
+    sweep_deg: float = 0.0
+    phase_deg: float = 0.0
+    segments: int | None = None
+    convexity: str | None = None
 
 
 @dataclass(frozen=True)
@@ -30,6 +54,7 @@ class Profile:
     kind: str
     points: tuple[tuple[float, float], ...]
     dimensions: tuple[tuple[str, float], ...]
+    segments: tuple[ProfileSegment, ...] = ()
 
     @property
     def labeled_points(self):
@@ -59,6 +84,9 @@ class Feature:
     segments: int | None = None
     radial_reference: Vector | None = None
     trim_face_ids: tuple[str, ...] = ()
+    width: float | None = None
+    length: float | None = None
+    angle_deg: float = 0.0
 
     @property
     def host(self):
@@ -385,6 +413,11 @@ def detect_features(result: SegmentationResult) -> list[Feature]:
     """
     if result.mesh is None:
         raise ValueError("Feature detection requires indexed segmentation support")
+    from .sections import detect_section_features
+
+    section = detect_section_features(result)
+    if section is not None:
+        return section
     secondary = _cylinder_features(result)
     owned = {
         item[key].id for item in secondary for key in ("curved", "end") if key in item

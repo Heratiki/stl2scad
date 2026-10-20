@@ -70,6 +70,55 @@ def _validation_source(features: list[Feature]) -> str:
         body.height, float(np.ptp(np.asarray(body.profile.points), axis=0).max())
     )
     epsilon = scale * 1e-6
+    if body.profile.segments:
+        from .sections import profile_points
+
+        cuts = []
+        for feature in features:
+            if feature is body:
+                continue
+            if feature.polarity != "subtractive" or feature.kind not in (
+                "through_slot",
+                "through_hole",
+            ):
+                raise ValueError("Arc profile supports through cuts only")
+            if (
+                feature.radius is None
+                or feature.radius <= 0
+                or feature.depth != body.height
+            ):
+                raise ValueError("Through cuts must span the body")
+            phase = np.degrees(
+                np.arctan2(feature.radial_reference[1], feature.radial_reference[0])
+            )
+            circle = f"rotate({phase:.17g}) circle(r={feature.radius:.17g},$fn={feature.segments});"
+            center = np.asarray(feature.position[:2])
+            if feature.kind == "through_slot":
+                half = (feature.length - feature.width) / 2
+                if feature.width <= 0 or half <= 0:
+                    raise ValueError("Stadium requires length greater than width")
+                direction = np.array(
+                    [
+                        np.cos(np.radians(feature.angle_deg)),
+                        np.sin(np.radians(feature.angle_deg)),
+                    ]
+                )
+                cuts.append(
+                    "hull() {"
+                    + " ".join(
+                        f"translate({_literal(center+sign*half*direction)}) {circle}"
+                        for sign in (-1, 1)
+                    )
+                    + "}"
+                )
+            else:
+                cuts.append(f"translate({_literal(center)}) {circle}")
+        return (
+            f"multmatrix({_literal(frame)}) linear_extrude(height={body.height:.17g}) difference() {{\n"
+            f"polygon(points={_literal(profile_points(body.profile))});\n"
+            + "\n".join(cuts)
+            + "\n}\n"
+        )
     additive = [
         f"linear_extrude(height={body.height:.17g}) polygon(points={_literal(body.profile.points)});"
     ]

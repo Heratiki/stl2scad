@@ -134,7 +134,7 @@ def test_fallback_polyhedron_renders_the_entire_mesh(openscad_path):
     assert emitter.mesh_hausdorff(rebuilt, mesh, samples=32) < 1e-6
 
 
-def test_snapping_uses_coarsest_grid_that_passes_and_keeps_raw(monkeypatch):
+def test_snapping_keeps_design_value_that_gate_would_allow_to_move(monkeypatch):
     triangles = cube()
     triangles[:, :, 0] *= 1.13
     mesh = mesh_of(triangles)
@@ -151,7 +151,10 @@ def test_snapping_uses_coarsest_grid_that_passes_and_keeps_raw(monkeypatch):
         emitter, "mesh_hausdorff", lambda value, mesh: abs(value - parameter.raw_value)
     )
     source = emit_scad(features, mesh)
-    assert f"{parameter.name} = 2.3;" in source
+    # The gate (0.05 mm) would accept 2.3, but a 0.04 mm shift is a design
+    # change, not float noise, so the value stays 2.26.
+    assert f"{parameter.name} = 2.3;" not in source
+    assert re.search(rf"^{parameter.name} = 2\.26\d*;", source, re.M)
     raw = re.search(rf"^// .*\(raw ([-\d.]+)\)\n{parameter.name} = ", source, re.M)
     assert float(raw[1]) == pytest.approx(parameter.raw_value, abs=1e-10)
 
@@ -191,3 +194,12 @@ def test_gate_limit_scales_with_extent():
     assert gate_limit_mm(mesh_of(cube())) == 0.05
     mesh = mesh_of(cube() * 100)
     assert gate_limit_mm(mesh) == pytest.approx(0.001 * np.linalg.norm([200, 200, 200]))
+
+
+def test_snapping_removes_float_noise_but_keeps_design_values():
+    from stl2scad.core.segmentation.emit import _snap
+
+    assert _snap(5.0000021, 1.0) == 5.0
+    assert _snap(74.5999972, 0.1) == pytest.approx(74.6)
+    assert _snap(51.0999993, 1.0) == 51.0999993  # 0.1 mm is a design value, not noise
+    assert _snap(51.0999993, 0.1) == pytest.approx(51.1)

@@ -1,0 +1,1310 @@
+{
+  "description": "Hand-written extruded outline with four convex quarter arcs, a concave semicircular notch, two stadium through slots and a D5 hole. Points and outward normals in the part frame. p_world=Rz Ry Rx (p+translate_before). Faceted circles use circumradius; slots are hulls of regular polygons.",
+  "units": "mm",
+  "fn": 64,
+  "volume_mm3": 6471.780070330626,
+  "hausdorff_max_mm": 0.05,
+  "tolerances": {
+    "plane_normal_deg": 1.0,
+    "plane_offset_mm": 0.05,
+    "cylinder_axis_deg": 1.0,
+    "cylinder_radius_rel": 0.02,
+    "volume_rel": 0.001
+  },
+  "variants": [
+    {
+      "name": "axis_aligned",
+      "scad": "rounded_plate.scad",
+      "rotate_deg": [
+        0,
+        0,
+        0
+      ],
+      "translate_before": [
+        0,
+        0,
+        0
+      ],
+      "tessellation": {
+        "fn": 64,
+        "fa": 12,
+        "fs": 2,
+        "segments": {
+          "corner": 64,
+          "notch": 64,
+          "slot": 64,
+          "hole": 64
+        }
+      },
+      "volume_mm3": 6471.780070330626
+    },
+    {
+      "name": "rotated",
+      "scad": "rounded_plate_rotated.scad",
+      "rotate_deg": [
+        17,
+        31,
+        9
+      ],
+      "translate_before": [
+        -30,
+        -20,
+        -1.5
+      ],
+      "tessellation": {
+        "fn": 64,
+        "fa": 12,
+        "fs": 2,
+        "segments": {
+          "corner": 64,
+          "notch": 64,
+          "slot": 64,
+          "hole": 64
+        }
+      },
+      "volume_mm3": 6471.780070330626
+    },
+    {
+      "name": "default_res",
+      "scad": "rounded_plate_default_res.scad",
+      "rotate_deg": [
+        0,
+        0,
+        0
+      ],
+      "translate_before": [
+        0,
+        0,
+        0
+      ],
+      "tessellation": {
+        "fn": 0,
+        "fa": 12,
+        "fs": 2,
+        "segments": {
+          "corner": 16,
+          "notch": 13,
+          "slot": 10,
+          "hole": 8
+        }
+      },
+      "volume_mm3": 6502.9978720060135,
+      "face_overrides": {
+        "slot_1_wall_-1": {
+          "point": [
+            18.0,
+            11.146830451114539,
+            0.0
+          ]
+        },
+        "slot_1_wall_1": {
+          "point": [
+            18.0,
+            16.85316954888546,
+            0.0
+          ]
+        },
+        "slot_2_wall_-1": {
+          "point": [
+            43.42658477444273,
+            21.529082689361005,
+            0.0
+          ]
+        },
+        "slot_2_wall_1": {
+          "point": [
+            40.57341522555727,
+            26.470917310638995,
+            0.0
+          ]
+        }
+      },
+      "geometry_note": "N10 stadium polygons have horizontal hull walls at +/-3*sin(72deg), with concave 18deg junctions to their end strips; these are physical facet creases.",
+      "edges": [
+        {
+          "faces": [
+            "bottom",
+            "south"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "south"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "west"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "west"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "east"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "east"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "north_west"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "north_west"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "north_east"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "north_east"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "corner_1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "corner_1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "corner_2"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "corner_2"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "corner_3"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "corner_3"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "corner_4"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "corner_4"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "notch"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "notch"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "slot_1_wall_-1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "slot_1_wall_-1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "slot_1_end_-1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "slot_1_end_-1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "slot_1_wall_1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "slot_1_wall_1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "slot_1_end_1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "slot_1_end_1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "slot_2_wall_-1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "slot_2_wall_-1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "slot_2_end_-1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "slot_2_end_-1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "slot_2_wall_1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "slot_2_wall_1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "slot_2_end_1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "slot_2_end_1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "hole"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "hole"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "corner_1",
+            "south"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "corner_1",
+            "west"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "corner_2",
+            "south"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "corner_2",
+            "east"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "corner_3",
+            "east"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "corner_3",
+            "north_east"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "corner_4",
+            "west"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "corner_4",
+            "north_west"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "notch",
+            "north_west"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "notch",
+            "north_east"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "slot_1_wall_-1",
+            "slot_1_end_-1"
+          ],
+          "convexity": "concave"
+        },
+        {
+          "faces": [
+            "slot_1_wall_-1",
+            "slot_1_end_1"
+          ],
+          "convexity": "concave"
+        },
+        {
+          "faces": [
+            "slot_1_wall_1",
+            "slot_1_end_-1"
+          ],
+          "convexity": "concave"
+        },
+        {
+          "faces": [
+            "slot_1_wall_1",
+            "slot_1_end_1"
+          ],
+          "convexity": "concave"
+        },
+        {
+          "faces": [
+            "slot_2_wall_-1",
+            "slot_2_end_-1"
+          ],
+          "convexity": "concave"
+        },
+        {
+          "faces": [
+            "slot_2_wall_-1",
+            "slot_2_end_1"
+          ],
+          "convexity": "concave"
+        },
+        {
+          "faces": [
+            "slot_2_wall_1",
+            "slot_2_end_-1"
+          ],
+          "convexity": "concave"
+        },
+        {
+          "faces": [
+            "slot_2_wall_1",
+            "slot_2_end_1"
+          ],
+          "convexity": "concave"
+        }
+      ]
+    }
+  ],
+  "faces": [
+    {
+      "id": "bottom",
+      "kind": "plane",
+      "normal": [
+        0,
+        0,
+        -1
+      ],
+      "point": [
+        30,
+        20,
+        0
+      ]
+    },
+    {
+      "id": "top",
+      "kind": "plane",
+      "normal": [
+        0,
+        0,
+        1
+      ],
+      "point": [
+        30,
+        20,
+        3
+      ]
+    },
+    {
+      "id": "south",
+      "kind": "plane",
+      "normal": [
+        0,
+        -1,
+        0
+      ],
+      "point": [
+        30,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "west",
+      "kind": "plane",
+      "normal": [
+        -1,
+        0,
+        0
+      ],
+      "point": [
+        0,
+        20,
+        0
+      ]
+    },
+    {
+      "id": "east",
+      "kind": "plane",
+      "normal": [
+        1,
+        0,
+        0
+      ],
+      "point": [
+        60,
+        20,
+        0
+      ]
+    },
+    {
+      "id": "north_west",
+      "kind": "plane",
+      "normal": [
+        0,
+        1,
+        0
+      ],
+      "point": [
+        17.5,
+        40,
+        0
+      ]
+    },
+    {
+      "id": "north_east",
+      "kind": "plane",
+      "normal": [
+        0,
+        1,
+        0
+      ],
+      "point": [
+        42.5,
+        40,
+        0
+      ]
+    },
+    {
+      "id": "corner_1",
+      "kind": "cylinder",
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "point": [
+        5,
+        5,
+        0
+      ],
+      "radius": 5,
+      "convexity": "convex"
+    },
+    {
+      "id": "corner_2",
+      "kind": "cylinder",
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "point": [
+        55,
+        5,
+        0
+      ],
+      "radius": 5,
+      "convexity": "convex"
+    },
+    {
+      "id": "corner_3",
+      "kind": "cylinder",
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "point": [
+        55,
+        35,
+        0
+      ],
+      "radius": 5,
+      "convexity": "convex"
+    },
+    {
+      "id": "corner_4",
+      "kind": "cylinder",
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "point": [
+        5,
+        35,
+        0
+      ],
+      "radius": 5,
+      "convexity": "convex"
+    },
+    {
+      "id": "notch",
+      "kind": "cylinder",
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "point": [
+        30,
+        40,
+        0
+      ],
+      "radius": 4,
+      "convexity": "concave"
+    },
+    {
+      "id": "slot_1_wall_-1",
+      "kind": "plane",
+      "normal": [
+        -0.0,
+        1.0,
+        0
+      ],
+      "point": [
+        18.0,
+        11.0,
+        0
+      ]
+    },
+    {
+      "id": "slot_1_end_-1",
+      "kind": "cylinder",
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "point": [
+        13.0,
+        14.0,
+        0
+      ],
+      "radius": 3,
+      "convexity": "concave"
+    },
+    {
+      "id": "slot_1_wall_1",
+      "kind": "plane",
+      "normal": [
+        0.0,
+        -1.0,
+        0
+      ],
+      "point": [
+        18.0,
+        17.0,
+        0
+      ]
+    },
+    {
+      "id": "slot_1_end_1",
+      "kind": "cylinder",
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "point": [
+        23.0,
+        14.0,
+        0
+      ],
+      "radius": 3,
+      "convexity": "concave"
+    },
+    {
+      "id": "slot_2_wall_-1",
+      "kind": "plane",
+      "normal": [
+        -0.49999999999999994,
+        0.8660254037844387,
+        0
+      ],
+      "point": [
+        43.5,
+        21.401923788646684,
+        0
+      ]
+    },
+    {
+      "id": "slot_2_end_-1",
+      "kind": "cylinder",
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "point": [
+        37.66987298107781,
+        21.5,
+        0
+      ],
+      "radius": 3,
+      "convexity": "concave"
+    },
+    {
+      "id": "slot_2_wall_1",
+      "kind": "plane",
+      "normal": [
+        0.49999999999999994,
+        -0.8660254037844387,
+        0
+      ],
+      "point": [
+        40.5,
+        26.598076211353316,
+        0
+      ]
+    },
+    {
+      "id": "slot_2_end_1",
+      "kind": "cylinder",
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "point": [
+        46.33012701892219,
+        26.5,
+        0
+      ],
+      "radius": 3,
+      "convexity": "concave"
+    },
+    {
+      "id": "hole",
+      "kind": "cylinder",
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "point": [
+        15,
+        30,
+        0
+      ],
+      "radius": 2.5,
+      "convexity": "concave"
+    }
+  ],
+  "edges": [
+    {
+      "faces": [
+        "bottom",
+        "south"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "south"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "bottom",
+        "west"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "west"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "bottom",
+        "east"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "east"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "bottom",
+        "north_west"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "north_west"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "bottom",
+        "north_east"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "north_east"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "bottom",
+        "corner_1"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "corner_1"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "bottom",
+        "corner_2"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "corner_2"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "bottom",
+        "corner_3"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "corner_3"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "bottom",
+        "corner_4"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "corner_4"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "bottom",
+        "notch"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "notch"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "bottom",
+        "slot_1_wall_-1"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "slot_1_wall_-1"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "bottom",
+        "slot_1_end_-1"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "slot_1_end_-1"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "bottom",
+        "slot_1_wall_1"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "slot_1_wall_1"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "bottom",
+        "slot_1_end_1"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "slot_1_end_1"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "bottom",
+        "slot_2_wall_-1"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "slot_2_wall_-1"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "bottom",
+        "slot_2_end_-1"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "slot_2_end_-1"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "bottom",
+        "slot_2_wall_1"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "slot_2_wall_1"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "bottom",
+        "slot_2_end_1"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "slot_2_end_1"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "bottom",
+        "hole"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "top",
+        "hole"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "corner_1",
+        "south"
+      ],
+      "convexity": "tangent"
+    },
+    {
+      "faces": [
+        "corner_1",
+        "west"
+      ],
+      "convexity": "tangent"
+    },
+    {
+      "faces": [
+        "corner_2",
+        "south"
+      ],
+      "convexity": "tangent"
+    },
+    {
+      "faces": [
+        "corner_2",
+        "east"
+      ],
+      "convexity": "tangent"
+    },
+    {
+      "faces": [
+        "corner_3",
+        "east"
+      ],
+      "convexity": "tangent"
+    },
+    {
+      "faces": [
+        "corner_3",
+        "north_east"
+      ],
+      "convexity": "tangent"
+    },
+    {
+      "faces": [
+        "corner_4",
+        "west"
+      ],
+      "convexity": "tangent"
+    },
+    {
+      "faces": [
+        "corner_4",
+        "north_west"
+      ],
+      "convexity": "tangent"
+    },
+    {
+      "faces": [
+        "notch",
+        "north_west"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "notch",
+        "north_east"
+      ],
+      "convexity": "convex"
+    },
+    {
+      "faces": [
+        "slot_1_wall_-1",
+        "slot_1_end_-1"
+      ],
+      "convexity": "tangent"
+    },
+    {
+      "faces": [
+        "slot_1_wall_-1",
+        "slot_1_end_1"
+      ],
+      "convexity": "tangent"
+    },
+    {
+      "faces": [
+        "slot_1_wall_1",
+        "slot_1_end_-1"
+      ],
+      "convexity": "tangent"
+    },
+    {
+      "faces": [
+        "slot_1_wall_1",
+        "slot_1_end_1"
+      ],
+      "convexity": "tangent"
+    },
+    {
+      "faces": [
+        "slot_2_wall_-1",
+        "slot_2_end_-1"
+      ],
+      "convexity": "tangent"
+    },
+    {
+      "faces": [
+        "slot_2_wall_-1",
+        "slot_2_end_1"
+      ],
+      "convexity": "tangent"
+    },
+    {
+      "faces": [
+        "slot_2_wall_1",
+        "slot_2_end_-1"
+      ],
+      "convexity": "tangent"
+    },
+    {
+      "faces": [
+        "slot_2_wall_1",
+        "slot_2_end_1"
+      ],
+      "convexity": "tangent"
+    }
+  ],
+  "features": [
+    {
+      "id": "body_1",
+      "kind": "rounded_rectangle_profile_extrude",
+      "polarity": "additive",
+      "height": 3,
+      "dimensions": {
+        "plate_length": 60,
+        "plate_width": 40
+      },
+      "faces": [
+        "bottom",
+        "top",
+        "south",
+        "west",
+        "east",
+        "north_west",
+        "north_east",
+        "corner_1",
+        "corner_2",
+        "corner_3",
+        "corner_4",
+        "notch"
+      ]
+    },
+    {
+      "id": "slot_1",
+      "kind": "through_slot",
+      "polarity": "subtractive",
+      "width": 6,
+      "length": 16,
+      "angle_deg": 0,
+      "position": [
+        18,
+        14,
+        0
+      ],
+      "depth": 3,
+      "faces": [
+        "slot_1_wall_-1",
+        "slot_1_wall_1",
+        "slot_1_end_-1",
+        "slot_1_end_1"
+      ]
+    },
+    {
+      "id": "slot_2",
+      "kind": "through_slot",
+      "polarity": "subtractive",
+      "width": 6,
+      "length": 16,
+      "angle_deg": 30,
+      "position": [
+        42,
+        24,
+        0
+      ],
+      "depth": 3,
+      "faces": [
+        "slot_2_wall_-1",
+        "slot_2_wall_1",
+        "slot_2_end_-1",
+        "slot_2_end_1"
+      ]
+    },
+    {
+      "id": "hole_1",
+      "kind": "through_hole",
+      "polarity": "subtractive",
+      "radius": 2.5,
+      "depth": 3,
+      "position": [
+        15,
+        30,
+        0
+      ],
+      "faces": [
+        "hole"
+      ]
+    }
+  ]
+}

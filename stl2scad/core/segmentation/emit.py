@@ -87,6 +87,17 @@ def _header(mesh, source_file, measured, raw=None):
     )
 
 
+# Snapping removes float noise from measured values (5.0000021 -> 5). It must
+# not move a real design value such as 51.1 to 51, even when the gate passes.
+SNAP_MAX_SHIFT_MM = 1e-3
+
+
+def _snap(raw: float, grid: float) -> float:
+    """The raw value on the grid, or the raw value when the grid moves it too far."""
+    value = float(np.round(raw / grid) * grid)
+    return value if abs(value - raw) <= SNAP_MAX_SHIFT_MM else raw
+
+
 def ir_to_scad(model: ParametricModel) -> str:
     """Emit geometry by traversing typed IR, with bindings for editable values."""
     lines = []
@@ -101,6 +112,14 @@ def ir_to_scad(model: ParametricModel) -> str:
         lines.append(
             f"{p.name} = {_number(p.value)}; // [{_number(p.min)}:{_number(p.step)}:{_number(p.max)}]"
         )
+    if any(
+        isinstance(b.node, ir.ExtrudeLinear)
+        and isinstance(b.node.profile, ir.SketchPath2D)
+        for b in model.bindings
+    ):
+        from .section_emit import geometry_scad
+
+        return "\n".join(lines + geometry_scad(model)) + "\n"
     lines.extend(
         [
             "/* [Hidden] */",
@@ -249,8 +268,7 @@ def emit_scad(features, mesh: Mesh, *, source_file=None) -> str:
         # back to coarser grids, retaining each promotion only after rendering.
         for grid in (1.0, 0.1, 0.01):
             candidate = tuple(
-                replace(p, value=float(np.round(p.raw_value / grid) * grid))
-                for p in model.parameters
+                replace(p, value=_snap(p.raw_value, grid)) for p in model.parameters
             )
             if any(p.value < p.min or p.value > p.max for p in candidate):
                 continue
@@ -260,7 +278,9 @@ def emit_scad(features, mesh: Mesh, *, source_file=None) -> str:
                 break
         for i, parameter in enumerate(best):
             for grid in (1.0, 0.1, 0.01):
-                value = float(np.round(parameter.raw_value / grid) * grid)
+                value = _snap(parameter.raw_value, grid)
+                if value == parameter.value:
+                    continue
                 if value < parameter.min or value > parameter.max:
                     continue
                 candidate = list(best)

@@ -79,6 +79,9 @@ tests/data/.generated/
 !tests/data/segmentation/
 !tests/data/segmentation/composite_bracket*.scad
 !tests/data/segmentation/composite_bracket_expected.json
+!tests/data/segmentation/rounded_plate*.scad
+!tests/data/segmentation/rounded_plate_expected.json
+!artifacts/segmentation/rounded_plate_rotated.scad
 !tests/data/segmentation/real/
 !tests/data/segmentation/real/*_expected.json
 !artifacts/real_world_recall_baseline.json

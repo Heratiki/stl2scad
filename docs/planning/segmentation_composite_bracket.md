@@ -64,7 +64,7 @@ When a target test passes, its strict xfail fails. Then remove the marker.
 | Placement | Each feature is relative to its host face. When `base_thickness` changes, the boss moves with the top face. |
 | Remainder | All or nothing. If the output fails the gate, the full part is a polyhedron. |
 | Gate | Hausdorff distance from `stl2scad/core/verification/metrics.py`, with an absolute limit: the larger of 0.05 mm and 0.1 % of the bounding-box diagonal. |
-| Snapping | Use the coarsest round value (1, 0.1 or 0.01 mm) that still passes the gate. Keep the raw value in a comment. |
+| Snapping | Use the coarsest round value (1, 0.1 or 0.01 mm) that still passes the gate and moves the value by 0.001 mm or less. Snapping removes float noise only; it does not change a design value such as 51.1. Keep the raw value in a comment. |
 | Frame | Parameters are in the part frame. One `multmatrix()` at the top puts the part back in its position. |
 | IR | Typed frozen dataclasses with `to_dict()`, which writes the current dict form. |
 | Provenance | Face IDs go in the IR nodes and in SCAD comments, for example `// face F7 base_top (plane)`. Triangle lists go in the JSON report only. |

@@ -177,6 +177,98 @@ class Sketch2D(IRNode):
 
 
 # ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class SketchLine2D(IRNode):
+    """A directed straight segment in a sketch path."""
+
+    start: tuple[float, float] = (0.0, 0.0)
+    end: tuple[float, float] = (0.0, 0.0)
+
+    def to_dict(self) -> dict[str, Any]:
+        d = {"type": "SketchLine2D", "start": list(self.start), "end": list(self.end)}
+        if self.face_ids:
+            d["face_ids"] = list(self.face_ids)
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> SketchLine2D:
+        return cls(
+            start=tuple(d["start"]),
+            end=tuple(d["end"]),
+            face_ids=tuple(d.get("face_ids", ())),
+        )
+
+
+@dataclass(frozen=True)
+class SketchArc2D(IRNode):
+    """An oriented circumcircle arc, including its original polygon phase."""
+
+    center: tuple[float, float] = (0.0, 0.0)
+    radius: float = 0.0
+    start_deg: float = 0.0
+    sweep_deg: float = 0.0
+    segments: int = 64
+    phase_deg: float = 0.0
+    convexity: str = "convex"
+
+    def to_dict(self) -> dict[str, Any]:
+        d = {
+            "type": "SketchArc2D",
+            "center": list(self.center),
+            "radius": self.radius,
+            "start_deg": self.start_deg,
+            "sweep_deg": self.sweep_deg,
+            "segments": self.segments,
+            "phase_deg": self.phase_deg,
+            "convexity": self.convexity,
+        }
+        if self.face_ids:
+            d["face_ids"] = list(self.face_ids)
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> SketchArc2D:
+        return cls(
+            center=tuple(d["center"]),
+            radius=float(d["radius"]),
+            start_deg=float(d["start_deg"]),
+            sweep_deg=float(d["sweep_deg"]),
+            segments=int(d["segments"]),
+            phase_deg=float(d["phase_deg"]),
+            convexity=d["convexity"],
+            face_ids=tuple(d.get("face_ids", ())),
+        )
+
+
+@dataclass(frozen=True)
+class SketchPath2D(IRNode):
+    """Closed line/arc profile. Existing point-only Sketch2D stays unchanged."""
+
+    segments: tuple[Union[SketchLine2D, SketchArc2D], ...] = ()
+    kind: str = "arc"
+
+    def to_dict(self) -> dict[str, Any]:
+        d = {
+            "type": "SketchPath2D",
+            "kind": self.kind,
+            "segments": [s.to_dict() for s in self.segments],
+        }
+        if self.face_ids:
+            d["face_ids"] = list(self.face_ids)
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> SketchPath2D:
+        segments = tuple(from_dict(s) for s in d["segments"])
+        if any(not isinstance(s, (SketchLine2D, SketchArc2D)) for s in segments):
+            raise ValueError("SketchPath2D requires line or arc segments")
+        return cls(
+            segments=segments,
+            kind=d.get("kind", "arc"),
+            face_ids=tuple(d.get("face_ids", ())),
+        )
+
+
 # Extrusions
 # ---------------------------------------------------------------------------
 
@@ -1141,6 +1233,9 @@ _NODE_REGISTRY: dict[str, type[IRNode]] = {
     "BooleanUnion": BooleanUnion,
     "BooleanDifference": BooleanDifference,
     "Sketch2D": Sketch2D,
+    "SketchLine2D": SketchLine2D,
+    "SketchArc2D": SketchArc2D,
+    "SketchPath2D": SketchPath2D,
     "ExtrudeLinear": ExtrudeLinear,
     "ExtrudeRevolve": ExtrudeRevolve,
     "TransformTranslate": TransformTranslate,
@@ -1191,6 +1286,9 @@ __all__ = [
     "BooleanUnion",
     "BooleanDifference",
     "Sketch2D",
+    "SketchLine2D",
+    "SketchArc2D",
+    "SketchPath2D",
     "ExtrudeLinear",
     "ExtrudeRevolve",
     "TransformTranslate",

@@ -280,6 +280,7 @@ def extrusion_axis(result: SegmentationResult) -> np.ndarray:
         side = (planar & perpendicular) | (~planar & parallel)
         explained = cap | side | secondary
         possible = ~explained & (planar | (convex & perpendicular))
+        treatments = 0
         for i in np.flatnonzero(possible):
             adjacent = neighbors[i]
             if not planar[i]:
@@ -296,13 +297,44 @@ def extrusion_axis(result: SegmentationResult) -> np.ndarray:
                 treatment = cap[adjacent].any() and side[adjacent].any()
             if treatment:
                 explained[i] = True
-        scores.append((float(weights[~explained].sum()), float(weights[cap].sum())))
-    minimum = min(unexplained for unexplained, _ in scores)
+                if not planar[i]:
+                    treatments += 1
+                    continue
+                # Count only treatments defeature would keep: exactly one
+                # cap/side host pair whose edge lies in the face, with the
+                # face centred on the hosts' bisector.
+                pairs = []
+                for c in (j for j in adjacent if cap[j]):
+                    for d in (j for j in adjacent if side[j]):
+                        edge = np.cross(directions[c], directions[d])
+                        norm = np.linalg.norm(edge)
+                        if norm == 0 or abs(directions[i] @ edge) > sine * norm:
+                            continue
+                        hosts = np.array([directions[c], directions[d]])
+                        coefficients = np.linalg.lstsq(
+                            hosts.T, directions[i], rcond=None
+                        )[0]
+                        if np.all(coefficients > 0):
+                            pairs.append(hosts)
+                if len(pairs) == 1:
+                    bisector = pairs[0].sum(axis=0)
+                    bisector /= np.linalg.norm(bisector)
+                    if directions[i] @ bisector >= cosine:
+                        treatments += 1
+        scores.append(
+            (
+                float(weights[~explained].sum()),
+                float(weights[cap].sum()),
+                treatments,
+            )
+        )
+    minimum = min(score[0] for score in scores)
     total_area = float(weights.sum())
     tied = [
         i
-        for i, (unexplained, _) in enumerate(scores)
+        for i, (unexplained, _, _) in enumerate(scores)
         if unexplained <= minimum + total_area * (0.01 + 1e-12)
     ]
-    winner = max(tied, key=lambda i: scores[i][1])
+    # Tie: the axis that explains more edge treatments, then the larger cap.
+    winner = max(tied, key=lambda i: (scores[i][2], scores[i][1]))
     return candidates[winner].copy()

@@ -1,6 +1,6 @@
 # T-007: Wrong extrusion axis on tall posts loses the chamfer
 
-Status: open
+Status: landed (worktree-agent-a1a03d31d1797fba7, 2026-10-20)
 Opened: 2026-10-20 by the orchestrator, from an agy review (`.scratch/lanes/plan1-review23/REPORT.md`) whose finding was reproduced.
 Depends on: none
 Route: codex lane (segmentation work).

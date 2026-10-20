@@ -301,3 +301,56 @@ def test_stepped_bar_rib_is_free_at_both_ends(rendered, variant_name):
     assert rib[:, 0].min() == pytest.approx(4, abs=1e-4)
     assert rib[:, 0].max() == pytest.approx(20, abs=1e-4)
     assert head[:, 0].min() - rib[:, 0].max() == pytest.approx(4, abs=1e-4)
+
+
+def _post_scad(w, l, h, chamfer):
+    block = f"translate([-{w / 2},-{l / 2},0]) cube([{w},{l},{h}]);"
+    if not chamfer:
+        return block
+    return (
+        f"difference(){{ {block}\n"
+        f" translate([{w / 2},0,{h}]) rotate([90,0,0]) translate([0,0,-{l}])"
+        f" linear_extrude({2 * l}) polygon([[-2,0],[1,0],[1,-3]]); }}"
+    )
+
+
+def _render_post(openscad_path, directory, w, l, h, chamfer):
+    tag = "chamf" if chamfer else "plain"
+    scad = directory / f"post_{w}_{l}_{h}_{tag}.scad"
+    scad.write_text(_post_scad(w, l, h, chamfer))
+    target = scad.with_suffix(".stl")
+    assert run_openscad(
+        scad.stem, ["--render", "-o", str(target), str(scad)],
+        str(scad.with_suffix(".log")), openscad_path,
+    )
+    return Mesh.from_file(str(target))
+
+
+@pytest.mark.parametrize("size", [(20, 20, 100), (20, 20, 30)])
+def test_tall_post_chamfer_is_found(openscad_path, tmp_path, size):
+    from stl2scad.core.segmentation import segment_mesh
+    from stl2scad.core.segmentation.defeature import defeature
+
+    mesh = _render_post(openscad_path, tmp_path, *size, chamfer=True)
+    treatments = defeature(segment_mesh(mesh)).treatments
+    assert len(treatments) == 1
+    assert treatments[0].size == pytest.approx(2.0, abs=1e-3)
+
+
+# Axes (up to sign) the plain blocks got before T-007.
+PLAIN_POST_AXES = {
+    (20, 20, 100): [0, 1, 0],
+    (20, 20, 30): [0, 1, 0],
+    (20, 20, 10): [0, 0, 1],
+    (20, 30, 100): [1, 0, 0],
+}
+
+
+@pytest.mark.parametrize("size", sorted(PLAIN_POST_AXES))
+def test_extrusion_axis_unchanged_for_plain_posts(openscad_path, tmp_path, size):
+    from stl2scad.core.segmentation import segment_mesh
+    from stl2scad.core.segmentation.regularize import extrusion_axis, regularize
+
+    mesh = _render_post(openscad_path, tmp_path, *size, chamfer=False)
+    axis = extrusion_axis(regularize(segment_mesh(mesh)))
+    assert abs(float(axis @ np.array(PLAIN_POST_AXES[size]))) == pytest.approx(1.0, abs=1e-6)

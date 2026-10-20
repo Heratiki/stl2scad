@@ -1,0 +1,3021 @@
+{
+  "description": "Hand-authored plan-1 synthetic truth. Geometry is in the part frame; outward normals. World points are Rz Ry Rx (point+translate_before). Circle radii are circumradii; fn64/fn16 have cardinal vertices. Face IDs describe connected analytic regions, or the aggregate nonanalytic dome region. Parameters lists the expected adjustable treatment/corner/step controls; design includes every top-level SCAD design variable.",
+  "units": "mm",
+  "parts": [
+    {
+      "name": "chamfered_block",
+      "design": {
+        "body_length": 60,
+        "body_width": 40,
+        "body_height": 8,
+        "chamfer_1_width": 2,
+        "chamfer_2_width": 2
+      },
+      "extrusion_axis": [
+        0,
+        0,
+        1
+      ],
+      "parameters": {
+        "chamfer_1_width": 2,
+        "chamfer_2_width": 2
+      },
+      "tolerances": {
+        "plane_normal_deg": 1.0,
+        "plane_offset_mm": 0.05,
+        "cylinder_axis_deg": 1.0,
+        "cylinder_radius_rel": 0.02,
+        "volume_rel": 0.001
+      },
+      "faces": [
+        {
+          "id": "bottom",
+          "kind": "plane",
+          "point": [
+            30.0,
+            20.0,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            -1
+          ]
+        },
+        {
+          "id": "top",
+          "kind": "plane",
+          "point": [
+            30.0,
+            20.0,
+            8
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "id": "left",
+          "kind": "plane",
+          "point": [
+            0,
+            20.0,
+            4.0
+          ],
+          "normal": [
+            -1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "right",
+          "kind": "plane",
+          "point": [
+            60,
+            20.0,
+            4.0
+          ],
+          "normal": [
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "front",
+          "kind": "plane",
+          "point": [
+            30.0,
+            0,
+            3.0
+          ],
+          "normal": [
+            0,
+            -1,
+            0
+          ]
+        },
+        {
+          "id": "back",
+          "kind": "plane",
+          "point": [
+            30.0,
+            40,
+            3.0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "id": "chamfer_front",
+          "kind": "plane",
+          "point": [
+            30,
+            1,
+            7
+          ],
+          "normal": [
+            0,
+            -0.7071067811865476,
+            0.7071067811865476
+          ]
+        },
+        {
+          "id": "chamfer_back",
+          "kind": "plane",
+          "point": [
+            30,
+            39,
+            7
+          ],
+          "normal": [
+            0,
+            0.7071067811865476,
+            0.7071067811865476
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "faces": [
+            "bottom",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "front",
+            "chamfer_front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "chamfer_front",
+            "top"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "chamfer_back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "chamfer_back",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "back",
+            "bottom"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "bottom"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "chamfer_front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "top"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "chamfer_back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "bottom"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "chamfer_front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "top"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "chamfer_back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "back"
+          ],
+          "convexity": "convex"
+        }
+      ],
+      "features": [
+        {
+          "id": "slab_1",
+          "kind": "slab",
+          "polarity": "additive",
+          "dimensions": {
+            "length": 60,
+            "width": 40,
+            "bottom": 0,
+            "top": 8
+          },
+          "faces": [
+            "bottom",
+            "top",
+            "left",
+            "right",
+            "front",
+            "back"
+          ]
+        },
+        {
+          "id": "chamfer_1",
+          "kind": "chamfer",
+          "polarity": "subtractive",
+          "dimensions": {
+            "width": 2
+          },
+          "faces": [
+            "chamfer_front"
+          ],
+          "hosts": [
+            "front",
+            "top"
+          ],
+          "edge_point": [
+            0,
+            0,
+            8
+          ],
+          "edge_direction": [
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "chamfer_2",
+          "kind": "chamfer",
+          "polarity": "subtractive",
+          "dimensions": {
+            "width": 2
+          },
+          "faces": [
+            "chamfer_back"
+          ],
+          "hosts": [
+            "back",
+            "top"
+          ],
+          "edge_point": [
+            0,
+            40,
+            8
+          ],
+          "edge_direction": [
+            1,
+            0,
+            0
+          ]
+        }
+      ],
+      "variants": [
+        {
+          "name": "axis_aligned",
+          "scad": "chamfered_block.scad",
+          "rotate_deg": [
+            0,
+            0,
+            0
+          ],
+          "translate_before": [
+            0,
+            0,
+            0
+          ],
+          "tessellation": {
+            "fn": 64,
+            "fa": 12,
+            "fs": 2,
+            "segments": {}
+          },
+          "volume_mm3": 18960.0
+        },
+        {
+          "name": "rotated",
+          "scad": "chamfered_block_rotated.scad",
+          "rotate_deg": [
+            17,
+            31,
+            9
+          ],
+          "translate_before": [
+            -30,
+            -20,
+            -4
+          ],
+          "tessellation": {
+            "fn": 64,
+            "fa": 12,
+            "fs": 2,
+            "segments": {}
+          },
+          "volume_mm3": 18960.0
+        },
+        {
+          "name": "fn16_rotated",
+          "scad": "chamfered_block_fn16_rotated.scad",
+          "rotate_deg": [
+            17,
+            31,
+            9
+          ],
+          "translate_before": [
+            -30,
+            -20,
+            -4
+          ],
+          "tessellation": {
+            "fn": 16,
+            "fa": 12,
+            "fs": 2,
+            "segments": {}
+          },
+          "volume_mm3": 18960.0
+        }
+      ]
+    },
+    {
+      "name": "edge_round_block",
+      "design": {
+        "body_length": 60,
+        "body_width": 40,
+        "body_height": 10,
+        "edge_round_1_radius": 3,
+        "chamfer_1_width": 1.5
+      },
+      "extrusion_axis": [
+        0,
+        0,
+        1
+      ],
+      "parameters": {
+        "edge_round_1_radius": 3,
+        "chamfer_1_width": 1.5
+      },
+      "tolerances": {
+        "plane_normal_deg": 1.0,
+        "plane_offset_mm": 0.05,
+        "cylinder_axis_deg": 1.0,
+        "cylinder_radius_rel": 0.02,
+        "volume_rel": 0.001
+      },
+      "faces": [
+        {
+          "id": "bottom",
+          "kind": "plane",
+          "point": [
+            30.0,
+            20.0,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            -1
+          ]
+        },
+        {
+          "id": "top",
+          "kind": "plane",
+          "point": [
+            30.0,
+            20.0,
+            10
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "id": "left",
+          "kind": "plane",
+          "point": [
+            0,
+            20.0,
+            5.0
+          ],
+          "normal": [
+            -1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "right",
+          "kind": "plane",
+          "point": [
+            60,
+            20.0,
+            5.0
+          ],
+          "normal": [
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "front",
+          "kind": "plane",
+          "point": [
+            30.0,
+            0,
+            3.5
+          ],
+          "normal": [
+            0,
+            -1,
+            0
+          ]
+        },
+        {
+          "id": "back",
+          "kind": "plane",
+          "point": [
+            30.0,
+            40,
+            4.25
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "id": "round_front",
+          "kind": "cylinder",
+          "point": [
+            0,
+            3,
+            7
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "radius": 3,
+          "convexity": "convex"
+        },
+        {
+          "id": "chamfer_back",
+          "kind": "plane",
+          "point": [
+            30,
+            39.25,
+            9.25
+          ],
+          "normal": [
+            0,
+            0.7071067811865476,
+            0.7071067811865476
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "faces": [
+            "bottom",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "front",
+            "round_front"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "round_front",
+            "top"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "top",
+            "chamfer_back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "chamfer_back",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "back",
+            "bottom"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "bottom"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "round_front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "top"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "chamfer_back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "bottom"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "round_front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "top"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "chamfer_back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "back"
+          ],
+          "convexity": "convex"
+        }
+      ],
+      "features": [
+        {
+          "id": "slab_1",
+          "kind": "slab",
+          "polarity": "additive",
+          "dimensions": {
+            "length": 60,
+            "width": 40,
+            "bottom": 0,
+            "top": 10
+          },
+          "faces": [
+            "bottom",
+            "top",
+            "left",
+            "right",
+            "front",
+            "back"
+          ]
+        },
+        {
+          "id": "edge_round_1",
+          "kind": "edge_round",
+          "polarity": "subtractive",
+          "dimensions": {
+            "radius": 3
+          },
+          "faces": [
+            "round_front"
+          ],
+          "hosts": [
+            "front",
+            "top"
+          ],
+          "edge_point": [
+            0,
+            0,
+            10
+          ],
+          "edge_direction": [
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "chamfer_1",
+          "kind": "chamfer",
+          "polarity": "subtractive",
+          "dimensions": {
+            "width": 1.5
+          },
+          "faces": [
+            "chamfer_back"
+          ],
+          "hosts": [
+            "back",
+            "top"
+          ],
+          "edge_point": [
+            0,
+            40,
+            10
+          ],
+          "edge_direction": [
+            1,
+            0,
+            0
+          ]
+        }
+      ],
+      "variants": [
+        {
+          "name": "axis_aligned",
+          "scad": "edge_round_block.scad",
+          "rotate_deg": [
+            0,
+            0,
+            0
+          ],
+          "translate_before": [
+            0,
+            0,
+            0
+          ],
+          "tessellation": {
+            "fn": 64,
+            "fa": 12,
+            "fs": 2,
+            "segments": {
+              "round_front": 64
+            }
+          },
+          "volume_mm3": 23815.9340462237
+        },
+        {
+          "name": "rotated",
+          "scad": "edge_round_block_rotated.scad",
+          "rotate_deg": [
+            17,
+            31,
+            9
+          ],
+          "translate_before": [
+            -30,
+            -20,
+            -5
+          ],
+          "tessellation": {
+            "fn": 64,
+            "fa": 12,
+            "fs": 2,
+            "segments": {
+              "round_front": 64
+            }
+          },
+          "volume_mm3": 23815.9340462237
+        },
+        {
+          "name": "fn16_rotated",
+          "scad": "edge_round_block_fn16_rotated.scad",
+          "rotate_deg": [
+            17,
+            31,
+            9
+          ],
+          "translate_before": [
+            -30,
+            -20,
+            -5
+          ],
+          "tessellation": {
+            "fn": 16,
+            "fa": 12,
+            "fs": 2,
+            "segments": {
+              "round_front": 16
+            }
+          },
+          "volume_mm3": 23805.798106954295
+        }
+      ]
+    },
+    {
+      "name": "clipped_arc_plate",
+      "design": {
+        "body_length": 40,
+        "body_width": 20,
+        "body_height": 10,
+        "corner_1_radius": 3,
+        "corner_2_radius": 3,
+        "corner_3_radius": 3,
+        "corner_4_radius": 3,
+        "chamfer_1_width": 2
+      },
+      "extrusion_axis": [
+        0,
+        0,
+        1
+      ],
+      "parameters": {
+        "corner_1_radius": 3,
+        "corner_2_radius": 3,
+        "corner_3_radius": 3,
+        "corner_4_radius": 3,
+        "chamfer_1_width": 2
+      },
+      "tolerances": {
+        "plane_normal_deg": 1.0,
+        "plane_offset_mm": 0.05,
+        "cylinder_axis_deg": 1.0,
+        "cylinder_radius_rel": 0.02,
+        "volume_rel": 0.001
+      },
+      "faces": [
+        {
+          "id": "bottom",
+          "kind": "plane",
+          "point": [
+            20,
+            10,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            -1
+          ]
+        },
+        {
+          "id": "top",
+          "kind": "plane",
+          "point": [
+            20,
+            10,
+            10
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "id": "front",
+          "kind": "plane",
+          "point": [
+            20,
+            0,
+            6
+          ],
+          "normal": [
+            0,
+            -1,
+            0
+          ]
+        },
+        {
+          "id": "right",
+          "kind": "plane",
+          "point": [
+            40,
+            10,
+            5
+          ],
+          "normal": [
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "back",
+          "kind": "plane",
+          "point": [
+            20,
+            20,
+            5
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "id": "left",
+          "kind": "plane",
+          "point": [
+            0,
+            10,
+            5
+          ],
+          "normal": [
+            -1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "corner_1",
+          "kind": "cylinder",
+          "point": [
+            3,
+            3,
+            0
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "radius": 3,
+          "convexity": "convex"
+        },
+        {
+          "id": "corner_2",
+          "kind": "cylinder",
+          "point": [
+            37,
+            3,
+            0
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "radius": 3,
+          "convexity": "convex"
+        },
+        {
+          "id": "corner_3",
+          "kind": "cylinder",
+          "point": [
+            37,
+            17,
+            0
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "radius": 3,
+          "convexity": "convex"
+        },
+        {
+          "id": "corner_4",
+          "kind": "cylinder",
+          "point": [
+            3,
+            17,
+            0
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "radius": 3,
+          "convexity": "convex"
+        },
+        {
+          "id": "chamfer_front_bottom",
+          "kind": "plane",
+          "point": [
+            20,
+            1,
+            1
+          ],
+          "normal": [
+            0,
+            -0.7071067811865476,
+            -0.7071067811865476
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "faces": [
+            "front",
+            "corner_2"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "corner_2",
+            "right"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "right",
+            "corner_3"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "corner_3",
+            "back"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "back",
+            "corner_4"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "corner_4",
+            "left"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "left",
+            "corner_1"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "corner_1",
+            "front"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "top",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "corner_2"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "corner_2"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "right"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "right"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "corner_3"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "corner_3"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "corner_4"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "corner_4"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "left"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "left"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "corner_1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "corner_1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "chamfer_front_bottom",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "chamfer_front_bottom",
+            "bottom"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "chamfer_front_bottom",
+            "corner_1"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "chamfer_front_bottom",
+            "corner_2"
+          ],
+          "convexity": "convex"
+        }
+      ],
+      "features": [
+        {
+          "id": "slab_1",
+          "kind": "slab",
+          "polarity": "additive",
+          "dimensions": {
+            "length": 40,
+            "width": 20,
+            "bottom": 0,
+            "top": 10
+          },
+          "faces": [
+            "bottom",
+            "top",
+            "front",
+            "right",
+            "back",
+            "left",
+            "corner_1",
+            "corner_2",
+            "corner_3",
+            "corner_4"
+          ],
+          "profile_kind": "rounded_rectangle",
+          "corners": [
+            {
+              "face": "corner_1",
+              "radius": 3,
+              "parameter": "corner_1_radius"
+            },
+            {
+              "face": "corner_2",
+              "radius": 3,
+              "parameter": "corner_2_radius"
+            },
+            {
+              "face": "corner_3",
+              "radius": 3,
+              "parameter": "corner_3_radius"
+            },
+            {
+              "face": "corner_4",
+              "radius": 3,
+              "parameter": "corner_4_radius"
+            }
+          ]
+        },
+        {
+          "id": "chamfer_1",
+          "kind": "chamfer",
+          "polarity": "subtractive",
+          "dimensions": {
+            "width": 2
+          },
+          "faces": [
+            "chamfer_front_bottom"
+          ],
+          "hosts": [
+            "front",
+            "bottom"
+          ],
+          "edge_point": [
+            0,
+            0,
+            0
+          ],
+          "edge_direction": [
+            1,
+            0,
+            0
+          ]
+        }
+      ],
+      "variants": [
+        {
+          "name": "axis_aligned",
+          "scad": "clipped_arc_plate.scad",
+          "rotate_deg": [
+            0,
+            0,
+            0
+          ],
+          "translate_before": [
+            0,
+            0,
+            0
+          ],
+          "tessellation": {
+            "fn": 64,
+            "fa": 12,
+            "fs": 2,
+            "segments": {
+              "corner_1": 64,
+              "corner_2": 64,
+              "corner_3": 64,
+              "corner_4": 64
+            }
+          },
+          "volume_mm3": 7847.477685966001
+        },
+        {
+          "name": "rotated",
+          "scad": "clipped_arc_plate_rotated.scad",
+          "rotate_deg": [
+            17,
+            31,
+            9
+          ],
+          "translate_before": [
+            -20,
+            -10,
+            -5
+          ],
+          "tessellation": {
+            "fn": 64,
+            "fa": 12,
+            "fs": 2,
+            "segments": {
+              "corner_1": 64,
+              "corner_2": 64,
+              "corner_3": 64,
+              "corner_4": 64
+            }
+          },
+          "volume_mm3": 7847.477685966001
+        },
+        {
+          "name": "fn16_rotated",
+          "scad": "clipped_arc_plate_fn16_rotated.scad",
+          "rotate_deg": [
+            17,
+            31,
+            9
+          ],
+          "translate_before": [
+            -20,
+            -10,
+            -5
+          ],
+          "tessellation": {
+            "fn": 16,
+            "fa": 12,
+            "fs": 2,
+            "segments": {
+              "corner_1": 16,
+              "corner_2": 16,
+              "corner_3": 16,
+              "corner_4": 16
+            }
+          },
+          "volume_mm3": 7841.060063197866
+        }
+      ]
+    },
+    {
+      "name": "stepped_bar",
+      "design": {
+        "body_length": 30,
+        "body_width": 6,
+        "head_length": 6,
+        "step_1_height": 2,
+        "step_2_height": 10,
+        "corner_1_radius": 1,
+        "corner_2_radius": 1,
+        "corner_3_radius": 0.5,
+        "corner_4_radius": 0.5,
+        "rib_start": 4,
+        "rib_end": 20
+      },
+      "extrusion_axis": [
+        0,
+        0,
+        1
+      ],
+      "parameters": {
+        "step_1_height": 2,
+        "step_2_height": 10,
+        "corner_1_radius": 1,
+        "corner_2_radius": 1,
+        "corner_3_radius": 0.5,
+        "corner_4_radius": 0.5
+      },
+      "tolerances": {
+        "plane_normal_deg": 1.0,
+        "plane_offset_mm": 0.05,
+        "cylinder_axis_deg": 1.0,
+        "cylinder_radius_rel": 0.02,
+        "volume_rel": 0.001
+      },
+      "faces": [
+        {
+          "id": "bottom",
+          "kind": "plane",
+          "point": [
+            15,
+            3,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            -1
+          ]
+        },
+        {
+          "id": "front",
+          "kind": "plane",
+          "point": [
+            15,
+            0,
+            1
+          ],
+          "normal": [
+            0,
+            -1,
+            0
+          ]
+        },
+        {
+          "id": "back",
+          "kind": "plane",
+          "point": [
+            15,
+            6,
+            1
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "id": "left",
+          "kind": "plane",
+          "point": [
+            0,
+            3,
+            1
+          ],
+          "normal": [
+            -1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "right",
+          "kind": "plane",
+          "point": [
+            30,
+            3,
+            6
+          ],
+          "normal": [
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "base_top",
+          "kind": "plane",
+          "point": [
+            2,
+            3,
+            2
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "bounds": [
+            [
+              0,
+              0,
+              2
+            ],
+            [
+              24,
+              6,
+              2
+            ]
+          ]
+        },
+        {
+          "id": "ledge_south",
+          "kind": "plane",
+          "point": [
+            29.9,
+            0.1,
+            2
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "bounds": [
+            [
+              29,
+              0,
+              2
+            ],
+            [
+              30,
+              1,
+              2
+            ]
+          ],
+          "support_area_min_mm2": 0.1
+        },
+        {
+          "id": "ledge_north",
+          "kind": "plane",
+          "point": [
+            29.9,
+            5.9,
+            2
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "bounds": [
+            [
+              29,
+              5,
+              2
+            ],
+            [
+              30,
+              6,
+              2
+            ]
+          ],
+          "support_area_min_mm2": 0.1
+        },
+        {
+          "id": "head_west",
+          "kind": "plane",
+          "point": [
+            24,
+            1.5,
+            6
+          ],
+          "normal": [
+            -1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "head_top",
+          "kind": "plane",
+          "point": [
+            27,
+            3,
+            10
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "bounds": [
+            [
+              24,
+              0,
+              10
+            ],
+            [
+              30,
+              6,
+              10
+            ]
+          ]
+        },
+        {
+          "id": "rib_top",
+          "kind": "plane",
+          "point": [
+            12,
+            3,
+            10
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "bounds": [
+            [
+              4,
+              2.5,
+              10
+            ],
+            [
+              20,
+              3.5,
+              10
+            ]
+          ]
+        },
+        {
+          "id": "rib_south",
+          "kind": "plane",
+          "point": [
+            12,
+            2.5,
+            6
+          ],
+          "normal": [
+            0,
+            -1,
+            0
+          ]
+        },
+        {
+          "id": "rib_north",
+          "kind": "plane",
+          "point": [
+            12,
+            3.5,
+            6
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "id": "corner_1",
+          "kind": "cylinder",
+          "point": [
+            29,
+            1,
+            0
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "radius": 1,
+          "convexity": "convex"
+        },
+        {
+          "id": "corner_2",
+          "kind": "cylinder",
+          "point": [
+            29,
+            5,
+            0
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "radius": 1,
+          "convexity": "convex"
+        },
+        {
+          "id": "corner_3",
+          "kind": "cylinder",
+          "point": [
+            4.5,
+            3,
+            0
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "radius": 0.5,
+          "convexity": "convex"
+        },
+        {
+          "id": "corner_4",
+          "kind": "cylinder",
+          "point": [
+            19.5,
+            3,
+            0
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "radius": 0.5,
+          "convexity": "convex"
+        }
+      ],
+      "edges": [
+        {
+          "faces": [
+            "bottom",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "left"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "right"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "front",
+            "left"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "back",
+            "left"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "front",
+            "right"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "back",
+            "right"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "base_top",
+            "left"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "base_top",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "base_top",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "front",
+            "head_west"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "back",
+            "head_west"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "head_west",
+            "head_top"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "front",
+            "head_top"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "back",
+            "head_top"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "head_top"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "front",
+            "ledge_south"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "ledge_south"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "back",
+            "ledge_north"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "ledge_north"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "base_top",
+            "head_west"
+          ],
+          "convexity": "concave"
+        },
+        {
+          "faces": [
+            "corner_1",
+            "front"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "corner_1",
+            "right"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "corner_1",
+            "head_top"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "corner_1",
+            "ledge_south"
+          ],
+          "convexity": "concave"
+        },
+        {
+          "faces": [
+            "corner_2",
+            "back"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "corner_2",
+            "right"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "corner_2",
+            "head_top"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "corner_2",
+            "ledge_north"
+          ],
+          "convexity": "concave"
+        },
+        {
+          "faces": [
+            "base_top",
+            "rib_south"
+          ],
+          "convexity": "concave"
+        },
+        {
+          "faces": [
+            "rib_top",
+            "rib_south"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "base_top",
+            "rib_north"
+          ],
+          "convexity": "concave"
+        },
+        {
+          "faces": [
+            "rib_top",
+            "rib_north"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "base_top",
+            "corner_3"
+          ],
+          "convexity": "concave"
+        },
+        {
+          "faces": [
+            "rib_top",
+            "corner_3"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "base_top",
+            "corner_4"
+          ],
+          "convexity": "concave"
+        },
+        {
+          "faces": [
+            "rib_top",
+            "corner_4"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "corner_3",
+            "rib_south"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "corner_3",
+            "rib_north"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "corner_4",
+            "rib_south"
+          ],
+          "convexity": "tangent"
+        },
+        {
+          "faces": [
+            "corner_4",
+            "rib_north"
+          ],
+          "convexity": "tangent"
+        }
+      ],
+      "features": [
+        {
+          "id": "slab_1",
+          "kind": "slab",
+          "polarity": "additive",
+          "dimensions": {
+            "length": 30,
+            "width": 6,
+            "bottom": 0,
+            "top": 2
+          },
+          "faces": [
+            "bottom",
+            "front",
+            "back",
+            "left",
+            "right",
+            "base_top",
+            "ledge_south",
+            "ledge_north"
+          ],
+          "profile_kind": "rectangle"
+        },
+        {
+          "id": "slab_2",
+          "kind": "slab",
+          "polarity": "additive",
+          "dimensions": {
+            "bottom": 2,
+            "top": 10,
+            "head_length": 6,
+            "head_width": 6,
+            "rib_start": 4,
+            "rib_end": 20,
+            "rib_width": 1,
+            "corner_1_radius": 1,
+            "corner_2_radius": 1,
+            "corner_3_radius": 0.5,
+            "corner_4_radius": 0.5
+          },
+          "faces": [
+            "head_west",
+            "head_top",
+            "rib_top",
+            "rib_south",
+            "rib_north",
+            "corner_1",
+            "corner_2",
+            "corner_3",
+            "corner_4"
+          ],
+          "loops": 2,
+          "support_faces": [
+            "front",
+            "back",
+            "right"
+          ]
+        }
+      ],
+      "variants": [
+        {
+          "name": "axis_aligned",
+          "scad": "stepped_bar.scad",
+          "rotate_deg": [
+            0,
+            0,
+            0
+          ],
+          "translate_before": [
+            0,
+            0,
+            0
+          ],
+          "tessellation": {
+            "fn": 64,
+            "fa": 12,
+            "fs": 2,
+            "segments": {
+              "corner_1": 64,
+              "corner_2": 64,
+              "corner_3": 64,
+              "corner_4": 64
+            }
+          },
+          "volume_mm3": 770.8192909432756
+        },
+        {
+          "name": "rotated",
+          "scad": "stepped_bar_rotated.scad",
+          "rotate_deg": [
+            17,
+            31,
+            9
+          ],
+          "translate_before": [
+            -15,
+            -3,
+            -5
+          ],
+          "tessellation": {
+            "fn": 64,
+            "fa": 12,
+            "fs": 2,
+            "segments": {
+              "corner_1": 64,
+              "corner_2": 64,
+              "corner_3": 64,
+              "corner_4": 64
+            }
+          },
+          "volume_mm3": 770.8192909432756
+        },
+        {
+          "name": "fn16_rotated",
+          "scad": "stepped_bar_fn16_rotated.scad",
+          "rotate_deg": [
+            17,
+            31,
+            9
+          ],
+          "translate_before": [
+            -15,
+            -3,
+            -5
+          ],
+          "tessellation": {
+            "fn": 16,
+            "fa": 12,
+            "fs": 2,
+            "segments": {
+              "corner_1": 16,
+              "corner_2": 16,
+              "corner_3": 16,
+              "corner_4": 16
+            }
+          },
+          "volume_mm3": 770.3688047535243
+        }
+      ],
+      "slab_levels": [
+        0,
+        2,
+        10
+      ],
+      "ownership_note": "Connected coplanar front/back/right faces span both slabs. Their unique provenance owner is slab_1; slab_2 also lists them as support_faces. Base-top corner ledges are separate connected planar regions."
+    },
+    {
+      "name": "dome_plate",
+      "design": {
+        "body_length": 60,
+        "body_width": 40,
+        "body_height": 4,
+        "dome_1_a": 6,
+        "dome_1_b": 4,
+        "dome_1_c": 3
+      },
+      "extrusion_axis": [
+        0,
+        0,
+        1
+      ],
+      "parameters": {},
+      "tolerances": {
+        "plane_normal_deg": 1.0,
+        "plane_offset_mm": 0.05,
+        "cylinder_axis_deg": 1.0,
+        "cylinder_radius_rel": 0.02,
+        "volume_rel": 0.001
+      },
+      "faces": [
+        {
+          "id": "bottom",
+          "kind": "plane",
+          "point": [
+            30.0,
+            20.0,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            -1
+          ]
+        },
+        {
+          "id": "top",
+          "kind": "plane",
+          "point": [
+            30.0,
+            20.0,
+            4
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "id": "left",
+          "kind": "plane",
+          "point": [
+            0,
+            20.0,
+            2.0
+          ],
+          "normal": [
+            -1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "right",
+          "kind": "plane",
+          "point": [
+            60,
+            20.0,
+            2.0
+          ],
+          "normal": [
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "front",
+          "kind": "plane",
+          "point": [
+            30.0,
+            0,
+            2.0
+          ],
+          "normal": [
+            0,
+            -1,
+            0
+          ]
+        },
+        {
+          "id": "back",
+          "kind": "plane",
+          "point": [
+            30.0,
+            40,
+            2.0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "id": "dome",
+          "kind": "freeform",
+          "point": [
+            30,
+            20,
+            4
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "radius": null,
+          "semi_axes": [
+            6,
+            4,
+            3
+          ],
+          "convexity": "convex",
+          "description": "Aggregate upper ellipsoid surface; no constant curvature radius."
+        }
+      ],
+      "edges": [
+        {
+          "faces": [
+            "bottom",
+            "left"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "right"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "left"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "right"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "dome"
+          ],
+          "convexity": "concave"
+        }
+      ],
+      "features": [
+        {
+          "id": "slab_1",
+          "kind": "slab",
+          "polarity": "additive",
+          "dimensions": {
+            "length": 60,
+            "width": 40,
+            "bottom": 0,
+            "top": 4
+          },
+          "faces": [
+            "bottom",
+            "top",
+            "left",
+            "right",
+            "front",
+            "back"
+          ]
+        },
+        {
+          "id": "remainder_1",
+          "kind": "remainder",
+          "polarity": "additive",
+          "dimensions": {
+            "semi_axes": [
+              6,
+              4,
+              3
+            ]
+          },
+          "faces": [
+            "dome"
+          ],
+          "reason": "ellipsoid half-dome",
+          "surface_share_interval": [
+            0,
+            0.1
+          ]
+        }
+      ],
+      "variants": [
+        {
+          "name": "axis_aligned",
+          "scad": "dome_plate.scad",
+          "rotate_deg": [
+            0,
+            0,
+            0
+          ],
+          "translate_before": [
+            0,
+            0,
+            0
+          ],
+          "tessellation": {
+            "fn": 64,
+            "fa": 12,
+            "fs": 2,
+            "segments": {}
+          },
+          "volume_mm3": null
+        }
+      ],
+      "expected_output": "hybrid"
+    },
+    {
+      "name": "dome_plate_large",
+      "design": {
+        "body_length": 60,
+        "body_width": 40,
+        "body_height": 4,
+        "dome_1_a": 28,
+        "dome_1_b": 18,
+        "dome_1_c": 10
+      },
+      "extrusion_axis": [
+        0,
+        0,
+        1
+      ],
+      "parameters": {},
+      "tolerances": {
+        "plane_normal_deg": 1.0,
+        "plane_offset_mm": 0.05,
+        "cylinder_axis_deg": 1.0,
+        "cylinder_radius_rel": 0.02,
+        "volume_rel": 0.001
+      },
+      "faces": [
+        {
+          "id": "bottom",
+          "kind": "plane",
+          "point": [
+            30.0,
+            20.0,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            -1
+          ]
+        },
+        {
+          "id": "top",
+          "kind": "plane",
+          "point": [
+            30.0,
+            20.0,
+            4
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "id": "left",
+          "kind": "plane",
+          "point": [
+            0,
+            20.0,
+            2.0
+          ],
+          "normal": [
+            -1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "right",
+          "kind": "plane",
+          "point": [
+            60,
+            20.0,
+            2.0
+          ],
+          "normal": [
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "front",
+          "kind": "plane",
+          "point": [
+            30.0,
+            0,
+            2.0
+          ],
+          "normal": [
+            0,
+            -1,
+            0
+          ]
+        },
+        {
+          "id": "back",
+          "kind": "plane",
+          "point": [
+            30.0,
+            40,
+            2.0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "id": "dome",
+          "kind": "freeform",
+          "point": [
+            30,
+            20,
+            4
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "radius": null,
+          "semi_axes": [
+            28,
+            18,
+            10
+          ],
+          "convexity": "convex",
+          "description": "Aggregate upper ellipsoid surface; no constant curvature radius."
+        }
+      ],
+      "edges": [
+        {
+          "faces": [
+            "bottom",
+            "left"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "right"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "bottom",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "left"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "right"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "dome"
+          ],
+          "convexity": "concave"
+        }
+      ],
+      "features": [
+        {
+          "id": "slab_1",
+          "kind": "slab",
+          "polarity": "additive",
+          "dimensions": {
+            "length": 60,
+            "width": 40,
+            "bottom": 0,
+            "top": 4
+          },
+          "faces": [
+            "bottom",
+            "top",
+            "left",
+            "right",
+            "front",
+            "back"
+          ]
+        },
+        {
+          "id": "remainder_1",
+          "kind": "remainder",
+          "polarity": "additive",
+          "dimensions": {
+            "semi_axes": [
+              28,
+              18,
+              10
+            ]
+          },
+          "faces": [
+            "dome"
+          ],
+          "reason": "ellipsoid half-dome",
+          "surface_share_interval": [
+            0.1,
+            1
+          ]
+        }
+      ],
+      "variants": [
+        {
+          "name": "axis_aligned",
+          "scad": "dome_plate_large.scad",
+          "rotate_deg": [
+            0,
+            0,
+            0
+          ],
+          "translate_before": [
+            0,
+            0,
+            0
+          ],
+          "tessellation": {
+            "fn": 64,
+            "fa": 12,
+            "fs": 2,
+            "segments": {}
+          },
+          "volume_mm3": null
+        }
+      ],
+      "expected_output": "full_polyhedron"
+    },
+    {
+      "name": "asymmetric_chamfer_block",
+      "design": {
+        "body_length": 60,
+        "body_width": 40,
+        "body_height": 8,
+        "top_setback": 2,
+        "front_setback": 4
+      },
+      "extrusion_axis": [
+        0,
+        0,
+        1
+      ],
+      "parameters": {},
+      "tolerances": {
+        "plane_normal_deg": 1.0,
+        "plane_offset_mm": 0.05,
+        "cylinder_axis_deg": 1.0,
+        "cylinder_radius_rel": 0.02,
+        "volume_rel": 0.001
+      },
+      "faces": [
+        {
+          "id": "bottom",
+          "kind": "plane",
+          "point": [
+            30.0,
+            20.0,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            -1
+          ]
+        },
+        {
+          "id": "top",
+          "kind": "plane",
+          "point": [
+            30.0,
+            20.0,
+            8
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "id": "left",
+          "kind": "plane",
+          "point": [
+            0,
+            20.0,
+            4.0
+          ],
+          "normal": [
+            -1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "right",
+          "kind": "plane",
+          "point": [
+            60,
+            20.0,
+            4.0
+          ],
+          "normal": [
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "front",
+          "kind": "plane",
+          "point": [
+            30.0,
+            0,
+            2.0
+          ],
+          "normal": [
+            0,
+            -1,
+            0
+          ]
+        },
+        {
+          "id": "back",
+          "kind": "plane",
+          "point": [
+            30.0,
+            40,
+            4.0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "id": "asymmetric_chamfer",
+          "kind": "plane",
+          "point": [
+            30,
+            1,
+            6
+          ],
+          "normal": [
+            0,
+            -0.8944271909999159,
+            0.4472135954999579
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "faces": [
+            "bottom",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "front",
+            "asymmetric_chamfer"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "asymmetric_chamfer",
+            "top"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "top",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "back",
+            "bottom"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "bottom"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "asymmetric_chamfer"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "top"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "left",
+            "back"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "bottom"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "front"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "asymmetric_chamfer"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "top"
+          ],
+          "convexity": "convex"
+        },
+        {
+          "faces": [
+            "right",
+            "back"
+          ],
+          "convexity": "convex"
+        }
+      ],
+      "features": [
+        {
+          "id": "slab_1",
+          "kind": "slab",
+          "polarity": "additive",
+          "dimensions": {
+            "length": 60,
+            "width": 40,
+            "bottom": 0,
+            "top": 8
+          },
+          "faces": [
+            "bottom",
+            "top",
+            "left",
+            "right",
+            "front",
+            "back"
+          ]
+        },
+        {
+          "id": "remainder_1",
+          "kind": "remainder",
+          "polarity": "subtractive",
+          "dimensions": {
+            "top_setback": 2,
+            "front_setback": 4
+          },
+          "faces": [
+            "asymmetric_chamfer"
+          ],
+          "reason": "asymmetric chamfer",
+          "hosts": [
+            "front",
+            "top"
+          ]
+        }
+      ],
+      "variants": [
+        {
+          "name": "axis_aligned",
+          "scad": "asymmetric_chamfer_block.scad",
+          "rotate_deg": [
+            0,
+            0,
+            0
+          ],
+          "translate_before": [
+            0,
+            0,
+            0
+          ],
+          "tessellation": {
+            "fn": 64,
+            "fa": 12,
+            "fs": 2,
+            "segments": {}
+          },
+          "volume_mm3": 18960.0
+        }
+      ],
+      "expected_output": "hybrid"
+    }
+  ]
+}

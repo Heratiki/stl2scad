@@ -81,6 +81,13 @@ tests/data/.generated/
 !tests/data/segmentation/composite_bracket_expected.json
 !tests/data/segmentation/rounded_plate*.scad
 !tests/data/segmentation/rounded_plate_expected.json
+!tests/data/segmentation/chamfered_block*.scad
+!tests/data/segmentation/edge_round_block*.scad
+!tests/data/segmentation/clipped_arc_plate*.scad
+!tests/data/segmentation/stepped_bar*.scad
+!tests/data/segmentation/dome_plate*.scad
+!tests/data/segmentation/asymmetric_chamfer_block.scad
+!tests/data/segmentation/treatments_expected.json
 !artifacts/segmentation/rounded_plate_rotated.scad
 !tests/data/segmentation/real/
 !tests/data/segmentation/real/*_expected.json

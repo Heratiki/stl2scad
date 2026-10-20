@@ -578,29 +578,32 @@ def build_parser() -> argparse.ArgumentParser:
     maintainer_parser.add_argument(
         "--stl-dir",
         default=None,
-        help="Optional STL directory for inventory + inventory-prefiltered feature graph",
+        help=(
+            "Deprecated and ignored: the inventory and feature-graph steps it "
+            "added ran the legacy detectors (T-004)"
+        ),
     )
     maintainer_parser.add_argument(
         "--inventory-output",
         default="artifacts/feature_inventory_maintainer.json",
-        help="Output path for optional inventory JSON",
+        help="Deprecated and ignored (was used with --stl-dir)",
     )
     maintainer_parser.add_argument(
         "--feature-graph-output",
         default="artifacts/feature_graph_maintainer.json",
-        help="Output path for optional feature-graph JSON",
+        help="Deprecated and ignored (was used with --stl-dir)",
     )
     maintainer_parser.add_argument(
         "--workers",
         type=_non_negative_int,
         default=0,
-        help="Workers for optional STL inventory/graph steps. Use 0 for auto",
+        help="Deprecated and ignored (was used with --stl-dir)",
     )
     maintainer_parser.add_argument(
         "--max-files",
         type=_non_negative_int,
         default=None,
-        help="Optional cap for STL files in optional inventory/graph steps",
+        help="Deprecated and ignored (was used with --stl-dir)",
     )
     maintainer_parser.set_defaults(handler=maintainer_command)
 
@@ -817,51 +820,16 @@ def _build_maintainer_steps(args: argparse.Namespace) -> List[MaintainerStep]:
             )
         )
 
-    if args.stl_dir:
-        steps.append(
-            MaintainerStep(
-                name="Corpus feature inventory",
-                command=[
-                    python_exe,
-                    "-m",
-                    "stl2scad",
-                    "feature-inventory",
-                    args.stl_dir,
-                    "--output",
-                    args.inventory_output,
-                    "--workers",
-                    str(args.workers),
-                ],
-            )
-        )
-        graph_command = [
-            python_exe,
-            "-m",
-            "stl2scad",
-            "feature-graph",
-            args.stl_dir,
-            "--output",
-            args.feature_graph_output,
-            "--workers",
-            str(args.workers),
-            "--inventory-prefilter",
-            "--inventory-output",
-            args.inventory_output,
-        ]
-        if args.max_files is not None:
-            graph_command.extend(["--max-files", str(args.max_files)])
-        steps.append(
-            MaintainerStep(
-                name="Corpus feature graph (inventory-prefilter)",
-                command=graph_command,
-            )
-        )
-
     return steps
 
 
 def maintainer_command(args: argparse.Namespace) -> int:
     """Execute the chained maintainer workflow."""
+    if getattr(args, "stl_dir", None):
+        _warn_deprecated(
+            "--stl-dir is deprecated and ignored: its feature-inventory and "
+            f"feature-graph steps ran the legacy detectors, and {LEGACY_REMOVED_NOTE}."
+        )
     try:
         if args.perf_repeat < 1:
             raise ValueError("--perf-repeat must be >= 1")

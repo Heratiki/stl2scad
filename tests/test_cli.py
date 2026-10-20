@@ -203,6 +203,32 @@ def test_maintainer_command_runs_expected_step_prefix(mock_run):
     assert "--merge-gate" in last_call_cmd
 
 
+@patch("stl2scad.cli.subprocess.run")
+def test_maintainer_stl_dir_runs_no_legacy_detector_steps(mock_run, capsys):
+    """--stl-dir no longer adds feature-inventory / feature-graph steps (T-004)."""
+    mock_run.return_value = MagicMock(returncode=0)
+
+    exit_code = cli.main(
+        [
+            "maintainer",
+            "--skip-recognition-sweep",
+            "--skip-perf-baseline",
+            "--stl-dir",
+            "some/stls",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "DeprecationWarning: --stl-dir is deprecated and ignored" in captured.err
+    commands = [call.args[0] for call in mock_run.call_args_list]
+    assert len(commands) == 4
+    for command in commands:
+        assert "feature-inventory" not in command
+        assert "feature-graph" not in command
+        assert "some/stls" not in command
+
+
 def test_segmentation_cli_writes_emitter_output_and_supports_shorthand(
     tmp_path, monkeypatch
 ):

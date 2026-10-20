@@ -164,7 +164,7 @@ def generate_comparison_visualization(
 
     # Write script to file
     vis_file = output_path / "comparison.scad"
-    with open(vis_file, "w") as f:
+    with open(vis_file, "w", encoding="utf-8") as f:
         f.write(vis_script)
 
     # Generate visualizations
@@ -560,7 +560,7 @@ def generate_verification_report_html(
     """
 
     # Write HTML to file
-    with open(output_file, "w") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         f.write(html)
 
 

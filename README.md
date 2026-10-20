@@ -52,7 +52,7 @@ print a deprecation warning, and are ignored. The archived description:
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.10+
 - Dependencies from `requirements.txt`
 - OpenSCAD (Nightly recommended for debug/verification rendering workflows)
 
@@ -218,10 +218,11 @@ python -m stl2scad maintainer --skip-real-world-gate
 
 # Dry-run: print the command chain without executing
 python -m stl2scad maintainer --dry-run
-
-# Optional corpus run: inventory + inventory-prefiltered feature graph
-python -m stl2scad maintainer --stl-dir "C:\path\to\stls" --workers 0 --max-files 100
 ```
+
+`--stl-dir` (and `--inventory-output`, `--feature-graph-output`, `--workers`,
+`--max-files`) are deprecated and ignored: the inventory and feature-graph steps
+they added ran the legacy detectors (T-004).
 
 By default, `maintainer` includes a Track C real-world recall merge-gate step via
 `scripts/score_real_world_corpus.py --merge-gate`, which requires corpus files and

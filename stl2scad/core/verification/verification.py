@@ -180,7 +180,7 @@ class VerificationResult:
         Args:
             output_file: Path to save the report
         """
-        with open(output_file, "w") as f:
+        with open(output_file, "w", encoding="utf-8") as f:
             f.write(self.to_json())
 
 
@@ -449,7 +449,7 @@ def batch_verify(
         },
     }
 
-    with open(output_path / "verification_summary.json", "w") as f:
+    with open(output_path / "verification_summary.json", "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
 
     return results

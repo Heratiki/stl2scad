@@ -118,4 +118,3 @@ artifacts/HMG7.3 Ender 5 V Wheel X Carriage V2_visualizations/
 .claude/worktrees/
 .claude/settings.local.json
 .scratch/
-!docs/agents/model-register.runs.json

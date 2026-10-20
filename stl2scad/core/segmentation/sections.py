@@ -194,11 +194,16 @@ def detect_section_features(result):
     first, second = boundary_loops(result, cap), boundary_loops(result, other)
     p = mesh.vertices[[i for loop, _ in first for i in loop]]
     q = mesh.vertices[[i for loop, _ in second for i in loop]]
-    distances = np.linalg.norm((p + axis * length)[:, None] - q[None, :], axis=2)
-    if (
-        len(first) != len(second)
-        or max(distances.min(axis=0).max(), distances.min(axis=1).max()) > tolerance
-    ):
+    from .profile_geometry import boundary_distance
+
+    distances = [
+        min(
+            boundary_distance(mesh.vertices[a] + axis * length, mesh.vertices[b])
+            for b, _ in second
+        )
+        for a, _ in first
+    ]
+    if len(first) != len(second) or max(distances) > tolerance:
         raise ValueError("Opposite caps have different sections")
     # Every side face must touch both caps; the cap match alone cannot prove
     # the absence of an interior shelf or an unsupported spatial round.

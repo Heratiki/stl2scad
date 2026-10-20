@@ -124,9 +124,16 @@ def ir_to_scad(model: ParametricModel) -> str:
         [
             "/* [Hidden] */",
             "$fn = 64;",
-            "_join_epsilon = max(body_width, body_depth)*0.000001;",
+            (
+                "_join_epsilon = 0;"
+                if isinstance(model.root.child, ir.PrimitiveCylinder)
+                else "_join_epsilon = max(body_width, body_depth)*0.000001;"
+            ),
         ]
     )
+    from .profile_geometry import PROFILE_DEPTH_SCAD
+
+    lines.append(PROFILE_DEPTH_SCAD)
     for constraint in model.constraints:
         lines.append(
             f"assert({constraint.expression}, {json.dumps(constraint.message)});"
@@ -168,19 +175,40 @@ def ir_to_scad(model: ParametricModel) -> str:
             out.append(
                 pad + f"linear_extrude(height=body_depth) polygon(points={polygon});"
             )
-        elif isinstance(node, (ir.Boss, ir.HoleBlind)):
-            axis = np.array(node.axis, dtype=float)
+        elif isinstance(node, ir.PrimitiveCylinder):
+            out.append(
+                pad + f"cylinder(r={name}_radius,h={name}_height,$fn={name}_segments);"
+            )
+        elif isinstance(node, (ir.Boss, ir.HoleBlind, ir.HoleThrough)):
+            through = isinstance(node, ir.HoleThrough)
+            extra = dict(node.extra_fields) if through else {}
+            axis = np.array(extra["direction"] if through else node.axis, dtype=float)
             axis[np.abs(axis) < 1e-7] = 0
             axis /= np.linalg.norm(axis)
             angle = np.degrees(np.arccos(np.clip(axis[2], -1, 1)))
             turn = np.cross([0.0, 0.0, 1.0], axis)
             if np.linalg.norm(turn) < 1e-8:
                 turn = np.array([1.0, 0.0, 0.0])
+            pads = [0.0, 0.0]
+            if through:
+                pads = [
+                    np.sqrt(max(0.0, 1 / np.dot(n, axis) ** 2 - 1))
+                    for n in extra["rim_normals"]
+                ]
+            start_pad = (
+                f"({_number(pads[0])})*{name}_radius+_join_epsilon"
+                if through
+                else "_join_epsilon"
+            )
             center = [
-                f"({v})-({_number(axis[i])})*_join_epsilon" if axis[i] else v
+                f"({v})-({_number(axis[i])})*({start_pad})" if axis[i] else v
                 for i, v in enumerate(binding.center)
             ]
-            length = name + ("_height" if isinstance(node, ir.Boss) else "_depth")
+            length = (
+                f"({binding.extent})+({_number(sum(pads))})*{name}_radius+_join_epsilon"
+                if through
+                else name + ("_height" if isinstance(node, ir.Boss) else "_depth")
+            )
             out.append(
                 pad
                 + f'translate([{", ".join(center)}]) rotate(a={_number(angle)}, v={_array(turn)}) rotate([0,0,{_number(binding.phase_deg)}]) cylinder(r={name}_radius, h={length}+_join_epsilon, $fn={name}_segments);'

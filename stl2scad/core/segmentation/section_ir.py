@@ -31,8 +31,9 @@ def section_to_ir(features):
     parameters, resolutions, constraints, bindings, labels = [], [], [], [], []
 
     def parameter(
-        name, value, maximum, group="Body", minimum=0.01, faces=(), description=None
+        name, value, maximum, group="Body", minimum=None, faces=(), description=None
     ):
+        minimum = scale * 1e-6 if minimum is None else minimum
         if not np.isfinite(value) or not minimum <= value <= maximum + tolerance:
             raise ValueError(f"Invalid geometry range for {name}")
         parameters.append(
@@ -42,7 +43,7 @@ def section_to_ir(features):
                 raw_value=float(value),
                 min=minimum,
                 max=float(maximum),
-                step=0.01,
+                step=min(0.01, scale * 1e-3),
                 group=group,
                 description=description or name.replace("_", " "),
                 face_ids=faces,

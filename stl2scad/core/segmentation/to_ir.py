@@ -11,6 +11,7 @@ import numpy as np
 from .. import ir
 from .features import Feature
 from .fitting import cylinder_phase
+from .profile_geometry import material_depth, exclusive_limit
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,7 @@ class Binding:
     center: tuple[str, str, str] = ("0", "0", "0")
     corner: tuple[str, str, str] = ("0", "0", "0")
     phase_deg: float = 0.0
+    extent: str | None = None
 
 
 @dataclass(frozen=True)
@@ -41,6 +43,10 @@ def _levels(values, tolerance):
 
 
 def features_to_ir(features: list[Feature]) -> ParametricModel:
+    if len(features) == 1 and features[0].kind == "pin":
+        from .pins import pin_to_ir
+
+        return pin_to_ir(features[0])
     bodies = [f for f in features if f.profile is not None]
     if len(bodies) != 1 or bodies[0].height is None:
         raise ValueError("Editable output requires one extruded body")
@@ -68,9 +74,10 @@ def features_to_ir(features: list[Feature]) -> ParametricModel:
     tolerance = scale * 2e-5
     parameters, constraints, bindings, labels = [], [], [], []
 
-    def parameter(name, value, maximum, *, group="Body", minimum=0.01, faces=()):
+    def parameter(name, value, maximum, *, group="Body", minimum=None, faces=()):
         value = float(value)
-        maximum = float(np.round(maximum, 2))
+        maximum = float(maximum)
+        minimum = scale * 1e-6 if minimum is None else minimum
         if not np.isfinite(value) or value < minimum or value > maximum + tolerance:
             raise ValueError(f"Parameter {name} is outside its geometry range")
         parameters.append(
@@ -79,7 +86,7 @@ def features_to_ir(features: list[Feature]) -> ParametricModel:
                 value=value,
                 raw_value=value,
                 min=minimum,
-                step=0.01,
+                step=min(0.01, scale * 1e-3),
                 max=float(maximum),
                 group=group,
                 description=name.replace("_", " "),
@@ -235,7 +242,22 @@ def features_to_ir(features: list[Feature]) -> ParametricModel:
             "Resolution must be an integer of at least 3",
             feature.face_ids,
         )
-        if feature.kind in ("boss", "blind_hole"):
+        if feature.kind == "through_hole":
+            from .through_holes import bind_through_hole
+
+            node, binding = bind_through_hole(
+                feature,
+                body,
+                point_expressions,
+                coordinate,
+                parameter,
+                constraint,
+                scale,
+            )
+            cuts.append(node)
+            bindings.append(binding)
+            labels.extend((f, name + "_side", "cylinder") for f in feature.face_ids)
+        elif feature.kind in ("boss", "blind_hole"):
             expected = "additive" if feature.kind == "boss" else "subtractive"
             if feature.polarity != expected or not feature.on_face:
                 raise ValueError("Cylinder ownership and polarity are required")
@@ -255,12 +277,17 @@ def features_to_ir(features: list[Feature]) -> ParametricModel:
                 center[2],
                 depth - center[2],
             )
-            if body.profile.kind == "l" and host_axis == 1:
+            inner_host = (
+                body.profile.kind == "l"
+                and host_axis == 1
+                and abs(center[1] - levels[1][1]) <= tolerance
+            )
+            if inner_host:
                 radius_limit = min(radius_limit, abs(center[0] - levels[0][1]))
             parameter(
                 f"{name}_radius",
                 feature.radius,
-                radius_limit - 0.01,
+                exclusive_limit(radius_limit, feature.radius, scale),
                 group=group,
                 faces=feature.face_ids,
             )
@@ -295,15 +322,11 @@ def features_to_ir(features: list[Feature]) -> ParametricModel:
                 additive.append(node)
             else:
                 # The linked assert remains meaningful after editing the host.
-                material_available = (
-                    center[host_axis]
-                    if axis[host_axis] < 0
-                    else [width, height][host_axis] - center[host_axis]
-                )
+                material_available = material_depth(points, center, axis, depth)
                 parameter(
                     f"{name}_depth",
                     feature.depth,
-                    material_available - 0.01,
+                    exclusive_limit(material_available, feature.depth, scale),
                     group=group,
                     faces=feature.face_ids,
                 )
@@ -316,22 +339,34 @@ def features_to_ir(features: list[Feature]) -> ParametricModel:
                     face_ids=feature.face_ids,
                 )
                 cuts.append(node)
-                material = (
-                    host
-                    if axis[host_axis] < 0
-                    else f'{["body_width", yname][host_axis]}-({host})'
+                polygon = (
+                    "["
+                    + ", ".join("[" + ", ".join(p) + "]" for p in point_expressions)
+                    + "]"
                 )
+                material = f'_material_depth([{", ".join(location)}],[{", ".join(str(v) for v in axis)}],{polygon},body_depth)'
                 constraint(
                     f"{name}_depth < {material}",
                     "Blind hole must leave a floor",
                     feature.face_ids,
                 )
+                if (
+                    body.profile.kind == "l"
+                    and host_axis == 1
+                    and axis[1] < 0
+                    and host == "base_thickness"
+                ):
+                    constraint(
+                        f"{name}_depth < base_thickness",
+                        "Blind hole must leave a floor",
+                        feature.face_ids,
+                    )
             constraint(
                 f'{name}_{"xyz"[tangent]} > {name}_radius && {name}_{"xyz"[tangent]}+{name}_radius < {bound} && {name}_z > {name}_radius && {name}_z+{name}_radius < body_depth',
                 "Cylinder must stay inside the host footprint",
                 feature.face_ids,
             )
-            if body.profile.kind == "l" and host_axis == 1:
+            if inner_host:
                 inner = expressions[0][1]
                 fillets = [
                     f"{f.id}_radius"
@@ -385,13 +420,19 @@ def features_to_ir(features: list[Feature]) -> ParametricModel:
                 or len(feature.between) != 2
             ):
                 raise ValueError("Fillet needs two host faces and a sharp corner")
+            vertex = int(
+                np.argmin(
+                    np.linalg.norm(points - np.asarray(feature.corner)[:2], axis=1)
+                )
+            )
+            neighbors = ((vertex - 1) % len(points), (vertex + 1) % len(points))
+            free_lengths = [
+                np.linalg.norm(points[i] - points[vertex]) for i in neighbors
+            ]
             parameter(
                 f"{name}_radius",
                 feature.radius,
-                min(
-                    width - dims.get("wall_thickness", 0),
-                    height - dims.get("base_thickness", 0),
-                ),
+                exclusive_limit(min(free_lengths), feature.radius, scale),
                 group=group,
                 faces=feature.face_ids,
             )
@@ -428,8 +469,17 @@ def features_to_ir(features: list[Feature]) -> ParametricModel:
                 (f, name, "plane" if f in feature.trim_face_ids else "cylinder")
                 for f in feature.face_ids
             )
+            free_expressions = [
+                "norm(["
+                + ", ".join(
+                    f"({point_expressions[i][j]})-({point_expressions[vertex][j]})"
+                    for j in range(2)
+                )
+                + "])"
+                for i in neighbors
+            ]
             constraint(
-                f"{name}_radius < body_width-wall_thickness && {name}_radius < body_height-base_thickness",
+                " && ".join(f"{name}_radius < {length}" for length in free_expressions),
                 "Fillet must fit between the free leg ends",
                 feature.face_ids,
             )

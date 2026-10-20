@@ -139,18 +139,57 @@ def test_segmentation_recovers_faces_and_edges(rendered, variant_name):
 
 @pytest.mark.parametrize("variant_name", list(VARIANTS))
 def test_features_recovered_with_polarity_and_hausdorff(rendered, variant_name):
-    from stl2scad.core.segmentation import detect_features, hausdorff_to_mesh, segment_mesh
+    from stl2scad.core.segmentation import (
+        detect_features,
+        hausdorff_to_mesh,
+        segment_mesh,
+    )
 
     mesh = rendered[variant_name]
     features = detect_features(segment_mesh(mesh))
-    by_kind = {f.kind: f for f in features}
+    by_id = {f.id: f for f in features}
+    import re
+
+    identifier = lambda f: f["id"] if re.search(r"_\d+$", f["id"]) else f["id"] + "_1"
+    expected_ids = {identifier(f) for f in EXPECTED["features"]}
+    assert len(by_id) == len(features) and set(by_id) == expected_ids
+    surfaces = {f["id"]: f for f in EXPECTED["faces"]}
+    variant = VARIANTS[variant_name]
+    rotation = _rotation(variant["rotate_deg"])
     for expected in EXPECTED["features"]:
-        found = by_kind.get(expected["kind"])
+        found = by_id.get(identifier(expected))
         assert found is not None, f"{variant_name}: {expected['kind']} not detected"
+        assert found.kind == expected["kind"]
         assert found.polarity == expected["polarity"], expected["id"]
         for key in ("radius", "height", "depth"):
             if key in expected:
-                assert abs(getattr(found, key) - expected[key]) / expected[key] < 0.02, (expected["id"], key)
+                assert (
+                    abs(getattr(found, key) - expected[key]) / expected[key] < 0.02
+                ), (expected["id"], key)
+        curves = [
+            surfaces[i] for i in expected["faces"] if surfaces[i]["kind"] == "cylinder"
+        ]
+        if curves:
+            frame = np.asarray(found.part_frame)
+            position = frame[:3, :3] @ found.position + frame[:3, 3]
+            local = position @ rotation - variant["translate_before"]
+            axis = (frame[:3, :3] @ found.axis) @ rotation
+            point = np.array(curves[0]["point"], dtype=float)
+            direction = np.array(curves[0]["axis"], dtype=float)
+            if "on_face" in expected:
+                host = surfaces[expected["on_face"]]
+                normal = np.asarray(host["normal"])
+                point += direction * (
+                    np.dot(normal, np.asarray(host["point"]) - point)
+                    / np.dot(normal, direction)
+                )
+                direction = normal * (1 if expected["polarity"] == "additive" else -1)
+            np.testing.assert_allclose(
+                local, point, atol=EXPECTED["tolerances"]["plane_offset_mm"]
+            )
+            assert axis @ direction > np.cos(
+                np.radians(EXPECTED["tolerances"]["cylinder_axis_deg"])
+            )
     assert hausdorff_to_mesh(features, mesh) < EXPECTED["hausdorff_max_mm"]
 
 

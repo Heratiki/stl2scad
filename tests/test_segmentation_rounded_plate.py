@@ -134,6 +134,9 @@ def test_features_and_hausdorff(rendered, name):
     features = detect_features(segment_mesh(rendered[name]))
     assert len(features) == 4
     by_id = {f.id: f for f in features}
+    assert len(by_id) == len(features) and set(by_id) == {
+        f["id"] for f in EXPECTED["features"]
+    }
     assert len({i for f in features for i in f.face_ids}) == 21
     assert sum(len(f.face_ids) for f in features) == 21
     for expected in EXPECTED["features"]:
@@ -153,6 +156,13 @@ def test_features_and_hausdorff(rendered, name):
             local = world @ rotation - variant["translate_before"]
             np.testing.assert_allclose(local[:2], expected["position"][:2], atol=0.01)
             assert min(abs(local[2]), abs(local[2] - 3)) < 0.01
+            axis = (frame[:3, :3] @ feature.axis) @ rotation
+            assert abs(axis[2]) > np.cos(
+                np.radians(EXPECTED["tolerances"]["cylinder_axis_deg"])
+            )
+            end = local + axis * feature.depth
+            np.testing.assert_allclose(end[:2], expected["position"][:2], atol=0.01)
+            assert abs(end[2] - (3 - local[2])) < 0.01
             if "angle_deg" in expected:
                 angle = np.radians(feature.angle_deg)
                 direction = (

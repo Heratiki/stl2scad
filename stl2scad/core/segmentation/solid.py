@@ -33,15 +33,26 @@ def _cylinder(feature, epsilon):
     matrix[:3, :3] = np.column_stack((u, np.cross(direction, u), direction))
     # Extend the host end only. The cap/floor remains at its measured depth.
     matrix[:3, 3] = np.asarray(feature.position) - direction * epsilon
-    length = feature.height if feature.kind == "boss" else feature.depth
+    length = feature.height if feature.kind in ("boss", "pin") else feature.depth
     if feature.radius is None or feature.radius <= 0 or length is None or length <= 0:
         raise ValueError("Cylinder features need a positive radius and length")
-    return f"multmatrix({_literal(matrix)}) cylinder(r={feature.radius:.17g}, h={length + epsilon:.17g}, $fn={feature.segments or 64});"
+    tail = 0.0
+    if feature.kind == "through_hole" and feature.rim_normals:
+        pads = [
+            feature.radius * np.sqrt(max(0.0, 1 / np.dot(n, direction) ** 2 - 1))
+            for n in feature.rim_normals
+        ]
+        matrix[:3, 3] -= direction * pads[0]
+        tail = sum(pads) + epsilon
+    return f"multmatrix({_literal(matrix)}) cylinder(r={feature.radius:.17g}, h={length + epsilon + tail:.17g}, $fn={feature.segments or 64});"
 
 
 def _validation_source(features: list[Feature]) -> str:
     if not features:
         raise ValueError("Cannot reconstruct an empty feature list")
+    if len(features) == 1 and features[0].kind == "pin":
+        pin = features[0]
+        return f"multmatrix({_literal(pin.part_frame)}) " + _cylinder(pin, 0.0)
     bodies = [f for f in features if f.kind.endswith("_profile_extrude")]
     if len(bodies) != 1:
         raise ValueError("Validation currently supports exactly one extruded body")
@@ -126,7 +137,7 @@ def _validation_source(features: list[Feature]) -> str:
     for feature in features:
         if feature is body:
             continue
-        if feature.kind in ("boss", "blind_hole"):
+        if feature.kind in ("boss", "blind_hole", "through_hole"):
             expected_polarity = "additive" if feature.kind == "boss" else "subtractive"
             if feature.polarity != expected_polarity:
                 raise ValueError("Feature kind and polarity disagree")
@@ -243,7 +254,7 @@ def _closest_points(points, triangles):
 
 
 def mesh_hausdorff(first: Mesh, second: Mesh, *, samples=4096) -> float:
-    """Bidirectional sampled-surface Hausdorff in mm, augmented by all vertices.
+    """Sampled-surface Hausdorff in mm, with vertices and edge quarter points.
 
     Independent random point clouds have a sampling-spacing error much larger
     than 0.05 mm on a bracket. For each sampled point we instead find its exact
@@ -260,10 +271,27 @@ def mesh_hausdorff(first: Mesh, second: Mesh, *, samples=4096) -> float:
     for source, target in ((first, second), (second, first)):
         triangles = np.asarray(target.vectors, dtype=np.float64)
         sampled, _ = sample_mesh_points(source, samples, rng)
+        vertices, indices = np.unique(
+            source.vectors.reshape(-1, 3).astype(float), axis=0, return_inverse=True
+        )
+        ids = indices.reshape(-1, 3)
+        edges = np.unique(
+            np.sort(
+                np.vstack((ids[:, [0, 1]], ids[:, [1, 2]], ids[:, [2, 0]])), axis=1
+            ),
+            axis=0,
+        )
+        endpoints = vertices[edges]
+        edge_points = (
+            endpoints[:, 0, None, :]
+            + np.array([0.25, 0.5, 0.75])[None, :, None]
+            * (endpoints[:, 1] - endpoints[:, 0])[:, None, :]
+        ).reshape(-1, 3)
         points = np.concatenate(
             (
                 sampled,
-                np.unique(source.vectors.reshape(-1, 3), axis=0),
+                vertices,
+                edge_points,
                 source.vectors.astype(np.float64).mean(axis=1),
             )
         )

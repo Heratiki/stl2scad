@@ -23,6 +23,7 @@ FeatureKind = Literal[
     "rounded_rectangle_profile_extrude",
     "arc_profile_extrude",
     "pocket",
+    "pin",
 ]
 
 
@@ -87,6 +88,7 @@ class Feature:
     width: float | None = None
     length: float | None = None
     angle_deg: float = 0.0
+    rim_normals: tuple[Vector, ...] = ()
 
     @property
     def host(self):
@@ -113,20 +115,42 @@ def _boundary_loop(result, face):
             neighbors[b].append(a)
     if not neighbors or any(len(row) != 2 for row in neighbors.values()):
         raise ValueError("Profile cap must have manifold boundary loops")
-    seed = min(neighbors)
-    loop, previous, current = [], None, seed
-    while True:
-        loop.append(current)
-        choices = sorted(v for v in neighbors[current] if v != previous)
-        following = choices[0]
-        if following == seed:
-            break
-        if following in loop:
-            raise ValueError("Self-intersecting profile boundary")
-        previous, current = current, following
-    if len(loop) != len(neighbors):
-        raise ValueError("Profile holes and multiple cap loops are not supported yet")
-    return mesh.vertices[loop]
+    remaining, loops = set(neighbors), []
+    while remaining:
+        seed = min(remaining)
+        loop, previous, current = [], None, seed
+        while True:
+            loop.append(current)
+            remaining.remove(current)
+            following = min(v for v in neighbors[current] if v != previous)
+            if following == seed:
+                break
+            if following not in remaining:
+                raise ValueError("Self-intersecting profile boundary")
+            previous, current = current, following
+        loops.append(mesh.vertices[loop])
+    # Internal rim loops belong to through cuts; the body section is the outer
+    # loop. A cap triangulator may insert extra collinear boundary vertices.
+    return max(
+        loops,
+        key=lambda p: np.linalg.norm(np.cross(p, np.roll(p, -1, axis=0)).sum(axis=0)),
+    )
+
+
+def _full_cylinder(result, curved):
+    if result.mesh is None:
+        return True
+    mesh = result.mesh
+    selected = np.isin(mesh.source_indices, curved.triangle_indices)
+    points = mesh.vertices[mesh.triangles[selected]].reshape(-1, 3)
+    radial = points - curved.params.point
+    axis = np.asarray(curved.params.axis)
+    radial -= (radial @ axis)[:, None] * axis
+    u = radial[0] / np.linalg.norm(radial[0])
+    v = np.cross(axis, u)
+    angles = np.sort(np.mod(np.arctan2(radial @ v, radial @ u), 2 * np.pi))
+    gaps = np.diff(np.r_[angles, angles[0] + 2 * np.pi])
+    return float(gaps.max()) <= 2 * np.pi / (curved.params.segments or 16) * 1.5
 
 
 def _simplify(points, tolerance):
@@ -296,6 +320,35 @@ def _cylinder_features(result):
         ]
         concave = [f for f in caps if result.edge_convexity(curved, f) == "concave"]
         convex = [f for f in caps if result.edge_convexity(curved, f) == "convex"]
+        rims = [
+            f
+            for f in planes
+            if abs(np.dot(f.params.normal, curved.params.axis)) > 1e-3
+            and result.edge_convexity(curved, f) == "convex"
+        ]
+        if (
+            curved.convexity == "concave"
+            and len(rims) == 2
+            and np.dot(rims[0].params.normal, curved.params.axis)
+            * np.dot(rims[1].params.normal, curved.params.axis)
+            < 0
+            and _full_cylinder(result, curved)
+        ):
+            host, end = sorted(
+                rims, key=lambda f: np.dot(f.params.normal, curved.params.axis)
+            )
+            start = _axis_plane_point(curved.params, host.params)
+            stop = _axis_plane_point(curved.params, end.params)
+            features.append(
+                dict(
+                    kind="through_hole",
+                    curved=curved,
+                    host=host,
+                    end=end,
+                    length=float(np.linalg.norm(stop - start)),
+                )
+            )
+            continue
         if len(caps) != 2 or len(concave) != 1 or len(convex) != 1:
             raise ValueError(f"Unsupported cylinder topology at {curved.id}")
         host, end = (
@@ -345,11 +398,9 @@ def _cap_pair(result, body_faces):
                 continue
             first, second = loops[a.id], loops[b.id]
             projected = first + length * direction
-            distances = np.linalg.norm(projected[:, None] - second[None, :], axis=2)
-            if (
-                max(distances.min(axis=0).max(), distances.min(axis=1).max())
-                <= tolerance
-            ):
+            from .profile_geometry import boundary_distance
+
+            if boundary_distance(projected, second) <= tolerance:
                 # Nonrectangular sections have more boundary corners than a
                 # side rectangle. Tie-breaking uses provenance, never axes.
                 candidates.append(
@@ -413,6 +464,11 @@ def detect_features(result: SegmentationResult) -> list[Feature]:
     """
     if result.mesh is None:
         raise ValueError("Feature detection requires indexed segmentation support")
+    from .pins import detect_pin
+
+    pin = detect_pin(result)
+    if pin is not None:
+        return [pin]
     from .sections import detect_section_features
 
     section = detect_section_features(result)
@@ -420,7 +476,10 @@ def detect_features(result: SegmentationResult) -> list[Feature]:
         return section
     secondary = _cylinder_features(result)
     owned = {
-        item[key].id for item in secondary for key in ("curved", "end") if key in item
+        item[key].id
+        for item in secondary
+        for key in ("curved", "end")
+        if key in item and not (key == "end" and item["kind"] == "through_hole")
     }
     owned.update(face.id for item in secondary for face in item.get("trims", ()))
     body_faces = [f for f in result.faces if f.id not in owned]
@@ -509,18 +568,32 @@ def detect_features(result: SegmentationResult) -> list[Feature]:
             )
         else:
             host, end = item["host"], item["end"]
-            direction = np.asarray(host.params.normal) * (1 if kind == "boss" else -1)
+            direction = (
+                np.asarray(curved.params.axis)
+                if kind == "through_hole"
+                else np.asarray(host.params.normal) * (1 if kind == "boss" else -1)
+            )
             dimensions = {"height" if kind == "boss" else "depth": item["length"]}
             features.append(
                 Feature(
                     **common,
                     polarity="additive" if kind == "boss" else "subtractive",
-                    face_ids=(curved.id, end.id),
+                    face_ids=(
+                        (curved.id,) if kind == "through_hole" else (curved.id, end.id)
+                    ),
                     on_face=host.id,
                     position=tuple(
                         local(_axis_plane_point(curved.params, host.params))
                     ),
                     axis=tuple(direction @ rot),
+                    rim_normals=(
+                        tuple(
+                            tuple(np.asarray(f.params.normal) @ rot)
+                            for f in (host, end)
+                        )
+                        if kind == "through_hole"
+                        else ()
+                    ),
                     **dimensions,
                 )
             )

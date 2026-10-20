@@ -76,14 +76,14 @@ def _smooth_components(mesh, patches, labels, config):
     return [sorted(c) for c in nx.connected_components(graph) if len(c) >= 4]
 
 
-def _cylinder_support(model, points, normals, config, tolerance):
+def _cylinder_support(model, points, normals, config, tolerance, polarity=1):
     residual = cylinder_residuals(model, points).max(axis=1)
     delta = points.mean(axis=1) - model.point
     radial = delta - (delta @ model.axis)[:, None] * np.asarray(model.axis)
     radial /= np.maximum(
         np.linalg.norm(radial, axis=1, keepdims=True), np.finfo(float).tiny
     )
-    normal_alignment = np.abs(np.einsum("ij,ij->i", normals, radial))
+    normal_alignment = polarity * np.einsum("ij,ij->i", normals, radial)
     return (
         (residual <= tolerance)
         & (np.abs(normals @ model.axis) <= np.sin(np.radians(config.plane_normal_deg)))
@@ -121,18 +121,19 @@ def _extract_cylinders(mesh, patches, labels, config):
                     )
                 except (ValueError, np.linalg.LinAlgError):
                     continue
-                inliers = _cylinder_support(
-                    model, local_points, local_normals, config, tolerance
-                )
-                support = [
-                    i
-                    for i, section in enumerate(patch_ranges)
-                    if inliers[section].all()
-                ]
-                if len(support) > len(best_support):
-                    best_support = support
-                    if len(support) == len(remaining):
-                        break
+                for polarity in (1, -1):
+                    inliers = _cylinder_support(
+                        model, local_points, local_normals, config, tolerance, polarity
+                    )
+                    support = [
+                        i
+                        for i, section in enumerate(patch_ranges)
+                        if inliers[section].all()
+                    ]
+                    if len(support) > len(best_support):
+                        best_support, best_polarity = support, polarity
+                if len(best_support) == len(remaining):
+                    break
             if len(best_support) < 4:
                 break
             support_patches = {remaining[i] for i in best_support}
@@ -154,7 +155,12 @@ def _extract_cylinders(mesh, patches, labels, config):
                     points[members].reshape(-1, 3), mesh.normals[members]
                 )
                 if not _cylinder_support(
-                    model, points[members], mesh.normals[members], config, tolerance
+                    model,
+                    points[members],
+                    mesh.normals[members],
+                    config,
+                    tolerance,
+                    best_polarity,
                 ).all():
                     continue
                 delta = points[members].mean(axis=1) - model.point
@@ -216,10 +222,12 @@ def _region_graph(mesh, faces, owner, config):
         angles = np.array([angle for _, angle, _ in evidence])
         lengths = np.array([length for _, _, length in evidence])
         signed = float(np.average(angles, weights=lengths))
-        if (
-            all(analytic_tangent[(a, b)])
-            or np.max(np.abs(angles)) <= config.tangent_angle_deg
-        ):
+        curved = any(isinstance(faces[k].params, Cylinder) for k in (a, b))
+        # A small facet turn can approximate a smooth cylinder join. Between
+        # two planes it is a real crease unless below mesh numerical precision.
+        zero_angle = np.degrees(8 * mesh.weld_tolerance / mesh.diagonal)
+        tangent_limit = config.tangent_angle_deg if curved else zero_angle
+        if all(analytic_tangent[(a, b)]) or np.max(np.abs(angles)) <= tangent_limit:
             convexity = "tangent"
         else:
             convexity = "convex" if signed > 0 else "concave"

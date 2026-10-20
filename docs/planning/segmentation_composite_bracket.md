@@ -73,6 +73,15 @@ When a target test passes, its strict xfail fails. Then remove the marker.
 | Rollout | CLI flag `--pipeline segmentation`. The old detectors stay the default until the new pipeline does better on the fixtures and on the real parts. |
 | Next target | 2 or 3 of the simplest Hero Me parts from the local corpus, each with an expected JSON that is checked by hand. |
 
+## Known limits
+
+- Review #2: Spatial fillet wedges require orthogonal hosts aligned with the profile axes.
+- Review #4: Bosses and blind holes require hosts aligned with a profile-side axis.
+- Review #5: Convex 3D edge rounds and fillets that do not span the extrusion remain unsupported.
+- Review #6: Disconnected bodies, revolves, drafted extrusions and sweeps are not reconstructed.
+- Review #7: Coarse cylinder recovery requires each planar facet to project to exactly two vertices.
+- Review #11: Generic polygon edits share coordinate levels and can distort angled edges or create self-intersections.
+
 ## API that the tests expect
 
 Module: `stl2scad/core/segmentation.py` (it can be a package).

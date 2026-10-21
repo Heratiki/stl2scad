@@ -6,7 +6,7 @@ import networkx as nx
 import numpy as np
 import pytest
 
-from stl2scad.core.openscad.runner import run_openscad
+from tests.render_cache import cached_render
 from stl2scad.core.segmentation import segment_mesh
 from stl2scad.core.segmentation.defeature import Defeatured, defeature
 from stl2scad.core.segmentation.models import Face, Plane, SegmentationResult
@@ -237,9 +237,11 @@ def test_equal_adjacent_sections_merge(openscad_path, tmp_path):
     source.write_text(
         "union(){cube([10,8,1.5]);translate([0.0001,0,1.5])cube([9.9998,8,1.5]);}"
     )
-    assert run_openscad(
+    assert cached_render(
         "equal sections",
-        ["--render", "-o", str(target), str(source)],
+        ["--render"],
+        source,
+        target,
         str(target.with_suffix(".log")),
         openscad_path,
     )
@@ -259,9 +261,11 @@ def test_merged_sections_keep_all_side_provenance(openscad_path, tmp_path):
     source.write_text(
         "union(){cube([10,8,1.5]);translate([0.0001,0,1.5])cube([9.9998,8,1.5]);}"
     )
-    assert run_openscad(
+    assert cached_render(
         "merged provenance",
-        ["--render", "-o", str(target), str(source)],
+        ["--render"],
+        source,
+        target,
         str(target.with_suffix(".log")),
         openscad_path,
     )

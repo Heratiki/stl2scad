@@ -7,6 +7,7 @@ import pytest
 from stl.mesh import Mesh
 
 from stl2scad.core.openscad.runner import run_openscad
+from tests.render_cache import cached_render
 from stl2scad.core.segmentation.emit import emit_scad, render_scad, gate_limit_mm
 from stl2scad.core.segmentation.solid import mesh_hausdorff, hausdorff_to_mesh
 from stl2scad.core.segmentation.features import detect_features
@@ -81,16 +82,11 @@ def test_slider_edit_matches_ground_truth(
     )
     assert count == 1
     target = tmp_path / "truth.stl"
-    assert run_openscad(
+    assert cached_render(
         name,
-        [
-            "--render",
-            "-D",
-            f"{parameter}={value}",
-            "-o",
-            str(target),
-            str(DATA / variant_for(PARTS[name], variant)["scad"]),
-        ],
+        ["--render", "-D", f"{parameter}={value}"],
+        DATA / variant_for(PARTS[name], variant)["scad"],
+        target,
         str(tmp_path / "truth.log"),
         openscad_path,
     )
@@ -174,9 +170,11 @@ def test_inner_stadium_remains_editable(openscad_path, tmp_path):
 
     fixture = DATA.parent / "feature_fixtures_scad" / "plate_counterbore_and_slot.scad"
     target = tmp_path / "counterbore.stl"
-    assert run_openscad(
+    assert cached_render(
         "counterbore",
-        ["--render", "-o", str(target), str(fixture)],
+        ["--render"],
+        fixture,
+        target,
         str(tmp_path / "truth.log"),
         openscad_path,
     )
@@ -205,16 +203,11 @@ def test_treatments_follow_host_length(
     )
     assert count == 1
     target = tmp_path / "longer.stl"
-    assert run_openscad(
+    assert cached_render(
         name,
-        [
-            "--render",
-            "-D",
-            f"body_length={value}",
-            "-o",
-            str(target),
-            str(DATA / variant_for(PARTS[name], "axis_aligned")["scad"]),
-        ],
+        ["--render", "-D", f"body_length={value}"],
+        DATA / variant_for(PARTS[name], "axis_aligned")["scad"],
+        target,
         str(tmp_path / "longer.log"),
         openscad_path,
     )

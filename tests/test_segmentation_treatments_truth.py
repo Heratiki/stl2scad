@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 from stl.mesh import Mesh
 
-from stl2scad.core.openscad.runner import run_openscad
+from tests.render_cache import cached_render
 from tests.test_segmentation_bracket import _rotation, openscad_path
 
 DATA = Path(__file__).parent / "data" / "segmentation"
@@ -127,9 +127,11 @@ def rendered(openscad_path, tmp_path_factory):
     for name, variant_name in CASES:
         variant = variant_for(PARTS[name], variant_name)
         target = directory / f"{name}_{variant_name}.stl"
-        assert run_openscad(
+        assert cached_render(
             name,
-            ["--render", "-o", str(target), str(DATA / variant["scad"])],
+            ["--render"],
+            DATA / variant["scad"],
+            target,
             str(target.with_suffix(".log")),
             openscad_path,
         )
@@ -215,16 +217,11 @@ def test_design_variables_can_be_overridden(
     variant = variant_for(part, variant_name)
     parameter, value = EDIT[name]
     target = tmp_path / "edited.stl"
-    assert run_openscad(
+    assert cached_render(
         name,
-        [
-            "--render",
-            "-D",
-            f"{parameter}={value}",
-            "-o",
-            str(target),
-            str(DATA / variant["scad"]),
-        ],
+        ["--render", "-D", f"{parameter}={value}"],
+        DATA / variant["scad"],
+        target,
         str(target.with_suffix(".log")),
         openscad_path,
     )
@@ -319,8 +316,8 @@ def _render_post(openscad_path, directory, w, l, h, chamfer):
     scad = directory / f"post_{w}_{l}_{h}_{tag}.scad"
     scad.write_text(_post_scad(w, l, h, chamfer))
     target = scad.with_suffix(".stl")
-    assert run_openscad(
-        scad.stem, ["--render", "-o", str(target), str(scad)],
+    assert cached_render(
+        scad.stem, ["--render"], scad, target,
         str(scad.with_suffix(".log")), openscad_path,
     )
     return Mesh.from_file(str(target))
@@ -380,8 +377,8 @@ def test_treatment_numbering_is_stable_under_180_rotation(openscad_path, tmp_pat
         scad = tmp_path / f"unequal_{rotation[2]}.scad"
         scad.write_text(_unequal_block_scad(truth["design"], rotation), encoding="utf-8")
         target = scad.with_suffix(".stl")
-        assert run_openscad(
-            scad.stem, ["--render", "-o", str(target), str(scad)],
+        assert cached_render(
+            scad.stem, ["--render"], scad, target,
             str(scad.with_suffix(".log")), openscad_path,
         )
         mesh = Mesh.from_file(str(target))

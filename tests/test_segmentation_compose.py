@@ -11,7 +11,7 @@ import trimesh
 
 from stl.mesh import Mesh
 
-from stl2scad.core.openscad.runner import run_openscad
+from tests.render_cache import cached_render
 from stl2scad.core.segmentation import segment_mesh
 from stl2scad.core.segmentation.compose import compose_features
 from stl2scad.core.segmentation.features import detect_features
@@ -245,9 +245,11 @@ def test_treatment_body_keeps_cross_axis_through_hole(openscad_path, tmp_path):
     source.write_text(
         f"use <{fixture.resolve().as_posix()}>\n$fn=16; difference(){{ chamfered_block(); translate([-1,20,4]) rotate([0,90,0]) cylinder(r=1.5,h=62); }}"
     )
-    assert run_openscad(
+    assert cached_render(
         "cross-axis hole",
-        ["--render", "-o", str(target), str(source)],
+        ["--render"],
+        source,
+        target,
         str(target.with_suffix(".log")),
         openscad_path,
     )

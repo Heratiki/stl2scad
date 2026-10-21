@@ -31,6 +31,7 @@ class Defeatured:
     axis: Vector
     treatments: tuple[EdgeTreatment, ...]
     rejected: tuple[tuple[str, str], ...]
+    diagnostics: tuple[tuple[str, str], ...] = ()
 
 
 def _unit(vector):
@@ -149,7 +150,7 @@ def _host_pairs(result, face, axis, sine, cosine, boundary):
         best_sides = [
             s
             for s in valid_sides
-            if np.isclose(np.dot(normal, s.params.normal), max_dot, atol=sine)
+            if np.isclose(np.dot(normal, s.params.normal), max_dot, atol=1e-5)
         ]
         pairs = []
         for side in best_sides:
@@ -193,7 +194,7 @@ def defeature(result: SegmentationResult) -> Defeatured:
     axis = extrusion_axis(fitted)
     sine, cosine = np.sin(np.radians(0.5)), np.cos(np.radians(0.5))
     frame = _side_frame(fitted, axis, sine, cosine)
-    treatments, rejected = [], []
+    treatments, rejected, diagnostics = [], [], []
     for face in fitted.faces:
         params = face.params
         if isinstance(params, Plane):
@@ -206,10 +207,11 @@ def defeature(result: SegmentationResult) -> Defeatured:
                 continue
             kind, boundary = "edge_round", "tangent"
         pairs = _host_pairs(fitted, face, axis, sine, cosine, boundary)
-        if len(pairs) != 1:
-            rejected.append(
-                (face.id, "ambiguous hosts" if len(pairs) > 1 else "no host pair")
-            )
+        if not pairs:
+            diagnostics.append((face.id, "no host pair"))
+            continue
+        if len(pairs) > 1:
+            rejected.append((face.id, "ambiguous hosts"))
             continue
         cap, side, point, direction = pairs[0]
         if _oblique(direction, cap, side, cosine):
@@ -273,4 +275,5 @@ def defeature(result: SegmentationResult) -> Defeatured:
         tuple(axis),
         tuple(numbered),
         tuple(rejected),
+        tuple(diagnostics),
     )

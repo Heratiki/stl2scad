@@ -313,7 +313,8 @@ def test_chamfer_with_slotted_host_wall_is_found(openscad_path, tmp_path):
 
 def test_dropped_chamfer_candidate_records_a_reason(openscad_path, tmp_path):
     # T-008: Any chamfer candidate not turned into a treatment appears in
-    # rejected with a named reason; none is dropped silently without a reason.
+    # rejected (if it had a host pair) or in diagnostics (if it had none),
+    # always with a reason; none is dropped silently without a reason.
     # An internal V-groove has tilted planar walls (chamfer candidates) but
     # lacks convex host side walls, remaining unsupported with "no host pair".
     source = tmp_path / "unsupported_groove.scad"
@@ -342,6 +343,7 @@ def test_dropped_chamfer_candidate_records_a_reason(openscad_path, tmp_path):
 
     # Verify no treatments were formed
     assert output.treatments == ()
+    assert output.rejected == ()
 
     # Find all planar faces that are chamfer candidates (neither cap nor side)
     sine, cosine = np.sin(np.radians(0.5)), np.cos(np.radians(0.5))
@@ -357,7 +359,9 @@ def test_dropped_chamfer_candidate_records_a_reason(openscad_path, tmp_path):
     # Assert every candidate that was dropped has a non-empty named reason
     treatment_faces = {t.face_id for t in output.treatments}
     rejected_dict = dict(output.rejected)
+    diagnostics_dict = dict(output.diagnostics)
     for candidate in candidates:
         if candidate.id not in treatment_faces:
-            assert candidate.id in rejected_dict
-            assert rejected_dict[candidate.id] == "no host pair"
+            assert candidate.id in rejected_dict or candidate.id in diagnostics_dict
+            reason = rejected_dict.get(candidate.id) or diagnostics_dict.get(candidate.id)
+            assert reason == "no host pair"

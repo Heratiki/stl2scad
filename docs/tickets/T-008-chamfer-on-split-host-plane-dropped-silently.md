@@ -76,10 +76,13 @@ difference(){ cube([60,40,8]);
 }
 ```
 
-## Rulings (2026-10-20)
+## Rulings
 
-- Merge coplanar host faces before pairing. Reason: a slot splits one wall into coplanar faces; they are one host. Rejected: dropping the candidate when `len(pairs) != 1`.
-- Every dropped candidate always gets a `rejected` entry with a reason. Reason: the diagnostic contract. Rejected: silent `continue`.
+- (2026-10-20) Merge coplanar host faces before pairing. Reason: a slot splits one wall into coplanar faces; they are one host. Rejected: dropping the candidate when `len(pairs) != 1`.
+- (2026-10-20) Every dropped candidate always gets a `rejected` entry with a reason. Reason: the diagnostic contract. Rejected: silent `continue`.
+- (maintainer, 2026-10-21) Only a real treatment candidate, a face that has a cap/side host pair, gets a `rejected` entry.
+- (maintainer, 2026-10-21) "no host pair" goes to a new diagnostics list on `Defeatured` (for example `diagnostics: tuple[tuple[str, str], ...] = ()`). The diagnostics list does not start the compose path. Do not change `features.py`.
+- (maintainer, 2026-10-21) Check the `best_sides` tie tolerance against `prism_triangle` and the composite bracket. Two distinct, non-coplanar sides of those parts must not tie. A tie that round 1 introduced and that main did not have is a defect of round 1: make the tolerance strict enough that these parts give the same pairs as on main.
 
 ## Settled design
 
@@ -98,7 +101,7 @@ Any other detector change, new primitive kinds, and weakening any existing treat
 ## Acceptance
 
 - [x] New test `test_chamfer_with_slotted_host_wall_is_found`: the slot repro (`f5b_slot.scad`) yields one chamfer, the same size as the no-slot block.
-- [x] New test `test_dropped_chamfer_candidate_records_a_reason`: any chamfer candidate not turned into a treatment appears in `rejected` with a reason; asserts that no candidate is dropped without a reason (checked for a case that stays unsupported).
+- [x] New test `test_dropped_chamfer_candidate_records_a_reason`: a dropped candidate appears in `rejected` (it had a host pair) or in `diagnostics` (it had none), always with a reason.
 - [x] Existing tests in `tests/test_segmentation_*.py` stay unchanged.
 - [x] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
 - [x] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.

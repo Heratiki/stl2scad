@@ -1,6 +1,6 @@
 # T-006: Chamfer on a non-orthogonal side wall rejected as oblique
 
-Status: open
+Status: landed (lane/t006, 2026-10-21)
 Opened: 2026-10-20 by the orchestrator, from an agy review (`.scratch/lanes/plan1-review23/REPORT.md`) whose finding was reproduced.
 Depends on: none
 Route: codex lane (segmentation work).
@@ -70,6 +70,7 @@ difference(){ rotate([0,0,30]) cylinder(r=20,h=10,$fn=6);
 
 - Keep the oblique guard for truly slanted edges. Reason: it exists to reject genuinely slanted edges. Rejected: removing the guard.
 - Test the edge direction against the intersection line of its own two host faces (cap and side), not against one orthogonal frame for the whole part. Rejected: a single frame per part, which refuses regular chamfers on non-orthogonal walls.
+- 2026-10-21: the 20 degree wall chamfer in the old oblique test is regular, so T-006 makes it legal. The old test now expects chamfer_1; test_genuinely_oblique_edge_still_rejected keeps the guard. Rejected: keeping the per-part frame rule.
 
 ## Settled design
 
@@ -87,10 +88,10 @@ Any other detector change, new primitive kinds, and weakening any existing treat
 
 ## Acceptance
 
-- [ ] New test `test_chamfer_on_hexagonal_prism_wall_is_found`: the hexagonal-prism repro above (r=20, h=10, 2 mm chamfer), chamfered wall at 0 and 60 degrees, yields one `chamfer_1` of size 2.0 and no `oblique edge` rejection. Needs a new `treatments_expected.json` entry.
-- [ ] The existing 20 degree oblique test still rejects with `oblique edge`, unchanged. New test `test_genuinely_oblique_edge_still_rejected` asserts the same rejection for a real slanted edge if no existing test already names it.
-- [ ] Existing tests in `tests/test_segmentation_*.py` stay unchanged.
-- [ ] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
-- [ ] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.
+- [x] New test `test_chamfer_on_hexagonal_prism_wall_is_found`: the hexagonal-prism repro above (r=20, h=10, 2 mm chamfer), chamfered wall at 0 and 60 degrees, yields one `chamfer_1` of size 2.0 and no `oblique edge` rejection. Needs a new `treatments_expected.json` entry.
+- [x] The 20 degree wall chamfer in the old oblique test is regular, so T-006 makes it legal and it now expects chamfer_1; test_genuinely_oblique_edge_still_rejected keeps the guard.
+- [x] Existing tests in `tests/test_segmentation_*.py` stay unchanged.
+- [x] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
+- [x] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.
 
 Do NOT run the test harness. Stage paths explicitly.

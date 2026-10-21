@@ -1,16 +1,35 @@
 # Handoff
 
-**Last Updated:** 2026-10-20 20:45Z — wave 3 landed: T-007 (axis tie-break), T-005 (centroid-anchored numbering + UTF-8 temp SCAD writes), Plan 1 Task 4 (slabs); T-015 written; tickets T-006, T-008, T-010..T-015 open with rulings; full run at 9fb6f58: 441 passed, 220 skipped, 30 xfailed, 0 failed; the maintainer pushes main with the panel at close; nothing deployed (no deploy step).
+**Last Updated:** 2026-10-21 03:30Z — wave 4 landed: T-006 (chamfer edge tested against its own host-face line), Plan 1 Tasks 5+6 (compose path, remainder regions, emit; `plate_counterbore_and_slot` and `plate_cutout_and_hole` now parametric); T-016 (test render cache) written; T-008 FAILED verification on the combined code and is unmerged (`lane/t008`); full run at 922d2ae: 540 passed, 220 skipped, 28 xfailed, 0 failed; not pushed; nothing deployed (no deploy step).
 
 ## Next session, first three things
 
-1. Run `/session-start`. The maintainer restarts to load lane-panel 0.7.2 (Claude estimates by role and pool share, session `lane-panel-estimates`); check that the panel shows Codex and Claude meters and sane Claude estimates.
-2. Wave 4: Plan 1 Task 5 (remainder regions and the new dispatch) as a codex lane (`resume` plan1-task4), from `docs/superpowers/plans/2026-10-20-defeature-slabs-hybrid.md`. In parallel, T-006 (`defeature.py`) as a Sonnet lane-dev; then T-008 and T-015, one at a time (same file). A third lane (T-014 or T-010) only after its files are checked against Task 5. Queue: `docs/agents/work-ledger.md`.
-3. Maintainer hand check (still open from session 2): convert one real part (`stl2scad part.stl out.scad`) and open it in OpenSCAD.
+1. Run `/session-start`. Ask the maintainer for the T-008 dispatch ruling (section 4, "Open"); recommended: only real treatment candidates (a face with a cap/side pair) get a `rejected` entry, "no host pair" goes to a diagnostics list that does not trigger the compose path, and the `best_sides` tie tolerance is checked against `prism_triangle` and the composite bracket.
+2. Wave 5: the T-008 fix round on `lane/t008` (its test scope must include `tests/test_segmentation_compose.py`, `tests/test_segmentation_treatments.py` and the fixture slice, because `defeature.py` feeds the compose dispatch). In parallel, T-016 (test render cache, Sonnet lane-dev; touches test files only). Then Plan 1 Task 7 (codex, NEW session, not a resume) and T-015.
+3. Maintainer hand check (open since session 2): convert one real part (`stl2scad part.stl out.scad`) and open it in OpenSCAD.
 
 ## What Is Currently In-Flight
 
-Nothing. No lane, worktree or background task runs; only the main tree exists.
+- `lane/t008` (worktree `.claude/worktrees/lane/t008`, HEAD b591664 = lane commit 15a3623 + a merge of main for verification). Not running. Next action: a fix round after the ruling; then `lane-verifier` with the wider test scope; merge on PASS, or `scripts/lane-worktree.sh rm lane/t008 --force` if the maintainer drops it.
+- Nothing else runs. The only other worktree is main.
+
+## 4. Session 2026-10-21 (first session of the day)
+
+Landed (main, `--no-ff`; each lane checked by lane-verifier):
+- T-006 (a671f01; agy gemini-3.8-flash-high, lanes t006 + t006-fix): `_oblique` compares the edge with its own cap/side intersection line; `_host_pairs` picks `best_side`. Maintainer ruling 2026-10-21: the old `test_oblique_edge_is_not_a_treatment` (a regular chamfer on a 20 degree wall) is legal under T-006; renamed `test_regular_chamfer_on_20_degree_wall_is_found`, expects `chamfer_1`. `test_genuinely_oblique_edge_still_rejected` keeps the guard.
+- Plan 1 Tasks 5+6 (6e650b9; codex gpt-6.1-sol high; Task 5 resumed the plan1-task4 session, Task 6 a new session stacked on it). Maintainer ruling: merge the two together, because Task 5 alone changed three known-gap fallback reasons. Result: two known gaps converted parametric (moved in `fixture_expectations.json`, counts match the manifest), `non_revolve_shaft_with_keyway` keeps its old reason, the 7 old-path SHA-256 hashes (recorded at 5099629) still match.
+- T-016 ticket (test render cache; maintainer-reported slow test runs).
+- CLAUDE.md rule "Test scope" (maintainer 2026-10-21): a lane runs only its own test files; suite-verifier runs the full suite once after the merge. The maintainer rejected a per-worktree lock and `nice`/`-n 4`.
+- Full run at 922d2ae: 540 passed, 220 skipped, 28 xfailed, 0 failed (7 min 8 s).
+
+Not verified by the maintainer: no SCAD output of Tasks 5-6 (slabs, treatments, remainder polyhedra) was opened in OpenSCAD by hand.
+
+Open:
+- T-008 (lane/t008): correct alone (its 90 defeature/truth tests pass), but on the combined code 19 compose/treatment tests fail, 4 of 7 old-path hashes change (composite bracket: "Rejected treatment F9 has ambiguous hosts"), and `prism_triangle` falls back. Cause: new `rejected` entries ("no host pair", "ambiguous hosts" from the `best_sides` tie tolerance) trigger the Task 5 dispatch (`features.py` about line 661: compose when `rejected` is not empty). The T-008 ruling "every dropped candidate gets a reason" conflicts with that dispatch rule. Verifier ledger: `.unlazy/verify-lane-t008/GATES.md`.
+- Lane-panel (maintainer-reported: progress and estimates looked wrong): (a) a codex `--resume` joins the new lane to the first job of the session chain (`jobId` of plan1-task5 was `codex:plan1-task2@...`, `round: 14`), so its estimate mixes five tasks and `register.py append` refuses a plan1-task5 row ("exists"); (b) the panel shows progress only by ticked gates, and a brief that ticks at the end shows 0 the whole time; (c) agy lanes started in a worktree register as `agy-pid<N>` with no lane name (t006 = pid180721, t006-fix = pid274937, t008 = pid388227). Fix in `~/Source/lane-panel` (this host and GitHub). Not ticketed: the maintainer has not asked for a fix lane yet.
+- Slow lanes: test runs take 3-5 min each and all lanes share one pytest lock; T-016 and the test-scope rule address this. Start codex lanes in a new session per task (a 14-round resume chain is slow).
+- `.scratch/lanes/*/GATES.md` show unmet in `gate-check --status` because the lanes ticked them by hand without unlazy approvals; the lane-verifier re-ran them. `.unlazy/` keeps the old scopes plus `verify-lane-t006` (G3 abandoned, a wrong guess of the verifier) and `verify-lane-t008` (G3, G4 unmet = the T-008 failure). None removed.
+- Codex 5h pool at 76 % (03:25Z); no codex lane before its reset.
 
 ## 3. Session 2026-10-20 (fourth session of the day)
 

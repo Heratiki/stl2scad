@@ -7,7 +7,7 @@ fails, and when the maintainer rules. Procedure:
 ## Before any wave
 
 1. `~/.claude/lane-usage.sh`; log the line (memory `lane-usage-tally`,
-   "Pool readings"). Reading 2026-10-21T01:07Z (session start, before wave 4): claude 5h 0 % / week 54 %; codex 5h 0 % / week 21 %; agy gemini 5h 100 % / week 89 % left; agy-Claude week 14 %; Argon week 81 % left. Reading 2026-10-20T20:35Z (after wave 3): claude 5h 22 % / week 54 %; codex 5h 21 % / week 21 %; agy gemini 5h 100 % / week 89 % left; agy-Claude week 14 %; Argon week 81 % left. Before wave 3 (20:01Z): claude 5h 16 % / week 53 %; codex 5h 0 % / week 15 %.
+   "Pool readings"). Reading 2026-10-21T03:25Z (after wave 4): claude 5h 12 % / week 56 %; codex 5h 76 % / week 33 %; agy gemini 5h 78 % left / week 83 % left; agy-Claude week 14 %; Argon week 81 % left. Reading 2026-10-21T01:07Z (session start, before wave 4): claude 5h 0 % / week 54 %; codex 5h 0 % / week 21 %; agy gemini 5h 100 % / week 89 % left; agy-Claude week 14 %; Argon week 81 % left. Reading 2026-10-20T20:35Z (after wave 3): claude 5h 22 % / week 54 %; codex 5h 21 % / week 21 %; agy gemini 5h 100 % / week 89 % left; agy-Claude week 14 %; Argon week 81 % left. Before wave 3 (20:01Z): claude 5h 16 % / week 53 %; codex 5h 0 % / week 15 %.
 2. Check the model lists (`codex debug models`, `agy models`, the Claude
    models in the session) against the register.
 3. If this repo uses external lanes: the `lanes` tool `list` (and the tmux

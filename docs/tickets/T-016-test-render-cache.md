@@ -1,6 +1,6 @@
 # T-016: Cache the OpenSCAD renders that tests make of their own SCAD
 
-Status: open
+Status: landed (worktree-agent-a9fa99a8eacad6ef6, 2026-10-21)
 Opened: 2026-10-21 by the orchestrator, from the maintainer's report that test runs are "ridiculously painfully long" and make the computer almost unusable.
 Depends on: wave order. Plan 1 Task 6 (adds `tests/test_segmentation_treatments.py`, edits `tests/test_segmentation_compose.py` on its branch) and T-006 (edits `tests/test_segmentation_defeature.py`) merge first, because this ticket touches their test files. No ADR is touched.
 
@@ -46,14 +46,14 @@ Orchestrator defaults. The maintainer asked only for the ticket ("ticket the ren
 
 ## Acceptance
 
-- [ ] `test_render_cache_hit_skips_render`: a second `cached_render` of the same SCAD text, version and arguments performs 0 OpenSCAD renders (the counter stays at 1) and writes an identical STL.
-- [ ] `test_render_cache_miss_on_changed_scad`: changing one character of the SCAD text renders again.
-- [ ] `test_render_cache_off_switch`: with `STL2SCAD_RENDER_CACHE=off` every call renders.
-- [ ] `test_render_cache_atomic_write`: the cached file appears only through `os.replace`; a stale temp file left in the cache directory is never returned as a hit. A failed render stores nothing.
-- [ ] Proof on a named file: run `tests/test_segmentation_bracket.py` twice with `STL2SCAD_RENDER_CACHE_LOG` set; the second run's log has 0 `render miss` lines for test inputs.
+- [x] `test_render_cache_hit_skips_render`: a second `cached_render` of the same SCAD text, version and arguments performs 0 OpenSCAD renders (the counter stays at 1) and writes an identical STL.
+- [x] `test_render_cache_miss_on_changed_scad`: changing one character of the SCAD text renders again.
+- [x] `test_render_cache_off_switch`: with `STL2SCAD_RENDER_CACHE=off` every call renders.
+- [x] `test_render_cache_atomic_write`: the cached file appears only through `os.replace`; a stale temp file left in the cache directory is never returned as a hit. A failed render stores nothing.
+- [x] Proof on a named file: run `tests/test_segmentation_bracket.py` twice with `STL2SCAD_RENDER_CACHE_LOG` set; the second run's log has 0 `render miss` lines for test inputs.
 - [ ] The lane report records measured wall time, before and after, of `tests/test_segmentation_compose.py` (if merged) and of the segmentation "not slow" slice, each with a cold and a warm cache. Measured, not estimated. A lane that may not run the harness asks the orchestrator to run them and records the numbers it is given.
-- [ ] Existing assertions in all `tests/test_segmentation_*.py` stay unchanged; the diff of those files shows render call sites only.
-- [ ] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
-- [ ] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.
+- [x] Existing assertions in all `tests/test_segmentation_*.py` stay unchanged; the diff of those files shows render call sites only.
+- [x] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
+- [x] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.
 
 Do NOT run the test harness. Stage paths explicitly.

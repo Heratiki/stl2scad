@@ -22,7 +22,8 @@ from pathlib import Path
 import pytest
 
 from stl2scad.core.conversion import FALLBACK_MARKER, convert_stl_to_scad
-from stl2scad.core.openscad.runner import get_openscad_path, run_openscad
+from stl2scad.core.openscad.runner import get_openscad_path
+from tests.render_cache import cached_render
 
 _DATA_DIR = Path(__file__).parent / "data"
 _FIXTURE_DIR = _DATA_DIR / "feature_fixtures_scad"
@@ -62,9 +63,11 @@ def _render(name, output_dir):
             pytest.fail(f"OpenSCAD is required in CI for fixture round-trip: {exc}")
         pytest.skip(f"OpenSCAD not available: {exc}")
     stl_path = output_dir / f"{name}.stl"
-    ok = run_openscad(
+    ok = cached_render(
         name,
-        ["--render", "-o", str(stl_path), str(_FIXTURE_DIR / f"{name}.scad")],
+        ["--render"],
+        _FIXTURE_DIR / f"{name}.scad",
+        stl_path,
         str(output_dir / f"{name}.log"),
         openscad_path,
         timeout=300,

@@ -18,6 +18,7 @@ import pytest
 from stl.mesh import Mesh
 
 from stl2scad.core.openscad.runner import get_openscad_path, run_openscad
+from tests.render_cache import cached_render
 
 DATA_DIR = Path(__file__).parent / "data" / "segmentation"
 EXPECTED = json.loads((DATA_DIR / "composite_bracket_expected.json").read_text())
@@ -63,9 +64,11 @@ def rendered(openscad_path, tmp_path_factory):
     meshes = {}
     for name, variant in VARIANTS.items():
         stl_path = out_dir / f"{name}.stl"
-        assert run_openscad(
+        assert cached_render(
             f"composite_bracket_{name}",
-            ["--render", "-o", str(stl_path), str(DATA_DIR / variant["scad"])],
+            ["--render"],
+            DATA_DIR / variant["scad"],
+            stl_path,
             str(out_dir / f"{name}.log"),
             openscad_path,
         ), f"OpenSCAD render failed for {variant['scad']}"
@@ -231,8 +234,8 @@ def test_emitted_scad_is_labeled_and_adjustable(rendered, openscad_path, tmp_pat
     def render(source, stem):
         scad_path, stl_path = tmp_path / f"{stem}.scad", tmp_path / f"{stem}.stl"
         scad_path.write_text(source)
-        assert run_openscad(stem, ["--render", "-o", str(stl_path), str(scad_path)],
-                            str(tmp_path / f"{stem}.log"), openscad_path), f"render failed: {stem}"
+        assert cached_render(stem, ["--render"], scad_path, stl_path,
+                             str(tmp_path / f"{stem}.log"), openscad_path), f"render failed: {stem}"
         return Mesh.from_file(str(stl_path))
 
     original = render(scad, "emitted")

@@ -10,6 +10,7 @@ import pytest
 from stl.mesh import Mesh
 
 from stl2scad.core.openscad.runner import run_openscad
+from tests.render_cache import cached_render
 from tests.test_segmentation_bracket import _rotation, openscad_path
 
 DATA = Path(__file__).parent / "data" / "segmentation"
@@ -35,9 +36,11 @@ def rendered(openscad_path, tmp_path_factory):
     meshes = {}
     for name, variant in VARIANTS.items():
         target = directory / f"{name}.stl"
-        assert run_openscad(
+        assert cached_render(
             name,
-            ["--render", "-o", str(target), str(DATA / variant["scad"])],
+            ["--render"],
+            DATA / variant["scad"],
+            target,
             str(directory / f"{name}.log"),
             openscad_path,
         )
@@ -194,9 +197,11 @@ def test_emitted_scad_and_local_slot_edit(rendered, name, openscad_path, tmp_pat
     def render(text, stem):
         path, target = tmp_path / f"{stem}.scad", tmp_path / f"{stem}.stl"
         path.write_text(text)
-        assert run_openscad(
+        assert cached_render(
             stem,
-            ["--render", "-o", str(target), str(path)],
+            ["--render"],
+            path,
+            target,
             str(tmp_path / f"{stem}.log"),
             openscad_path,
         )

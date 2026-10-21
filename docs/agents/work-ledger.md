@@ -17,10 +17,11 @@ fails, and when the maintainer rules. Procedure:
 
 | Ticket | Route | State | Next |
 |---|---|---|---|
-| Plan 1 Task 5: remainder regions and the new dispatch | codex lane (`resume` plan1-task4) | running (lane plan1-task5, 2026-10-21) | wave 4 |
-| Plan 1 Tasks 6–7 | codex lanes in order | queued | after Task 5 |
-| T-006 chamfer on a non-orthogonal wall rejected | agy gemini-3.8-flash-high (maintainer: codex/agy first) | running (lane t006, 2026-10-21) | owns `defeature.py`; one at a time with T-008, T-015 |
-| T-008 chamfer on a split host wall dropped with no reason | lane-dev or codex | open, ruled | after T-006 |
+| Plan 1 Task 5: remainder regions and the new dispatch | codex lane (`resume` plan1-task4) | merged with Task 6 as 6e650b9 (2026-10-21); full run pending |
+| Plan 1 Task 6 | codex (new session) | merged 6e650b9 with Task 5 (2026-10-21) | 2 known gaps now parametric |
+| Plan 1 Task 7 | codex lane, new session | queued | real parts and docs |
+| T-006 chamfer on a non-orthogonal wall rejected | agy gemini-3.8-flash-high (maintainer: codex/agy first) | merged a671f01 (2026-10-21); full run pending with Task 5+6 | owns `defeature.py`; one at a time with T-008, T-015 |
+| T-008 chamfer on a split host wall dropped with no reason | agy gemini-3.8-flash-high | FAILED verify on combined code (2026-10-21); lane/t008 kept unmerged | fix round needs a dispatch ruling: see handoff | after T-006 |
 | T-015 part-intrinsic numbering for twin side faces | lane-dev (Opus, design inside) or codex | open, ruled | `defeature.py`; after T-006 or T-008 |
 | T-010 revolved solids (cylinders, cones, stepped shafts first) | codex lane | open, ruled | slabs landed; can start |
 | T-011 rectangular cutouts / pockets: early named rejection | codex lane | open, ruled | small; any wave |

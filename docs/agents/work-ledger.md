@@ -7,7 +7,7 @@ fails, and when the maintainer rules. Procedure:
 ## Before any wave
 
 1. `~/.claude/lane-usage.sh`; log the line (memory `lane-usage-tally`,
-   "Pool readings"). Reading 2026-10-20T20:35Z (after wave 3): claude 5h 22 % / week 54 %; codex 5h 21 % / week 21 %; agy gemini 5h 100 % / week 89 % left; agy-Claude week 14 %; Argon week 81 % left. Before wave 3 (20:01Z): claude 5h 16 % / week 53 %; codex 5h 0 % / week 15 %.
+   "Pool readings"). Reading 2026-10-21T01:07Z (session start, before wave 4): claude 5h 0 % / week 54 %; codex 5h 0 % / week 21 %; agy gemini 5h 100 % / week 89 % left; agy-Claude week 14 %; Argon week 81 % left. Reading 2026-10-20T20:35Z (after wave 3): claude 5h 22 % / week 54 %; codex 5h 21 % / week 21 %; agy gemini 5h 100 % / week 89 % left; agy-Claude week 14 %; Argon week 81 % left. Before wave 3 (20:01Z): claude 5h 16 % / week 53 %; codex 5h 0 % / week 15 %.
 2. Check the model lists (`codex debug models`, `agy models`, the Claude
    models in the session) against the register.
 3. If this repo uses external lanes: the `lanes` tool `list` (and the tmux
@@ -17,9 +17,9 @@ fails, and when the maintainer rules. Procedure:
 
 | Ticket | Route | State | Next |
 |---|---|---|---|
-| Plan 1 Task 5: remainder regions and the new dispatch | codex lane (`resume` plan1-task4) | queued | first of wave 4; plan file |
+| Plan 1 Task 5: remainder regions and the new dispatch | codex lane (`resume` plan1-task4) | running (lane plan1-task5, 2026-10-21) | wave 4 |
 | Plan 1 Tasks 6–7 | codex lanes in order | queued | after Task 5 |
-| T-006 chamfer on a non-orthogonal wall rejected | lane-dev (Sonnet) or codex | open, ruled | owns `defeature.py`; one at a time with T-008, T-015 |
+| T-006 chamfer on a non-orthogonal wall rejected | agy gemini-3.8-flash-high (maintainer: codex/agy first) | running (lane t006, 2026-10-21) | owns `defeature.py`; one at a time with T-008, T-015 |
 | T-008 chamfer on a split host wall dropped with no reason | lane-dev or codex | open, ruled | after T-006 |
 | T-015 part-intrinsic numbering for twin side faces | lane-dev (Opus, design inside) or codex | open, ruled | `defeature.py`; after T-006 or T-008 |
 | T-010 revolved solids (cylinders, cones, stepped shafts first) | codex lane | open, ruled | slabs landed; can start |
@@ -27,6 +27,7 @@ fails, and when the maintainer rules. Procedure:
 | T-012 segmentation speed + multi-core for one part | codex lane | open, ruled | profile first |
 | T-013 hollow box as negative primitive (void shells) | codex lane | open, ruled (in scope) | after T-011 |
 | T-014 shaft keyway as an extruded profile | codex lane | open, ruled | slabs landed; can start |
+| T-016 test render cache (maintainer-reported slow runs) | lane-dev (Sonnet) | open, ruled | after Task 5+6 and T-006 merge (shares test files) |
 
 Wave order: a file two tickets need is changed by the first ticket's lane,
 merged, then the second lane starts. Plan 1 Task 4 and T-005..T-008 all touch

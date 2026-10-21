@@ -140,6 +140,12 @@ file's text in the brief.
   Never install dependencies inside a worktree. The main tree belongs to the
   orchestrator. Every brief lists the paths the lane owns; concurrent lanes
   own disjoint paths; a shared file changes in wave order.
+- **Test scope (maintainer, 2026-10-21).** A lane runs only its own test
+  files (the files it owns or adds), never the full segmentation slice.
+  lane-verifier re-runs those same files. `suite-verifier` runs the
+  segmentation slice or the full suite once, on main after the merge. Each
+  run renders every part again through OpenSCAD, so extra full runs cost
+  minutes of CPU each.
 - **Design questions go to the maintainer** (AskUserQuestion, 1-2 per round,
   recommended option first), never to a lane. With the maintainer away,
   decisions go in `docs/agents/decisions-YYYY-MM-DD.md` with a revert note.

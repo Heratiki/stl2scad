@@ -24,6 +24,10 @@ FeatureKind = Literal[
     "arc_profile_extrude",
     "pocket",
     "pin",
+    "slab",
+    "chamfer",
+    "edge_round",
+    "remainder",
 ]
 
 
@@ -89,6 +93,11 @@ class Feature:
     length: float | None = None
     angle_deg: float = 0.0
     rim_normals: tuple[Vector, ...] = ()
+
+    # Slabs can have several islands and holes at a shared height interval.
+    loops: tuple[Profile, ...] = ()
+    remainder_triangles: tuple[tuple[Vector, Vector, Vector], ...] = ()
+    reason: str | None = None
 
     @property
     def host(self):
@@ -456,7 +465,7 @@ def _axis_plane_point(cylinder, plane):
     return point + axis * ((plane.offset - normal @ point) / (normal @ axis))
 
 
-def detect_features(result: SegmentationResult) -> list[Feature]:
+def _detect_existing(result: SegmentationResult) -> list[Feature]:
     """Recover one extruded body with graph-owned bosses, blind holes and fillets.
 
     Unsupported topology fails explicitly; there is no triangle-copy fallback.
@@ -475,6 +484,13 @@ def detect_features(result: SegmentationResult) -> list[Feature]:
     if section is not None:
         return section
     secondary = _cylinder_features(result)
+    # Partial convex profile strips are not independent cylindrical bosses.
+    # Reject the old false positive so stepped profiles reach composition.
+    for item in secondary:
+        if item["kind"] in ("boss", "blind_hole") and not _full_cylinder(
+            result, item["curved"]
+        ):
+            raise ValueError(f"Unsupported cylinder topology at {item['curved'].id}")
     owned = {
         item[key].id
         for item in secondary
@@ -486,6 +502,13 @@ def detect_features(result: SegmentationResult) -> list[Feature]:
     if not body_faces or any(not isinstance(f.params, Plane) for f in body_faces):
         raise ValueError("The base body must have planar section caps and sides")
     cap, _, axis, length, loop = _cap_pair(result, body_faces)
+    # Matching the outer cap boundary alone does not explain an organic
+    # patch on that cap. A prismatic body has no oblique side-face normals.
+    sine, cosine = np.sin(np.radians(0.5)), np.cos(np.radians(0.5))
+    if any(
+        sine < abs(np.dot(face.params.normal, axis)) < cosine for face in body_faces
+    ):
+        raise ValueError("Body has nonextruded plane directions")
     frame = _frame(result, axis, cap, loop, secondary)
     rot, origin = frame[:3, :3], frame[:3, 3]
     local = lambda p: (np.asarray(p) - origin) @ rot
@@ -598,3 +621,60 @@ def detect_features(result: SegmentationResult) -> list[Feature]:
                 )
             )
     return features
+
+
+def detect_features(result: SegmentationResult) -> list[Feature]:
+    """Preserve proven old paths; compose treatments or unsupported topology.
+
+    A proved named constant section wins over an alternative treatment-axis
+    hypothesis. If both detectors reject a part, retain the original public
+    diagnostic and chain the composition error for debugging.
+    """
+    if result.mesh is None:
+        raise ValueError("Feature detection requires indexed segmentation support")
+    from .pins import detect_pin
+
+    pin = detect_pin(result)
+    if pin is not None:
+        return [pin]
+    from .sections import detect_section_features
+
+    try:
+        section = detect_section_features(result)
+    except ValueError:
+        section = None
+    if section is not None and section[0].profile.kind in (
+        "rectangle",
+        "l",
+        "u",
+        "t",
+        "rounded_rectangle",
+    ):
+        return section
+    from .defeature import defeature
+    from .compose import compose_features
+
+    try:
+        stripped = defeature(result)
+    except ValueError:
+        return _detect_existing(result)
+    if stripped.treatments or stripped.rejected:
+        try:
+            return compose_features(result)
+        except ValueError as composition_error:
+            if str(composition_error).startswith("free-form share "):
+                raise
+            try:
+                _detect_existing(result)
+            except ValueError as original_error:
+                raise original_error from composition_error
+            raise
+    try:
+        return _detect_existing(result)
+    except ValueError as original_error:
+        try:
+            return compose_features(result)
+        except ValueError as composition_error:
+            if str(composition_error).startswith("free-form share "):
+                raise
+            raise original_error from composition_error

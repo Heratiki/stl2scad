@@ -23,6 +23,8 @@ class Binding:
     corner: tuple[str, str, str] = ("0", "0", "0")
     phase_deg: float = 0.0
     extent: str | None = None
+    radius: str | None = None
+    resolution: str | None = None
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,10 @@ def _levels(values, tolerance):
 
 
 def features_to_ir(features: list[Feature]) -> ParametricModel:
+    if any(f.kind in ("slab", "chamfer", "edge_round", "remainder") for f in features):
+        from .compose_ir import compose_to_ir
+
+        return compose_to_ir(features)
     if len(features) == 1 and features[0].kind == "pin":
         from .pins import pin_to_ir
 

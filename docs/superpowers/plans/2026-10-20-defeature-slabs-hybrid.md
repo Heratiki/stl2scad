@@ -177,11 +177,21 @@ Implementation clarifications for Task 4 (2026-10-20):
 - Produces: `FREE_FORM_LIMIT = 0.10` in `remainder.py`; `remainder_regions(result: SegmentationResult, explained: set[str], frame) -> list[Feature]` — connected groups of unexplained faces, each a `Feature(kind="remainder", polarity=..., face_ids=..., remainder_triangles=<closed solid in world coordinates>, reason=...)`; the solid is closed by projecting the open boundary loop onto the extended host plane(s) and extending it `_join_epsilon` into the body; polarity is additive when the region is outside the parametric body, subtractive when inside. `free_form_share(result, regions) -> float` (area of region faces / total area). `compose_features(result: SegmentationResult) -> list[Feature]` in `compose.py`: regularize → defeature → slabs → existing secondary features (boss, blind hole, through hole, fillet) on the slab body → remainder; raises `ValueError("free-form share X % exceeds 10 %")` above the limit. Each rejected treatment becomes a remainder with `reason` set to its rejection reason.
 - `detect_features` order: pin; then `compose_features` when `defeature(...).treatments` or `.rejected` is not empty; else the existing section and cylinder paths; if those raise `ValueError`, `compose_features`.
 
-- [ ] **Step 1: Write tests.** `test_old_path_parts_keep_their_output` (for the composite bracket, rounded plate and all their variants, `emit_scad(None, mesh)` is byte-equal to the output at the parent commit, recorded in the test as a SHA-256 of the text with the `// Source:` line removed). `test_compose_feature_kinds` (each Task 1 part: feature kinds and counts equal the JSON). `test_dome_is_one_additive_remainder` (`dome_plate`: one `remainder`, additive, share < 0.10). `test_large_dome_exceeds_limit` (`compose_features` raises with "exceeds 10 %"). `test_asymmetric_chamfer_becomes_named_remainder` (`reason == "asymmetric chamfer"`).
-- [ ] **Step 2: Run, expect FAIL.**
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** the new tests and `tests/test_segmentation_*.py`. Expected: PASS.
-- [ ] **Step 5: Commit** `feat: compose slabs, treatments and remainder regions in detect_features`.
+- [x] **Step 1: Write tests.** `test_old_path_parts_keep_their_output` (for the composite bracket, rounded plate and all their variants, `emit_scad(None, mesh)` is byte-equal to the output at the parent commit, recorded in the test as a SHA-256 of the text with the `// Source:` line removed). `test_compose_feature_kinds` (each Task 1 part: feature kinds and counts equal the JSON). `test_dome_is_one_additive_remainder` (`dome_plate`: one `remainder`, additive, share < 0.10). `test_large_dome_exceeds_limit` (`compose_features` raises with "exceeds 10 %"). `test_asymmetric_chamfer_becomes_named_remainder` (`reason == "asymmetric chamfer"`).
+- [x] **Step 2: Run, expect FAIL.**
+- [x] **Step 3: Implement.**
+- [ ] **Step 4: Run** the new tests and `tests/test_segmentation_*.py`. Expected: PASS. Ran both: the 34 compose tests pass; G7 is explicitly abandoned because three known-gap diagnostics now reach the Task 6 IR/emitter. This lane cannot change those adapters or `fixture_expectations.json`; the handoff question is in its REPORT.md.
+- [x] **Step 5: Commit** `feat: compose slabs, treatments and remainder regions in detect_features`.
+
+Implementation clarifications for Task 5 (2026-10-20):
+
+- `Feature.loops: tuple[Profile, ...] = ()` preserves all islands and holes of one slab; `profile` remains its primary loop. A slab uses `position.z` for its bottom, `height` for its interval length, and `length`/`width` for its overall part-frame X/Y spans. This avoids splitting the stepped head and rib into two slab features or dropping a loop.
+- Composition uses a private support copy to fill holes in planar hosts and extend removed host cuts to their sharp intersections before calling `slab_profiles`. Convex hulls supply connected planar section hints only; the fitted planes/cylinders and height-filtered source graph still determine final profile edges. Original source triangles and areas remain untouched for provenance and remainders.
+- A body cap must touch an extrusion-compatible side. A tiny planar polar facet on a tessellated dome belongs to the remainder, not a new slab level. Boss/hole secondary classification requires a full circumference; half-round rib ends and partial profile corners remain sketch arcs.
+- Remainder closures use the extended host plane (or host-plane intersection), preserve the measured patch, and add a scale-relative overlap of `mesh.diagonal * 1e-6`. Closure welding and manifold/winding/volume checks remain in float64; source surface share excludes artificial closure triangles.
+- A proved existing named section takes priority over a competing treatment-axis hypothesis. This preserves thin rounded plates that the axis heuristic can reinterpret as four spatial rounds. The old path now rejects partial-cylinder bosses and oblique body facets it did not reconstruct; otherwise stepped profiles and domes could be silently omitted until the final gate.
+- If both detection paths reject a part, keep the original fallback diagnostic and chain the compose failure. The explicit free-form-share limit keeps its own diagnostic. This preserves existing known-gap reasons without changing their expectations.
+- Coalesce neighboring short facet lines into an arc only when their endpoints and midpoint match that arc's input polygon within the existing section tolerance. Preserve all their face IDs and the arc phase/count. This restores whole adjustable R3 corners where a clipped source strip left a few fitted facet planes.
 
 ### Task 6: Validation solid, IR and emit
 
@@ -196,7 +206,7 @@ Implementation clarifications for Task 4 (2026-10-20):
 - Consumes: Task 5 features; `ParametricModel`, `Binding` from `to_ir.py`.
 - Produces SCAD of this shape: `union()` of one `linear_extrude` per slab (`step_<n>_height` drives each top level; the parameter is the height above the part bottom); `difference()` with one cutter per treatment along its edge (round: square `r × r` minus a circle `r` with the emitted `segments` and phase; chamfer: right triangle with legs `w`); a remainder region as `polyhedron()` inside `union()` (additive) or `difference()` (subtractive), with no parameter. Header lines: `// Free-form region remainder_<n>: faces F.., area A mm2, reason <reason>` for each region and `// Free-form share: S % (limit 10 %)`. Limits: `assert(edge_round_<n>_radius < min(host widths))`, `assert(chamfer_<n>_width < min(host widths))`, `assert(step_1_height < step_2_height ...)`.
 
-- [ ] **Step 1: Write tests** (each Task 1 part and variant, rendered by OpenSCAD):
+- [x] **Step 1: Write tests** (each Task 1 part and variant, rendered by OpenSCAD):
   - `test_emitted_treatment_parts_pass_gate`: `"polyhedron("` absent for `chamfered_block`, `edge_round_block`, `clipped_arc_plate`, `stepped_bar`; Hausdorff < `gate_limit_mm`.
   - `test_customizer_parameters`: `openscad --export-format=param` gives `min`, `step`, `max`, `caption` for every name in the JSON `parameters`, with `initial` within 0.001 mm of the design value.
   - `test_slider_edit_matches_ground_truth`: set `edge_round_1_radius` to 4, `chamfer_1_width` to 3, `step_1_height` to 3 (one at a time) in the emitted SCAD; render the ground-truth SCAD with `-D` the same value; Hausdorff between the two < `gate_limit_mm`.
@@ -205,10 +215,20 @@ Implementation clarifications for Task 4 (2026-10-20):
   - `test_dome_plate_is_hybrid`: one `polyhedron(` inside a `union()`, Hausdorff < gate, header share < 10 %; plate parameters still in the Customizer.
   - `test_large_dome_falls_back`: the whole output is the fallback polyhedron and the header names the share.
   - `test_asymmetric_chamfer_is_reported`: no `chamfer_1_width`; a `Free-form region` line with `reason asymmetric chamfer`; Hausdorff < gate.
-- [ ] **Step 2: Run, expect FAIL.**
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** the new tests and the full baseline command. Expected: new tests PASS; baseline 311 + new passed, the same 3 failed.
-- [ ] **Step 5: Commit** `feat: emit slabs, edge treatments and hybrid remainder regions`. Then start an Agy review lane on Tasks 4–6.
+- [x] **Step 2: Run, expect FAIL.**
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** the lane-scoped gates G5–G7: treatment/compose `94 passed`; fixture round trip `53 passed, 28 xfailed`; segmentation slice `441 passed, 28 xfailed`. No new skip/xfail markers; the slow fixtures remain excluded. The explicit lane contract supersedes the historical full-baseline command.
+- [x] **Step 5: Commit** `feat: emit slabs, edge treatments and hybrid remainder regions` locally on `lane/plan1-task6`. The orchestrator owns the subsequent joint review/merge; this lane stops after its report, as explicitly instructed.
+
+Implementation clarifications for Task 6 (2026-10-20):
+
+- Private typed composition nodes live in `compose_ir.py`; existing public IR field shapes and the old emitter path remain unchanged. A slab node retains every island and hole path, its numeric bottom, and its numeric height. Bindings drive its top level and bottom from the ordered step parameters.
+- Profile corners are numbered on the largest-area island first, then smaller islands, preserving winding. This gives the stepped head its R1 parameters before the rib's R0.5 parameters even when the section producer returns the rib loop first.
+- Remainder triangles arrive in world coordinates and are converted to the shared part frame before the single outer transform. Header areas count original source triangles only, excluding artificial closure surfaces.
+- If composed IR/render validation rejects a part that the original detector rejected, retain that original public diagnostic. An explicit free-form-share rejection retains its own message. This extends Task 5's diagnostic compatibility rule across the IR/emitter boundary.
+- Stadium void loops retain linked slot width/length controls and shared arc resolution bindings. Ordinary holes use Hole groups; concentric stepped bores retain Through Hole and Blind Hole groups. Each Customizer group is emitted once, with resolution controls collected last, so parameter headings preserve the fixture feature counts.
+- Treatment edge spans follow the edited host length/width instead of a frozen measured cutter length. A rendered host-length edit exposed the finite-span regression.
+- This lane's explicit finish and gate commands supersede the older full baseline and review-lane instructions above: run the scoped segmentation slice, commit locally with explicit paths, and leave cross-lane review to the orchestrator.
 
 ### Task 7: Real parts and documentation
 

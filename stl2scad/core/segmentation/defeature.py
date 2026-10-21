@@ -104,6 +104,26 @@ def _intersection(cap, side):
     return point, direction
 
 
+def _merge_coplanar(faces, cosine, offset_tol=0.05):
+    """Merge coplanar host faces into equivalence classes, returning one representative per class."""
+    groups = []
+    for face in faces:
+        match = None
+        for group in groups:
+            rep = group[0]
+            if (
+                np.dot(face.params.normal, rep.params.normal) >= cosine
+                and abs(face.params.offset - rep.params.offset) <= offset_tol
+            ):
+                match = group
+                break
+        if match is not None:
+            match.append(face)
+        else:
+            groups.append([face])
+    return [min(group, key=lambda f: f.id) for group in groups]
+
+
 def _host_pairs(result, face, axis, sine, cosine, boundary):
     adjacent = [
         f
@@ -112,23 +132,35 @@ def _host_pairs(result, face, axis, sine, cosine, boundary):
         and isinstance(f.params, Plane)
         and result.graph[face.id][f.id]["convexity"] == boundary
     ]
-    caps = [f for f in adjacent if abs(np.dot(f.params.normal, axis)) >= cosine]
-    sides = [f for f in adjacent if abs(np.dot(f.params.normal, axis)) <= sine]
+    caps = _merge_coplanar(
+        [f for f in adjacent if abs(np.dot(f.params.normal, axis)) >= cosine],
+        cosine,
+    )
+    sides = _merge_coplanar(
+        [f for f in adjacent if abs(np.dot(f.params.normal, axis)) <= sine],
+        cosine,
+    )
     if isinstance(face.params, Plane):
         normal = np.asarray(face.params.normal)
         valid_sides = [s for s in sides if np.dot(normal, s.params.normal) > sine]
         if not valid_sides:
             return []
-        best_side = max(valid_sides, key=lambda s: np.dot(normal, s.params.normal))
+        max_dot = max(np.dot(normal, s.params.normal) for s in valid_sides)
+        best_sides = [
+            s
+            for s in valid_sides
+            if np.isclose(np.dot(normal, s.params.normal), max_dot, atol=sine)
+        ]
         pairs = []
-        for cap in caps:
-            hosts = np.array([cap.params.normal, best_side.params.normal])
-            coefficients = np.linalg.lstsq(hosts.T, normal, rcond=None)[0]
-            if np.any(coefficients <= 0):
-                continue
-            point, _ = _intersection(cap, best_side)
-            direction = _unit(np.cross(normal, cap.params.normal))
-            pairs.append((cap, best_side, point, direction))
+        for side in best_sides:
+            for cap in caps:
+                hosts = np.array([cap.params.normal, side.params.normal])
+                coefficients = np.linalg.lstsq(hosts.T, normal, rcond=None)[0]
+                if np.any(coefficients <= 0):
+                    continue
+                point, _ = _intersection(cap, side)
+                direction = _unit(np.cross(normal, cap.params.normal))
+                pairs.append((cap, side, point, direction))
         return pairs
     pairs = []
     for cap, side in product(caps, sides):
@@ -175,6 +207,9 @@ def defeature(result: SegmentationResult) -> Defeatured:
             kind, boundary = "edge_round", "tangent"
         pairs = _host_pairs(fitted, face, axis, sine, cosine, boundary)
         if len(pairs) != 1:
+            rejected.append(
+                (face.id, "ambiguous hosts" if len(pairs) > 1 else "no host pair")
+            )
             continue
         cap, side, point, direction = pairs[0]
         if _oblique(direction, cap, side, cosine):
@@ -193,6 +228,7 @@ def defeature(result: SegmentationResult) -> Defeatured:
             # Preserve the cylinder's signed axis so its angular phase survives.
             direction = np.asarray(params.axis)
         if size <= 0:
+            rejected.append((face.id, "non-positive size"))
             continue
         treatments.append(
             EdgeTreatment(

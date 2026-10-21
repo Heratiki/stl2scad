@@ -1,6 +1,6 @@
 # T-008: Chamfer whose host wall is split by a slot is dropped without a reason
 
-Status: open
+Status: landed (lane/t008, 2026-10-21)
 Opened: 2026-10-20 by the orchestrator, from an agy review (`.scratch/lanes/plan1-review23/REPORT.md`) whose finding was reproduced.
 Depends on: none
 Route: codex lane (segmentation work).
@@ -97,10 +97,10 @@ Any other detector change, new primitive kinds, and weakening any existing treat
 
 ## Acceptance
 
-- [ ] New test `test_chamfer_with_slotted_host_wall_is_found`: the slot repro (`f5b_slot.scad`) yields one chamfer, the same size as the no-slot block.
-- [ ] New test `test_dropped_chamfer_candidate_records_a_reason`: any chamfer candidate not turned into a treatment appears in `rejected` with a reason; asserts that no candidate is dropped without a reason (checked for a case that stays unsupported).
-- [ ] Existing tests in `tests/test_segmentation_*.py` stay unchanged.
-- [ ] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
-- [ ] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.
+- [x] New test `test_chamfer_with_slotted_host_wall_is_found`: the slot repro (`f5b_slot.scad`) yields one chamfer, the same size as the no-slot block.
+- [x] New test `test_dropped_chamfer_candidate_records_a_reason`: any chamfer candidate not turned into a treatment appears in `rejected` with a reason; asserts that no candidate is dropped without a reason (checked for a case that stays unsupported).
+- [x] Existing tests in `tests/test_segmentation_*.py` stay unchanged.
+- [x] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
+- [x] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.
 
 Do NOT run the test harness. Stage paths explicitly.

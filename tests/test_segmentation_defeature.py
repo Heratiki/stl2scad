@@ -272,3 +272,92 @@ def test_genuinely_oblique_edge_still_rejected(openscad_path, tmp_path):
     output = defeature(original)
     assert output.treatments == ()
     assert any(reason == "oblique edge" for _, reason in output.rejected)
+
+
+def test_chamfer_with_slotted_host_wall_is_found(openscad_path, tmp_path):
+    # T-008: A chamfer whose host wall is split by a slot into coplanar faces
+    # yields one chamfer of the same size as the unslotted block.
+    def make_scad(slot: bool) -> str:
+        s = "difference() { cube([60, 40, 8]);\n"
+        s += "  translate([-1, 0, 0]) rotate([90, 0, 90]) linear_extrude(62) polygon([[0, 8], [3, 8], [0, 5]]);\n"
+        if slot:
+            s += "  translate([25, -1, -1]) cube([10, 15, 6]);\n"
+        return s + "}\n"
+
+    def render_and_defeature(name: str, slot: bool) -> Defeatured:
+        source = tmp_path / f"{name}.scad"
+        source.write_text(make_scad(slot), encoding="utf-8")
+        target = tmp_path / f"{name}.stl"
+        assert run_openscad(
+            name,
+            ["--render", "-o", str(target), str(source)],
+            str(target.with_suffix(".log")),
+            openscad_path,
+        )
+        return defeature(segment_mesh(Mesh.from_file(str(target))))
+
+    noslot_out = render_and_defeature("noslot", slot=False)
+    assert len(noslot_out.treatments) == 1
+    assert noslot_out.treatments[0].kind == "chamfer"
+    assert noslot_out.rejected == ()
+
+    slot_out = render_and_defeature("slot", slot=True)
+    assert len(slot_out.treatments) == 1
+    chamfer = slot_out.treatments[0]
+    assert chamfer.id == "chamfer_1"
+    assert chamfer.kind == "chamfer"
+    assert chamfer.size == pytest.approx(noslot_out.treatments[0].size, abs=1e-3)
+    assert chamfer.size == pytest.approx(3.0, abs=1e-3)
+    assert slot_out.rejected == ()
+
+
+def test_dropped_chamfer_candidate_records_a_reason(openscad_path, tmp_path):
+    # T-008: Any chamfer candidate not turned into a treatment appears in
+    # rejected with a named reason; none is dropped silently without a reason.
+    # An internal V-groove has tilted planar walls (chamfer candidates) but
+    # lacks convex host side walls, remaining unsupported with "no host pair".
+    source = tmp_path / "unsupported_groove.scad"
+    source.write_text(
+        """
+        difference() {
+            cube([60, 40, 10]);
+            translate([-1, 20, 10])
+                rotate([0, 90, 0])
+                linear_extrude(62)
+                    polygon([[-3, -3], [1, 0], [-3, 3]]);
+        }
+        """,
+        encoding="utf-8",
+    )
+    target = tmp_path / "unsupported_groove.stl"
+    assert run_openscad(
+        "unsupported groove truth",
+        ["--render", "-o", str(target), str(source)],
+        str(target.with_suffix(".log")),
+        openscad_path,
+    )
+    mesh = Mesh.from_file(str(target))
+    original = segment_mesh(mesh)
+    output = defeature(original)
+
+    # Verify no treatments were formed
+    assert output.treatments == ()
+
+    # Find all planar faces that are chamfer candidates (neither cap nor side)
+    sine, cosine = np.sin(np.radians(0.5)), np.cos(np.radians(0.5))
+    axis = output.axis
+    candidates = [
+        f
+        for f in original.faces
+        if f.kind == "plane"
+        and sine < abs(np.dot(f.params.normal, axis)) < cosine
+    ]
+    assert len(candidates) >= 1
+
+    # Assert every candidate that was dropped has a non-empty named reason
+    treatment_faces = {t.face_id for t in output.treatments}
+    rejected_dict = dict(output.rejected)
+    for candidate in candidates:
+        if candidate.id not in treatment_faces:
+            assert candidate.id in rejected_dict
+            assert rejected_dict[candidate.id] == "no host pair"

@@ -87,6 +87,7 @@ tests/data/.generated/
 !tests/data/segmentation/stepped_bar*.scad
 !tests/data/segmentation/dome_plate*.scad
 !tests/data/segmentation/asymmetric_chamfer_block.scad
+!tests/data/segmentation/hex_*.scad
 !tests/data/segmentation/treatments_expected.json
 !tests/data/segmentation/fixture_expectations.json
 !artifacts/segmentation/rounded_plate_rotated.scad

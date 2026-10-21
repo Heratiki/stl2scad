@@ -21,14 +21,15 @@ fails, and when the maintainer rules. Procedure:
 | Plan 1 Task 6 | codex (new session) | merged 6e650b9 with Task 5 (2026-10-21) | 2 known gaps now parametric |
 | Plan 1 Task 7 | codex lane, new session | queued | real parts and docs |
 | T-006 chamfer on a non-orthogonal wall rejected | agy gemini-3.8-flash-high (maintainer: codex/agy first) | merged a671f01 (2026-10-21); full run pending with Task 5+6 | owns `defeature.py`; one at a time with T-008, T-015 |
-| T-008 chamfer on a split host wall dropped with no reason | agy gemini-3.8-flash-high | FAILED verify on combined code (2026-10-21); lane/t008 kept unmerged | ruled 2026-10-21 (maintainer): only a real treatment candidate (a face with a cap/side pair) gets a `rejected` entry; "no host pair" goes to a diagnostics list that does not start the compose path; check the `best_sides` tie tolerance against `prism_triangle` and the composite bracket. Wave 5 fix round with T-016 | after T-006 |
+| T-008 chamfer on a split host wall dropped with no reason | agy gemini-3.8-flash-high (rounds t008, t008-r2) | merged 9ebe34d (2026-10-21) | ruling: "no host pair" goes to `diagnostics`; tie tolerance 1e-5 | done |
 | T-015 part-intrinsic numbering for twin side faces | lane-dev (Opus, design inside) or codex | open, ruled | `defeature.py`; after T-006 or T-008 |
 | T-010 revolved solids (cylinders, cones, stepped shafts first) | codex lane | open, ruled | slabs landed; can start |
 | T-011 rectangular cutouts / pockets: early named rejection | codex lane | open, ruled | small; any wave |
 | T-012 segmentation speed + multi-core for one part | codex lane | open, ruled | profile first |
 | T-013 hollow box as negative primitive (void shells) | codex lane | open, ruled (in scope) | after T-011 |
 | T-014 shaft keyway as an extruded profile | codex lane | open, ruled | slabs landed; can start |
-| T-016 test render cache (maintainer-reported slow runs) | lane-dev (Sonnet) | open, ruled | after Task 5+6 and T-006 merge (shares test files) |
+| T-016 test render cache (maintainer-reported slow runs) | lane-dev (Sonnet) | merged 357aff2 (2026-10-21) | full run cold 427 s, warm 377 s | `test_segmentation_defeature.py` call sites go to T-017 |
+| T-017 named test for "ambiguous hosts" + defeature render cache | lane-dev (Sonnet) | open, ruled (maintainer asked 2026-10-21) | first run measures the case under tol 1e-5 | any wave |
 
 Wave order: a file two tickets need is changed by the first ticket's lane,
 merged, then the second lane starts. Plan 1 Task 4 and T-005..T-008 all touch
@@ -50,6 +51,13 @@ One line each: what to check, where, and which ticket it closes.
 - Open a Task 1 ground-truth SCAD in OpenSCAD (`tests/data/segmentation/stepped_bar.scad`, `clipped_arc_plate.scad`) and confirm the shapes look as intended.
 
 ## Done waves
+
+## Wave 5 — 2026-10-21, NOT pushed
+
+- T-016 test render cache: 357aff2 (Sonnet lane-dev). Full run at 357aff2 (cold cache): 544 passed, 220 skipped, 28 xfailed, 0 failed, 427 s; 147 cache files.
+- T-008 fix round: 9ebe34d (agy gemini-3.8-flash-high, lane t008-r2). Full run at 9ebe34d (warm cache): 546 passed, 220 skipped, 28 xfailed, 0 failed, 377 s; 0 new cache files.
+- T-017 ticket written (named test for "ambiguous hosts").
+- Pools at start 11:51Z: claude 5h 1 % / week 56 %; agy gemini 5h 100 % left / week 83 % left.
 
 Newest first: `## Wave N — <date>, <pushed at sha | NOT pushed>` and one line
 per ticket.

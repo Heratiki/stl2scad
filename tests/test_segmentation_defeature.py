@@ -201,3 +201,69 @@ def test_oblique_edge_is_not_a_treatment(openscad_path, tmp_path, rotate_deg):
     assert output.treatments == ()
     assert output.rejected == ((chamfer.id, "oblique edge"),)
     assert {f.id for f in output.result.faces} == {f.id for f in original.faces}
+
+
+@pytest.mark.parametrize("wall_angle", [0, 60])
+def test_chamfer_on_hexagonal_prism_wall_is_found(openscad_path, tmp_path, wall_angle):
+    from tests.test_segmentation_treatments_truth import EXPECTED
+
+    truth = EXPECTED["hexagonal_prism"]
+    r, h, c = truth["radius"], truth["height"], truth["chamfer_width"]
+    a = r * np.cos(np.pi / 6)
+    source = tmp_path / f"hex_{wall_angle}.scad"
+    source.write_text(
+        f"""
+        difference() {{
+            rotate([0, 0, 30]) cylinder(r={r}, h={h}, $fn=6);
+            rotate([0, 0, {wall_angle}]) rotate([90, 0, 0]) translate([0, 0, -30])
+                linear_extrude(60)
+                    polygon([[{a - c}, {h}], [{a + 1}, {h}], [{a + 1}, {h - c - 1}]]);
+        }}
+        """
+    )
+    target = tmp_path / f"hex_{wall_angle}.stl"
+    assert run_openscad(
+        f"hex_{wall_angle} truth",
+        ["--render", "-o", str(target), str(source)],
+        str(target.with_suffix(".log")),
+        openscad_path,
+    )
+    mesh = Mesh.from_file(str(target))
+    original = segment_mesh(mesh)
+    output = defeature(original)
+    assert len(output.treatments) == 1
+    treatment = output.treatments[0]
+    assert treatment.id == "chamfer_1"
+    assert treatment.kind == "chamfer"
+    assert treatment.size == pytest.approx(c, abs=1e-3)
+    assert not any(reason == "oblique edge" for _, reason in output.rejected)
+
+
+def test_genuinely_oblique_edge_still_rejected(openscad_path, tmp_path):
+    # A chamfer whose cutter is tilted along the edge (genuinely slanted,
+    # not along the intersection line of its host cap and host side).
+    source = tmp_path / "slanted_chamfer.scad"
+    source.write_text(
+        """
+        difference() {
+            cube([60, 40, 10]);
+            translate([30, 0, 10])
+                rotate([0, 20, 0])
+                rotate([45, 0, 0])
+                translate([-50, -5, -5])
+                cube([100, 10, 10]);
+        }
+        """
+    )
+    target = tmp_path / "slanted_chamfer.stl"
+    assert run_openscad(
+        "slanted truth",
+        ["--render", "-o", str(target), str(source)],
+        str(target.with_suffix(".log")),
+        openscad_path,
+    )
+    mesh = Mesh.from_file(str(target))
+    original = segment_mesh(mesh)
+    output = defeature(original)
+    assert output.treatments == ()
+    assert any(reason == "oblique edge" for _, reason in output.rejected)

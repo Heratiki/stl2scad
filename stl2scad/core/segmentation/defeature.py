@@ -90,11 +90,9 @@ def _side_frame(result, axis, sine, cosine):
     return u, _unit(np.cross(axis, u))
 
 
-def _oblique(direction, axis, frame, cosine):
-    return (
-        frame is not None
-        and max(abs(np.dot(direction, d)) for d in (axis, *frame)) < cosine
-    )
+def _oblique(direction, cap, side, cosine):
+    host_direction = _unit(np.cross(cap.params.normal, side.params.normal))
+    return abs(np.dot(direction, host_direction)) < cosine
 
 
 def _intersection(cap, side):
@@ -116,22 +114,28 @@ def _host_pairs(result, face, axis, sine, cosine, boundary):
     ]
     caps = [f for f in adjacent if abs(np.dot(f.params.normal, axis)) >= cosine]
     sides = [f for f in adjacent if abs(np.dot(f.params.normal, axis)) <= sine]
-    pairs = []
-    for cap, side in product(caps, sides):
-        point, direction = _intersection(cap, side)
-        if isinstance(face.params, Plane):
-            normal = np.asarray(face.params.normal)
-            # Transverse end planes bound the strip but do not define the
-            # sharp edge: its line must lie in the treatment plane as well.
-            if abs(normal @ direction) > sine:
-                continue
-            hosts = np.array([cap.params.normal, side.params.normal])
+    if isinstance(face.params, Plane):
+        normal = np.asarray(face.params.normal)
+        valid_sides = [s for s in sides if np.dot(normal, s.params.normal) > sine]
+        if not valid_sides:
+            return []
+        best_side = max(valid_sides, key=lambda s: np.dot(normal, s.params.normal))
+        pairs = []
+        for cap in caps:
+            hosts = np.array([cap.params.normal, best_side.params.normal])
             coefficients = np.linalg.lstsq(hosts.T, normal, rcond=None)[0]
             if np.any(coefficients <= 0):
                 continue
-        elif abs(np.dot(direction, face.params.axis)) < cosine:
+            point, _ = _intersection(cap, best_side)
+            direction = _unit(np.cross(normal, cap.params.normal))
+            pairs.append((cap, best_side, point, direction))
+        return pairs
+    pairs = []
+    for cap, side in product(caps, sides):
+        point, host_dir = _intersection(cap, side)
+        if abs(np.dot(host_dir, face.params.axis)) < cosine:
             continue
-        pairs.append((cap, side, point, direction))
+        pairs.append((cap, side, point, np.asarray(face.params.axis)))
     return pairs
 
 
@@ -173,7 +177,7 @@ def defeature(result: SegmentationResult) -> Defeatured:
         if len(pairs) != 1:
             continue
         cap, side, point, direction = pairs[0]
-        if _oblique(direction, axis, frame, cosine):
+        if _oblique(direction, cap, side, cosine):
             rejected.append((face.id, "oblique edge"))
             continue
         if kind == "chamfer":

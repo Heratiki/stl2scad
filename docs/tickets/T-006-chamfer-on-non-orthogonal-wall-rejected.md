@@ -1,6 +1,6 @@
 # T-006: Chamfer on a non-orthogonal side wall rejected as oblique
 
-Status: open
+Status: landed (lane/t006, 2026-10-21)
 Opened: 2026-10-20 by the orchestrator, from an agy review (`.scratch/lanes/plan1-review23/REPORT.md`) whose finding was reproduced.
 Depends on: none
 Route: codex lane (segmentation work).
@@ -87,10 +87,10 @@ Any other detector change, new primitive kinds, and weakening any existing treat
 
 ## Acceptance
 
-- [ ] New test `test_chamfer_on_hexagonal_prism_wall_is_found`: the hexagonal-prism repro above (r=20, h=10, 2 mm chamfer), chamfered wall at 0 and 60 degrees, yields one `chamfer_1` of size 2.0 and no `oblique edge` rejection. Needs a new `treatments_expected.json` entry.
-- [ ] The existing 20 degree oblique test still rejects with `oblique edge`, unchanged. New test `test_genuinely_oblique_edge_still_rejected` asserts the same rejection for a real slanted edge if no existing test already names it.
-- [ ] Existing tests in `tests/test_segmentation_*.py` stay unchanged.
-- [ ] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
-- [ ] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.
+- [x] New test `test_chamfer_on_hexagonal_prism_wall_is_found`: the hexagonal-prism repro above (r=20, h=10, 2 mm chamfer), chamfered wall at 0 and 60 degrees, yields one `chamfer_1` of size 2.0 and no `oblique edge` rejection. Needs a new `treatments_expected.json` entry.
+- [x] The existing 20 degree oblique test still rejects with `oblique edge`, unchanged. New test `test_genuinely_oblique_edge_still_rejected` asserts the same rejection for a real slanted edge if no existing test already names it.
+- [x] Existing tests in `tests/test_segmentation_*.py` stay unchanged.
+- [x] Ticket Status set to `landed (<branch>, YYYY-MM-DD)` in the lane's commit.
+- [x] Gates pass: `.venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --extend-exclude=.venv,.claude,build,dist` and `node scripts/check-tickets.mjs`.
 
 Do NOT run the test harness. Stage paths explicitly.

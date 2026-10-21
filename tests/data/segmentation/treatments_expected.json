@@ -3075,5 +3075,24 @@
         ]
       }
     ]
+  },
+  "hexagonal_prism": {
+    "description": "Hexagonal prism with chamfer on a non-orthogonal wall (T-006). A 45 degree, 2 mm top chamfer on a wall at 0 or 60 degrees yields one chamfer_1 of size 2.0 and no oblique edge rejection.",
+    "part": "hex_chamfer",
+    "scad": "hex_chamfer.scad",
+    "radius": 20,
+    "height": 10,
+    "chamfer_width": 2,
+    "angles_deg": [
+      0,
+      60
+    ],
+    "treatments": [
+      {
+        "id": "chamfer_1",
+        "kind": "chamfer",
+        "width": 2.0
+      }
+    ]
   }
 }

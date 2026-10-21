@@ -155,9 +155,10 @@ def test_profile_arcs_are_not_treatments(
 
 
 @pytest.mark.parametrize("rotate_deg", [[0, 0, 0], [17, 31, 9]])
-def test_oblique_edge_is_not_a_treatment(openscad_path, tmp_path, rotate_deg):
-    # Only a short front-right edge is 20 degrees off the dominant X/Y frame.
-    # Rotating the complete part must not turn that edge into a supported one.
+def test_regular_chamfer_on_20_degree_wall_is_found(openscad_path, tmp_path, rotate_deg):
+    # A regular 45-degree chamfer on a wall at 20 degrees to the dominant X/Y
+    # frame is legal under T-006 because its edge follows its host faces.
+    # Rotating the complete part preserves treatment extraction.
     source = tmp_path / "oblique.scad"
     source.write_text(
         f"rotate({rotate_deg}) translate([-30,-20,-4]) "
@@ -198,9 +199,13 @@ def test_oblique_edge_is_not_a_treatment(openscad_path, tmp_path, rotate_deg):
     )
     assert chamfer.matches(expected, PARTS["chamfered_block"]["tolerances"])
     output = defeature(original)
-    assert output.treatments == ()
-    assert output.rejected == ((chamfer.id, "oblique edge"),)
-    assert {f.id for f in output.result.faces} == {f.id for f in original.faces}
+    assert len(output.treatments) == 1
+    treatment = output.treatments[0]
+    assert treatment.id == "chamfer_1"
+    assert treatment.face_id == chamfer.id
+    assert treatment.size == pytest.approx(2.0, abs=0.05)
+    assert output.rejected == ()
+    assert chamfer.id not in {f.id for f in output.result.faces}
 
 
 @pytest.mark.parametrize("wall_angle", [0, 60])

@@ -280,9 +280,12 @@
    "slow": true
   },
   "plate_counterbore_and_slot": {
-   "status": "known_gap",
+   "status": "parametric",
    "fallback_reason": "Unsupported cylinder topology at F3",
-   "slow": false
+   "slow": false,
+   "hole_count": 0,
+   "slot_count": 1,
+   "counterbore_count": 1
   },
   "plate_counterbore_depth_near_thickness": {
    "status": "known_gap",
@@ -302,9 +305,12 @@
    "slow": true
   },
   "plate_cutout_and_hole": {
-   "status": "known_gap",
+   "status": "parametric",
    "fallback_reason": "Unsupported through-cut section: expected circular hole or stadium",
-   "slow": false
+   "slow": false,
+   "hole_count": 1,
+   "slot_count": 0,
+   "counterbore_count": 0
   },
   "plate_filleted_grid_holes": {
    "status": "parametric",

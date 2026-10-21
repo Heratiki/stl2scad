@@ -112,6 +112,10 @@ def ir_to_scad(model: ParametricModel) -> str:
         lines.append(
             f"{p.name} = {_number(p.value)}; // [{_number(p.min)}:{_number(p.step)}:{_number(p.max)}]"
         )
+    from .compose_ir import SlabExtrusion, geometry_scad as compose_geometry
+
+    if any(isinstance(b.node, SlabExtrusion) for b in model.bindings):
+        return "\n".join(lines) + "\n" + compose_geometry(model)
     if any(
         isinstance(b.node, ir.ExtrudeLinear)
         and isinstance(b.node.profile, ir.SketchPath2D)
@@ -265,12 +269,14 @@ def emit_scad(features, mesh: Mesh, *, source_file=None) -> str:
     allowing the CLI to preserve unsupported parts after detection exceptions.
     """
     measured = None
+    result = None
     try:
         if features is None:
             from .features import detect_features
             from .pipeline import segment_mesh
 
-            features = detect_features(segment_mesh(mesh))
+            result = segment_mesh(mesh)
+            features = detect_features(result)
         model = features_to_ir(list(features))
         limit = gate_limit_mm(mesh)
         cache = {}
@@ -321,6 +327,49 @@ def emit_scad(features, mesh: Mesh, *, source_file=None) -> str:
                         candidate_source,
                     )
                     break
-        return _header(mesh, source_file, measured, raw_distance) + source
+        return (
+            _header(mesh, source_file, measured, raw_distance)
+            + _remainder_header(features, mesh, result=result)
+            + source
+        )
     except Exception as exc:
-        return fallback_scad(mesh, str(exc), source_file=source_file, measured=measured)
+        # Composition is an extension of the existing detector. If its later
+        # IR/render stage cannot prove the part, preserve the original public
+        # rejection rather than exposing an adapter-specific diagnostic.
+        reason = str(exc)
+        if features and any(f.kind == "slab" for f in features):
+            from .features import _detect_existing
+            from .pipeline import segment_mesh
+
+            try:
+                _detect_existing(result if result is not None else segment_mesh(mesh))
+            except ValueError as original:
+                reason = str(original)
+        return fallback_scad(mesh, reason, source_file=source_file, measured=measured)
+
+
+def _remainder_header(features, mesh, *, result=None):
+    regions = [f for f in features if f.kind == "remainder"]
+    if not regions:
+        return ""
+    from .pipeline import segment_mesh
+    from .remainder import free_form_share
+
+    if result is None:
+        result = segment_mesh(mesh)
+    areas = {
+        f.id: float(
+            result.mesh.areas[
+                np.isin(result.mesh.source_indices, f.triangle_indices)
+            ].sum()
+        )
+        for f in result.faces
+    }
+    lines = [
+        f"// Free-form region {f.id}: faces {', '.join(f.face_ids)}, area {_number(sum(areas[fid] for fid in f.face_ids))} mm2, reason {_clean(f.reason or 'unexplained surface')}"
+        for f in regions
+    ]
+    lines.append(
+        f"// Free-form share: {_number(100 * free_form_share(result, regions))} % (limit 10 %)"
+    )
+    return "\n".join(lines) + "\n"

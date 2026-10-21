@@ -1,7 +1,7 @@
 """Independent feature-solid reconstruction and deterministic surface validation.
 
 This private SCAD is a validation backend, not the step 5 editable/IR emitter.
-It consumes only feature parameters; input triangles never enter its source.
+It consumes measured feature geometry; only fixed remainder regions carry triangles.
 """
 
 import json
@@ -53,6 +53,8 @@ def _validation_source(features: list[Feature]) -> str:
     if len(features) == 1 and features[0].kind == "pin":
         pin = features[0]
         return f"multmatrix({_literal(pin.part_frame)}) " + _cylinder(pin, 0.0)
+    if any(f.kind == "slab" for f in features):
+        return _composed_validation_source(features)
     bodies = [f for f in features if f.kind.endswith("_profile_extrude")]
     if len(bodies) != 1:
         raise ValueError("Validation currently supports exactly one extruded body")
@@ -307,3 +309,84 @@ def mesh_hausdorff(first: Mesh, second: Mesh, *, samples=4096) -> float:
 def hausdorff_to_mesh(features: list[Feature], mesh: Mesh) -> float:
     """Rebuild the measured solid and compare it with the input mesh in mm."""
     return mesh_hausdorff(reconstruct_mesh(features), mesh)
+
+
+def _composed_validation_source(features):
+    """Independent literal reconstruction; no editable IR or SCAD bindings."""
+    from .sections import profile_points
+    from .compose_ir import treatment_frame
+
+    slabs = [f for f in features if f.kind == "slab"]
+    frame = np.asarray(slabs[0].part_frame)
+    if (
+        frame.shape != (4, 4)
+        or not np.isfinite(frame).all()
+        or not np.allclose(frame[3], [0, 0, 0, 1])
+        or not np.allclose(frame[:3, :3].T @ frame[:3, :3], np.eye(3), atol=1e-7)
+        or np.linalg.det(frame[:3, :3]) < 0
+        or any(not np.allclose(f.part_frame, frame, atol=1e-8) for f in features)
+    ):
+        raise ValueError("Features must share a proper rigid part frame")
+    points = np.vstack([profile_points(p) for s in slabs for p in s.loops])
+    lower = np.r_[points.min(axis=0), min(s.position[2] for s in slabs)]
+    upper = np.r_[points.max(axis=0), max(s.position[2] + s.height for s in slabs)]
+    epsilon = max(upper - lower) * 1e-6
+    additive, cuts = [], []
+    for f in features:
+        if f.kind == "slab":
+            if f.polarity != "additive" or not f.height or f.height <= 0:
+                raise ValueError("Slab needs additive polarity and positive height")
+            vertices, paths = [], []
+            for loop in f.loops:
+                ring = profile_points(loop)
+                paths.append(list(range(len(vertices), len(vertices) + len(ring))))
+                vertices.extend(ring.tolist())
+            source = f"translate([0,0,{f.position[2]:.17g}]) linear_extrude(height={f.height:.17g}) polygon(points={_literal(vertices)},paths={json.dumps(paths)});"
+        elif f.kind in ("edge_round", "chamfer"):
+            matrix, length, phase = treatment_frame(f, lower, upper)
+            size = f.radius if f.kind == "edge_round" else f.width
+            if size is None or size <= 0 or f.polarity != "subtractive":
+                raise ValueError(
+                    "Treatment needs positive size and subtractive polarity"
+                )
+            matrix[:3, 3] -= matrix[:3, 2] * epsilon
+            source = f"multmatrix({_literal(matrix)}) linear_extrude(height={length+2*epsilon:.17g}) "
+            if f.kind == "chamfer":
+                source += f"polygon(points={_literal([[-epsilon,-epsilon],[size+epsilon,-epsilon],[-epsilon,size+epsilon]])});"
+            else:
+                source += f"difference() {{ translate([-{epsilon:.17g},-{epsilon:.17g}]) square([{size+epsilon:.17g},{size+epsilon:.17g}]); translate([{size:.17g},{size:.17g}]) rotate({phase:.17g}) circle(r={size:.17g},$fn={f.segments}); }}"
+        elif f.kind == "remainder":
+            local = (np.asarray(f.remainder_triangles) - frame[:3, 3]) @ frame[:3, :3]
+            vertices, indices = np.unique(
+                local.reshape(-1, 3), axis=0, return_inverse=True
+            )
+            source = f"polyhedron(points={_literal(vertices)},faces={_literal(indices.reshape(-1,3)[:,::-1])},convexity=10);"
+        elif f.kind == "fillet":
+            center, corner = np.asarray(f.position), np.asarray(f.corner).copy()
+            corner[:2] += np.sign(corner[:2] - center[:2]) * epsilon
+            wedge = [
+                corner[:2],
+                [center[0], corner[1]],
+                center[:2],
+                [corner[0], center[1]],
+            ]
+            phase = (
+                float(
+                    np.degrees(np.arctan2(f.radial_reference[1], f.radial_reference[0]))
+                )
+                if f.radial_reference is not None
+                else 0.0
+            )
+            source = f"translate([0,0,{center[2]:.17g}]) linear_extrude(height={f.height:.17g}) difference() {{ polygon(points={_literal(wedge)}); translate({_literal(center[:2])}) rotate({phase:.17g}) circle(r={f.radius:.17g},$fn={f.segments or 64}); }}"
+        elif f.kind in ("boss", "blind_hole", "through_hole"):
+            source = _cylinder(f, epsilon)
+        else:
+            raise ValueError(f"Unsupported composed validation feature: {f.kind}")
+        (additive if f.polarity == "additive" else cuts).append(source)
+    return (
+        f"multmatrix({_literal(frame)}) difference() {{ union() {{\n"
+        + "\n".join(additive)
+        + "\n}\n"
+        + "\n".join(cuts)
+        + "\n}\n"
+    )
